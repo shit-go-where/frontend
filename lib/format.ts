@@ -1,4 +1,4 @@
-import type { AreaType, Feature, StatusKind, ToiletTier, VenueToiletStatus, VenueType } from "./api/types";
+import type { AreaType, Feature, Region, StatusKind, ToiletTier, VenueToiletStatus, VenueType } from "./api/types";
 
 export const FEATURE_LABELS: Record<Feature, string> = {
   TOILET_PAPER: "Toilet paper",
@@ -26,12 +26,19 @@ export const FEATURE_LABELS: Record<Feature, string> = {
   FEMALE: "Female",
   UNISEX: "Unisex",
   FREE: "Free",
+  SANITARY_BIN: "Sanitary bin",
+  PERIOD_PRODUCTS: "Pads or tampons",
+  MIRROR: "Mirror",
+  WATER_REFILL: "Water refill",
+  ABLUTION: "Ablution area",
 };
 
 export const FEATURE_GROUPS: { title: string; features: Feature[] }[] = [
   { title: "Who and how", features: ["MALE", "FEMALE", "UNISEX", "ACCESSIBLE", "AMBULANT", "CHILD", "SITTING", "SQUAT"] },
   { title: "Supplies", features: ["TOILET_PAPER", "HAND_SOAP", "HAND_TOWEL", "HAND_DRYER", "SEAT_LINER", "BIDET"] },
-  { title: "Family", features: ["BABY_CHANGE", "NURSING_ROOM", "SHOWER"] },
+  { title: "Period care", features: ["SANITARY_BIN", "PERIOD_PRODUCTS"] },
+  { title: "Family", features: ["BABY_CHANGE", "NURSING_ROOM"] },
+  { title: "Wash and change", features: ["SHOWER", "MIRROR", "ABLUTION", "WATER_REFILL"] },
   { title: "Fittings", features: ["AUTO_FLUSH", "AUTO_TAP", "AUTO_SOAP", "COAT_HOOK", "FEEDBACK_DEVICE", "SIGNAGE", "POSTERS"] },
   { title: "Cost", features: ["FREE"] },
 ];
@@ -49,6 +56,53 @@ export const VENUE_TYPE_LABELS: Record<VenueType, string> = {
   SPORTS_CENTRE: "Sports centre",
   OTHER: "Other",
 };
+
+/** Section headings on area pages, in the order a visitor looks for them. */
+export const VENUE_TYPE_SECTIONS: { type: VenueType; title: string }[] = [
+  { type: "MRT_STATION", title: "MRT stations" },
+  { type: "BUS_INTERCHANGE", title: "Bus interchanges" },
+  { type: "MALL", title: "Malls" },
+  { type: "HAWKER_CENTRE", title: "Hawker centres" },
+  { type: "COFFEESHOP", title: "Coffee shops" },
+  { type: "COMMUNITY_CLUB", title: "Community clubs" },
+  { type: "LIBRARY", title: "Libraries" },
+  { type: "SPORTS_CENTRE", title: "Sports centres" },
+  { type: "HOSPITAL", title: "Hospitals" },
+  { type: "PARK", title: "Parks" },
+  { type: "OTHER", title: "Other public toilets" },
+];
+
+export const REGION_LABELS: Record<Region, string> = {
+  CENTRAL: "Central",
+  EAST: "East",
+  NORTH: "North",
+  NORTH_EAST: "North-East",
+  WEST: "West",
+};
+
+/** Must match backend/src/areas/regions.ts: "Downtown Core" -> "downtown-core". */
+export function areaSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** "Tampines" the MRT station reads as "Tampines MRT" once it's out of its own heading. */
+export function placeName(v: { name: string; type: VenueType }): string {
+  return v.type === "MRT_STATION" && !/\b(MRT|LRT)\b/i.test(v.name) ? `${v.name} MRT` : v.name;
+}
+
+/** Drops the trailing "Singapore 529544": every address here is in Singapore. */
+export function shortAddress(address: string): string {
+  return address.replace(/,?\s*Singapore\s*\d{6}\s*$/i, "").trim();
+}
+
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 export const AREA_TYPE_LABELS: Record<AreaType, string> = {
   PAID_AREA: "Inside the fare gates",

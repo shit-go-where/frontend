@@ -22,7 +22,6 @@ const KIND_LABELS: Record<SubmissionView["kind"], string> = {
   NEW_TOILET: "New toilet",
   EDIT_TOILET: "Edit",
   CLOSE_TOILET: "Closure",
-  NEW_VENUE: "New place",
 };
 
 export function ReviewClient() {
@@ -190,7 +189,7 @@ export function SubmissionCard({ s, readOnly }: { s: SubmissionView; readOnly?: 
           ) : null}
         </div>
       ) : current.myVote ? (
-        <p className="inline-flex items-center gap-1.5 self-start rounded-full bg-ok-soft px-3 py-1.5 font-bold text-ok">
+        <p className="inline-flex items-center gap-1.5 self-start rounded-full bg-mint-soft px-3 py-1.5 font-bold text-mint">
           <Check className="size-4 shrink-0" strokeWidth={3} aria-hidden />
           You voted {current.myVote === "APPROVE" ? "approve" : "reject"}. Thanks!
         </p>
@@ -210,7 +209,7 @@ function StateBadge({ state }: { state: SubmissionView["state"] }) {
     // Dashed warn is the pending treatment (The Honest Pin Rule); nothing else is dashed.
     PENDING: "border-dashed border-warn text-warn",
     NEEDS_INFO: "border-transparent bg-warn-soft text-warn",
-    APPROVED: "border-transparent bg-ok-soft text-ok",
+    APPROVED: "border-transparent bg-mint-soft text-mint",
     REJECTED: "border-transparent bg-danger-soft text-danger",
     EXPIRED: "border-transparent bg-surface-2 text-muted",
   };
@@ -234,7 +233,7 @@ function FeatureList({ features }: { features: Partial<Record<Feature, boolean>>
           key={f}
           className={cx(
             "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold",
-            v ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger",
+            v ? "bg-mint-soft text-mint" : "bg-danger-soft text-danger",
           )}
         >
           {v ? <Check className="size-3.5" aria-hidden /> : <X className="size-3.5" aria-hidden />}
@@ -247,7 +246,7 @@ function FeatureList({ features }: { features: Partial<Record<Feature, boolean>>
 }
 
 function PayloadView({ s }: { s: SubmissionView }) {
-  if (s.kind === "NEW_TOILET" || s.kind === "NEW_VENUE") {
+  if (s.kind === "NEW_TOILET") {
     const p = s.payload as NewToiletPayload;
     return (
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -309,8 +308,8 @@ function PayloadView({ s }: { s: SubmissionView }) {
               <div key={k} className="contents">
                 <dt className="text-muted">{k}</dt>
                 <dd>
-                  <span className="inline-flex items-center gap-1 rounded-md bg-ok-soft px-1.5 text-fg">
-                    <ArrowRight className="size-3.5 text-ok" aria-hidden />
+                  <span className="inline-flex items-center gap-1 rounded-md bg-mint-soft px-1.5 text-fg">
+                    <ArrowRight className="size-3.5 text-mint" aria-hidden />
                     <span className="sr-only">Change to </span>
                     {v}
                   </span>

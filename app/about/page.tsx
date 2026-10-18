@@ -60,7 +60,11 @@ export default function AboutPage() {
       </ul>
       <p className="mt-4">
         In a hurry? Tap <strong className="font-extrabold">I need to go</strong> on any page for the closest good options and a
-        walking route.
+        walking route. Planning ahead?{" "}
+        <Link href="/areas" className={link}>
+          Browse toilets by area
+        </Link>
+        .
       </p>
 
       <h2 className={h2}>Words you&apos;ll see</h2>
