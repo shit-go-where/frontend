@@ -1,9 +1,25 @@
 @import "tailwindcss";
 
 /*
+ * Reduced motion: the in-app choice on /me (<html data-motion="reduce|full">) wins,
+ * otherwise the device setting. Redefines Tailwind's own variant so `motion-reduce:`
+ * utilities and `@variant motion-reduce` below follow the same rule as lib/motion.ts.
+ */
+@custom-variant motion-reduce {
+  :where([data-motion="reduce"]) & {
+    @slot;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :where(html:not([data-motion="full"])) & {
+      @slot;
+    }
+  }
+}
+
+/*
  * Unko Pop theme tokens. Dark (chocolate) is the default; light (caramel)
  * applies when the user picks it on /me, or picks "Match device" on a light
- * device (<html data-theme="light|system">).
+ * device (<html data-scheme="light">, resolved from data-theme="light|system").
  */
 :root {
   color-scheme: dark;
@@ -13,6 +29,8 @@
   --fg: #fff1e0;
   --muted: #d4b597;
   --border: #6e4a32;
+  /* Control outlines (fields, switches, empty stars): 3:1 against every surface. */
+  --border-strong: #a47a5a;
   /* Candy pink: selection, primary actions, links, focus. */
   --primary: #ff8cc2;
   --primary-fg: #3b0d22;
@@ -23,7 +41,7 @@
   /* Caramel: trust tiers on pins and badges. */
   --tier: #f0a85e;
   --tier-fg: #2a1508;
-  /* Mint: walk time and good news. */
+  /* Mint: walk time and every bit of good news (open now, good reports, approvals). */
   --mint: #5ee0bd;
   --mint-fg: #062b22;
   --mint-soft: #173a30;
@@ -31,10 +49,15 @@
   --poo: #8a4b23;
   --poo-hi: #d9934f;
   --poo-ink: #24150d;
+  /* Sticker rim cream: the mascot's die-cut rim and earned badge medals (both themes). */
+  --rim: #fff8ef;
   --accent: #ffc46b;
   --accent-fg: #2b1d00;
-  --ok: #6ee3a6;
-  --ok-soft: #173a2a;
+  /* Podium medals beside Sparkle Gold: a cool silver and a dusty copper, kept clear of caramel tier. */
+  --silver: #d9d3cc;
+  --silver-fg: #24150d;
+  --bronze: #d08a6c;
+  --bronze-fg: #24150d;
   --warn: #ffd76b;
   --warn-soft: #3f2814;
   --danger: #ff7a6b;
@@ -48,10 +71,22 @@
   /* Imported pins: pale and plain, but never lost on the night map. */
   --pin-imported: #cdb79e;
   --pin-imported-ink: #1e120b;
+  /* Candy assortment: one hue per feature group (soda = supplies and water, taro = who and how,
+     papaya = family and period care). Hue text on its own soft fill. Cost (Free) takes Sparkle Gold
+     on its icon only. */
+  --soda: #7cc8ff;
+  --soda-soft: #173049;
+  --taro: #c9b0ff;
+  --taro-soft: #2f2547;
+  --papaya: #ffb48c;
+  --papaya-soft: #46271a;
 }
 
-/* Caramel light theme: shared by an explicit pick and "Match device" on a light device. */
-:root[data-theme="light"] {
+/*
+ * Caramel light theme. <html data-scheme> is the resolved theme, kept by the boot script
+ * (lib/theme-script.ts): "light" on an explicit pick, or on "Match device" with a light device.
+ */
+:root[data-scheme="light"] {
   color-scheme: light;
   --bg: #f2d3b1;
   --surface: #fff5ea;
@@ -59,14 +94,15 @@
   --fg: #2a160b;
   --muted: #6a3f22;
   --border: #cf9d72;
-  --primary: #a8124f;
+  --border-strong: #8f6038;
+  --primary: #9c1a8a;
   --primary-fg: #ffffff;
-  --primary-soft: #f9cfe0;
+  --primary-soft: #f8d6f1;
   --urgent: #c62f16;
   --urgent-fg: #ffffff;
   --tier: #8a4b23;
   --tier-fg: #ffffff;
-  --mint: #0b7a5c;
+  --mint: #09704f;
   --mint-fg: #ffffff;
   --mint-soft: #c9efe1;
   --poo: #8a4b23;
@@ -74,58 +110,28 @@
   --poo-ink: #24150d;
   --accent: #876500;
   --accent-fg: #ffffff;
-  --ok: #0b6b3c;
-  --ok-soft: #cdeeda;
+  --silver: #cfc8c2;
+  --silver-fg: #2a160b;
+  --bronze: #9a4f32;
+  --bronze-fg: #ffffff;
   --warn: #9b3d00;
   --warn-soft: #fbe0bf;
   --danger: #b42318;
   --danger-soft: #fbd9d2;
   --danger-fg: #ffffff;
-  --ring: #a8124f;
+  --ring: #9c1a8a;
   --shadow: 0 10px 28px rgb(74 38 14 / 0.22);
   --lift: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 2px 0 rgb(122 70 34 / 0.18), 0 6px 14px rgb(122 70 34 / 0.12);
   --gloss: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -2px 0 rgb(0 0 0 / 0.12);
   --overlay: rgb(42 22 11 / 0.5);
   --pin-imported: #ecc7a2;
   --pin-imported-ink: #6a3f22;
-}
-
-@media (prefers-color-scheme: light) {
-  :root[data-theme="system"] {
-    color-scheme: light;
-    --bg: #f2d3b1;
-    --surface: #fff5ea;
-    --surface-2: #ecc7a2;
-    --fg: #2a160b;
-    --muted: #6a3f22;
-    --border: #cf9d72;
-    --primary: #a8124f;
-    --primary-fg: #ffffff;
-    --primary-soft: #f9cfe0;
-    --urgent: #c62f16;
-    --urgent-fg: #ffffff;
-    --tier: #8a4b23;
-    --tier-fg: #ffffff;
-    --mint: #0b7a5c;
-    --mint-fg: #ffffff;
-    --mint-soft: #c9efe1;
-    --accent: #876500;
-    --accent-fg: #ffffff;
-    --ok: #0b6b3c;
-    --ok-soft: #cdeeda;
-    --warn: #9b3d00;
-    --warn-soft: #fbe0bf;
-    --danger: #b42318;
-    --danger-soft: #fbd9d2;
-    --danger-fg: #ffffff;
-    --ring: #a8124f;
-    --shadow: 0 10px 28px rgb(74 38 14 / 0.22);
-    --lift: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 2px 0 rgb(122 70 34 / 0.18), 0 6px 14px rgb(122 70 34 / 0.12);
-    --gloss: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -2px 0 rgb(0 0 0 / 0.12);
-    --overlay: rgb(42 22 11 / 0.5);
-    --pin-imported: #ecc7a2;
-    --pin-imported-ink: #6a3f22;
-  }
+  --soda: #0b5d99;
+  --soda-soft: #d7ecfd;
+  --taro: #5b3cc4;
+  --taro-soft: #e8defe;
+  --papaya: #a3431a;
+  --papaya-soft: #ffe0cf;
 }
 
 @theme inline {
@@ -135,6 +141,7 @@
   --color-fg: var(--fg);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-primary: var(--primary);
   --color-primary-fg: var(--primary-fg);
   --color-primary-soft: var(--primary-soft);
@@ -148,21 +155,47 @@
   --color-poo: var(--poo);
   --color-poo-hi: var(--poo-hi);
   --color-poo-ink: var(--poo-ink);
+  --color-rim: var(--rim);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
-  --color-ok: var(--ok);
-  --color-ok-soft: var(--ok-soft);
+  --color-silver: var(--silver);
+  --color-silver-fg: var(--silver-fg);
+  --color-bronze: var(--bronze);
+  --color-bronze-fg: var(--bronze-fg);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-fg: var(--danger-fg);
   --color-ring: var(--ring);
+  --color-soda: var(--soda);
+  --color-soda-soft: var(--soda-soft);
+  --color-taro: var(--taro);
+  --color-taro-soft: var(--taro-soft);
+  --color-papaya: var(--papaya);
+  --color-papaya-soft: var(--papaya-soft);
   --font-sans: var(--font-rounded), ui-rounded, ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-dela), var(--font-rounded), ui-sans-serif, sans-serif;
   --shadow-card: var(--shadow);
   --shadow-rest: var(--lift);
   --shadow-gloss: var(--gloss);
+}
+
+/* Motion tokens. JS animation reads the same values from lib/motion.ts. */
+@theme {
+  /* Confident arrivals: also the default for every `transition` utility. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The bottom sheet's settle; the map pans on it too. */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-timing-function: var(--ease-out);
+}
+:root {
+  --dur-press: 120ms;
+  --dur-state: 200ms;
+  --dur-enter: 260ms;
+  --dur-pin: 360ms;
+  --dur-plop: 520ms;
+  --dur-celebrate: 700ms;
 }
 
 html {
@@ -245,6 +278,17 @@ h3 {
 .maplibregl-ctrl-attrib a {
   color: var(--fg) !important;
 }
+/*
+ * The OneMap logo is 20px; on the baseline it makes the line taller than the 24px "i" and drops the text.
+ * One 20px line with the logo filling it keeps logo, text and "i" centred in a 24px pill.
+ */
+.maplibregl-ctrl-attrib-inner {
+  line-height: 20px;
+}
+.maplibregl-ctrl-attrib-inner img {
+  display: inline-block;
+  vertical-align: top;
+}
 /* The "i" ships as a black SVG; redraw it as a mask so it takes the ink colour in both themes. */
 .maplibregl-ctrl-attrib-button {
   background: var(--fg) !important;
@@ -258,7 +302,7 @@ h3 {
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: var(--map-icon-filter, invert(0.9) sepia(0.4));
 }
-:root[data-theme="light"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+:root[data-scheme="light"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: none;
 }
 /* Phones pinch to zoom; the +/- buttons would sit under the search box. */
@@ -271,25 +315,61 @@ h3 {
   outline: 3px solid var(--ring);
   outline-offset: -3px;
 }
+/* Map controls take the app's own focus ring instead of MapLibre's blue glow. */
+.maplibregl-map .maplibregl-ctrl button:focus-visible,
+.maplibregl-map .maplibregl-ctrl-attrib-button:focus-visible {
+  box-shadow: none;
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
 
-/* The urgency ring behind the mascot: the app's only perpetual motion. */
+/*
+ * Motion. Spatial moves (squish, drop, rise, slide) step down to fades or stillness under
+ * `motion-reduce`; colour and opacity transitions, and loading feedback, keep running.
+ */
+
+/*
+ * The urgency ring behind the mascot: the app's only perpetual motion. A disc of its own
+ * behind the button that grows and fades, so it animates on the compositor and never
+ * touches the button's own gloss and ring (both box-shadows). The disc spans the full
+ * spread; --pulse-from scales it back to the button's size (button / (button + 2 × spread)).
+ */
 @keyframes sgw-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--urgent) 60%, transparent);
+  0% {
+    transform: scale(var(--pulse-from-x, var(--pulse-from, 0.75)), var(--pulse-from-y, var(--pulse-from, 0.75)));
+    opacity: 0.6;
   }
-  50% {
-    box-shadow: 0 0 0 12px color-mix(in srgb, var(--urgent) 0%, transparent);
+  55%,
+  100% {
+    transform: none;
+    opacity: 0;
   }
 }
 .urgent-pulse {
-  animation: sgw-pulse 2.4s ease-in-out infinite;
+  position: relative;
+}
+.urgent-pulse::after {
+  content: "";
+  position: absolute;
+  inset: calc(var(--pulse-spread, 12px) * -1);
+  /* Behind the button, above the bar it sits in (nav and header have no backgrounds in between). */
+  z-index: -1;
+  border-radius: 9999px;
+  background: var(--urgent);
+  opacity: 0;
+  pointer-events: none;
+  animation: sgw-pulse 2.4s var(--ease-out) infinite;
+}
+.urgent-pulse::after {
+  @variant motion-reduce {
+    animation: none;
+  }
 }
 
 /* Signature interaction: the mascot squishes on press and plops back on release. */
 @keyframes sgw-plop {
   0% {
-    transform: translateY(0) scale(1, 1);
+    transform: none;
   }
   30% {
     transform: translateY(5px) scale(1.14, 0.84);
@@ -298,20 +378,449 @@ h3 {
     transform: translateY(-7px) scale(0.94, 1.08);
   }
   100% {
-    transform: translateY(0) scale(1, 1);
+    transform: none;
+  }
+}
+/* The release: springs up from the pressed squish, so letting go never snaps back first. */
+@keyframes sgw-plop-release {
+  0% {
+    transform: translateY(4px) scale(1.12, 0.86);
+  }
+  45% {
+    transform: translateY(-7px) scale(0.94, 1.08);
+  }
+  100% {
+    transform: none;
   }
 }
 .mascot-press {
   transform-origin: 50% 92%;
-  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur-press) var(--ease-out);
 }
 .group:active .mascot-press,
 .mascot-press:active {
   transform: translateY(4px) scale(1.12, 0.86);
 }
-.group:hover .mascot-press,
+/* Hover only where hover is real: on touch a tap would fire it and run over the press squish. */
+@media (hover: hover) {
+  .group:hover .mascot-press {
+    animation: sgw-plop var(--dur-plop) var(--ease-out) 1;
+  }
+}
 .group:focus-visible .mascot-press {
-  animation: sgw-plop 520ms cubic-bezier(0.22, 1, 0.36, 1) 1;
+  animation: sgw-plop var(--dur-plop) var(--ease-out) 1;
+}
+/* Set on pointer release by NeedToGoButton. Listed last so it wins over a hover plop. */
+.group[data-plop] .mascot-press {
+  animation: sgw-plop-release var(--dur-plop) var(--ease-out) 1;
+}
+.mascot-press {
+  @variant motion-reduce {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* Map selection: the picked pin drops and plops onto a candy-pink puddle (the mascot's plop, in pin form). */
+@keyframes sgw-pin-plop {
+  0% {
+    transform: translateY(-16px) scale(0.9, 1.1);
+  }
+  55% {
+    transform: translateY(0) scale(1.14, 0.86);
+  }
+  80% {
+    transform: translateY(-2px) scale(0.97, 1.04);
+  }
+  100% {
+    transform: none;
+  }
+}
+.pin-plop {
+  transform-origin: 50% 96%;
+  animation: sgw-pin-plop var(--dur-pin) var(--ease-out) both;
+}
+.pin-plop {
+  @variant motion-reduce {
+    animation: none;
+  }
+}
+@keyframes sgw-puddle {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+.pin-puddle {
+  animation: sgw-puddle var(--dur-pin) var(--ease-out) both;
+}
+.pin-puddle {
+  @variant motion-reduce {
+    animation-name: sgw-fade;
+  }
+}
+/* Clusters and newly shown cards arrive rather than blink in. */
+@keyframes sgw-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+.pin-pop {
+  animation: sgw-pop var(--dur-state) var(--ease-out) both;
+}
+.pin-pop {
+  @variant motion-reduce {
+    animation-name: sgw-fade;
+  }
+}
+/* A tab pill (components/ui.tsx SlidingPill) gliding to its new tab inside a panel's view transition. */
+::view-transition-group(.tab-pill) {
+  animation-duration: 340ms;
+  animation-timing-function: var(--ease-out);
+}
+
+/* A tapped badge medal answers with a quick squeeze-and-swell (/me shelf). */
+@keyframes sgw-medal-tap {
+  40% {
+    scale: 1.14;
+  }
+}
+.medal-tap {
+  animation: sgw-medal-tap var(--dur-enter) var(--ease-out);
+}
+.medal-tap {
+  @variant motion-reduce {
+    animation: none;
+  }
+}
+@keyframes sgw-rise {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+.rise-in {
+  animation: sgw-rise var(--dur-enter) var(--ease-out) both;
+}
+.rise-in {
+  @variant motion-reduce {
+    animation-name: sgw-fade;
+  }
+}
+
+/* Celebrations (submitted, checked in): the mascot lands squashed and springs upright. */
+@keyframes sgw-celebrate {
+  from {
+    transform: translateY(12px) scale(1.1, 0.75);
+  }
+}
+.celebrate-in {
+  transform-origin: 50% 100%;
+  animation: sgw-celebrate var(--dur-celebrate) var(--ease-out) both;
+}
+.celebrate-in {
+  @variant motion-reduce {
+    animation: sgw-fade 300ms var(--ease-out) both;
+  }
+}
+
+/*
+ * The leaderboard podium, its one authored moment: the steps rise from the floor (3rd, 2nd, then 1st;
+ * the delay comes from --podium-delay), the crown lands on the winner last, then nothing moves.
+ */
+@keyframes sgw-podium-rise {
+  from {
+    transform: translateY(18px) scaleY(0.55);
+    opacity: 0;
+  }
+}
+.podium-rise {
+  transform-origin: 50% 100%;
+  animation: sgw-podium-rise 380ms var(--ease-out) var(--podium-delay, 0ms) both;
+}
+@keyframes sgw-crown-land {
+  from {
+    transform: translateY(-14px) scale(0.6) rotate(-12deg);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(2px) scale(1.08) rotate(3deg);
+    opacity: 1;
+  }
+}
+.crown-land {
+  animation: sgw-crown-land 340ms var(--ease-out) 420ms both;
+}
+.podium-rise,
+.crown-land {
+  @variant motion-reduce {
+    animation: sgw-fade 200ms var(--ease-out) both;
+  }
+}
+
+/*
+ * Toilet paper (components/tp-bar.tsx, the leaderboard's roll stacks): cream sheets with dotted
+ * perforations every --sheet. The top layer's thin cream bands break each perforation line into dots.
+ * An ink-brown edge keeps the cream strip readable on the caramel light ground.
+ */
+.tp-sheets {
+  background-color: var(--rim);
+  background-image:
+    repeating-linear-gradient(0deg, var(--rim) 0 1.5px, transparent 1.5px 3px),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(var(--sheet, 14px) - 1.5px),
+      color-mix(in srgb, var(--poo) 60%, transparent) calc(var(--sheet, 14px) - 1.5px) var(--sheet, 14px)
+    );
+  box-shadow:
+    inset 0 0 0 1.5px var(--border-strong),
+    0 2px 0 rgb(0 0 0 / 0.2);
+}
+
+/*
+ * Leaderboard re-rank (app/leaderboard/leaderboard-client.tsx): a React view transition each time
+ * the board changes. Entries are named, so each glides to its new place and size (podium <-> list
+ * included); newcomers rise in, leavers sink and fade; a new tab's panel slides in from the side of
+ * the tab you tapped while the old one slips out. Reduced motion never starts these transitions
+ * (the code swaps the board directly), so there is no reduced variant here.
+ */
+:root {
+  --lb-dir: 1;
+}
+:root:active-view-transition-type(lb-tab-left) {
+  --lb-dir: -1;
+}
+::view-transition-group(.lb-move) {
+  animation-duration: 440ms;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(.lb-move),
+::view-transition-new(.lb-move) {
+  animation-duration: 440ms;
+  /* Keep the entry's own aspect while it resizes between podium and row, rather than stretching. */
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+@keyframes sgw-lb-in {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+    scale: 0.96;
+  }
+}
+@keyframes sgw-lb-out {
+  to {
+    opacity: 0;
+    translate: 0 10px;
+    scale: 0.96;
+  }
+}
+::view-transition-new(.lb-enter) {
+  animation: sgw-lb-in 340ms var(--ease-out) 120ms both;
+}
+::view-transition-old(.lb-exit) {
+  animation: sgw-lb-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes sgw-lb-panel-out {
+  to {
+    opacity: 0;
+    translate: calc(var(--lb-dir) * -20px) 0;
+  }
+}
+@keyframes sgw-lb-panel-in {
+  from {
+    opacity: 0;
+    translate: calc(var(--lb-dir) * 36px) 0;
+  }
+}
+::view-transition-old(.lb-panel-out) {
+  animation: sgw-lb-panel-out 120ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+::view-transition-new(.lb-panel-in) {
+  /* Starts once the old panel has gone (120ms), so the two never show at once. */
+  animation: sgw-lb-panel-in 300ms var(--ease-out) 100ms both;
+}
+
+/*
+ * Route changes (components/route-transition.tsx): a view transition of the whole viewport.
+ * The old screen slips out fast, the new one glides in from the side of the tab you tapped
+ * (tab-right: from the right; tab-left: from the left; anything else: a straight crossfade).
+ * The header and tab bar are named apart and stay perfectly still, showing the new state.
+ * Reduced motion keeps the crossfade and drops the travel. Clicks pass through to the new page.
+ * A swipe-back the browser already animated plays nothing (route-transition.tsx leaves it out).
+ */
+:root {
+  --route-shift: 28px;
+  --route-dir: 0;
+}
+/* Spelled out: the motion-reduce variant matches descendants of <html>, never <html> itself. */
+:root[data-motion="reduce"] {
+  --route-shift: 0px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) {
+    --route-shift: 0px;
+  }
+}
+:root:active-view-transition-type(tab-right) {
+  --route-dir: 1;
+}
+:root:active-view-transition-type(tab-left) {
+  --route-dir: -1;
+}
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(root) {
+  background: var(--bg);
+}
+::view-transition-old(root) {
+  mix-blend-mode: normal;
+  animation: sgw-route-out 90ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation:
+    sgw-fade 160ms var(--ease-out) both,
+    sgw-route-in 240ms var(--ease-out) both;
+}
+@keyframes sgw-route-out {
+  to {
+    opacity: 0;
+    translate: calc(var(--route-dir) * var(--route-shift) * -0.5) 0;
+  }
+}
+@keyframes sgw-route-in {
+  from {
+    translate: calc(var(--route-dir) * var(--route-shift)) 0;
+  }
+}
+/* Named only while a route transition runs (data-route-vt), so taps on them never wait on others. */
+:root[data-route-vt] .vt-site-header {
+  view-transition-name: site-header;
+}
+:root[data-route-vt] .vt-tab-bar {
+  view-transition-name: tab-bar;
+}
+::view-transition-group(site-header),
+::view-transition-group(tab-bar),
+::view-transition-new(site-header),
+::view-transition-new(tab-bar) {
+  animation: none;
+}
+/* Above anything that grows during a route change (the route map below), as on the live page. */
+::view-transition-group(site-header),
+::view-transition-group(tab-bar) {
+  z-index: 2;
+}
+
+/*
+ * "Take me there" (app/go/go-client.tsx): the card's route preview opens like a window into the
+ * full route map, and Back closes it into the card again, so it reads as the same route, bigger.
+ * The box grows while both maps stay at their true size, centred where both are centred (midway
+ * between you and the toilet), so nothing stretches; the rest of the screen crossfades around it.
+ * Done in 300ms on the sheet's curve: someone is in a hurry. Reduced motion crossfades in place.
+ */
+::view-transition-group(.route-morph) {
+  z-index: 1;
+  overflow: clip;
+  background: var(--surface-2);
+  animation-duration: 300ms;
+  animation-timing-function: var(--ease-sheet);
+}
+::view-transition-old(.route-morph),
+::view-transition-new(.route-morph) {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: none;
+  object-position: center;
+  animation-duration: 300ms;
+}
+:root[data-motion="reduce"]::view-transition-group(.route-morph) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"])::view-transition-group(.route-morph) {
+    animation: none;
+  }
+}
+::view-transition-old(site-header),
+::view-transition-old(tab-bar) {
+  display: none;
+}
+
+/*
+ * Wizard steps (app/add/add-client.tsx): Next slides the new step in from the right, Back from
+ * the left, like turning a page, while the title, progress bar and action bar hold still.
+ * A plain entrance rather than a view transition, so the step is tappable the moment it shows.
+ * Reduced motion keeps the fade and drops the slide.
+ */
+@keyframes sgw-step-in {
+  from {
+    opacity: 0;
+    translate: var(--step-from) 0;
+  }
+}
+.step-in-next,
+.step-in-back {
+  animation: sgw-step-in 280ms var(--ease-out) both;
+}
+.step-in-next {
+  --step-from: 40px;
+}
+.step-in-back {
+  --step-from: -40px;
+}
+/* After the two above, so the fade-only version wins. */
+.step-in-next,
+.step-in-back {
+  @variant motion-reduce {
+    --step-from: 0px;
+  }
+}
+
+/* The empty marker that starts each route transition. */
+::view-transition-group(.route-marker) {
+  animation: none;
+  opacity: 0;
+}
+
+/*
+ * Opening a toilet: going deeper. The detail page pushes in from the right and "← Map" backs out
+ * to the left, on the route transition's own shift. Nothing on the page travels on its own.
+ */
+:root:active-view-transition-type(push) {
+  --route-dir: 1;
+}
+:root:active-view-transition-type(pop) {
+  --route-dir: -1;
+}
+
+/* Brief loading text never flashes at all. Opacity only, so it stays under reduced motion. */
+@keyframes sgw-fade {
+  from {
+    opacity: 0;
+  }
+}
+.delay-in {
+  animation: sgw-fade var(--dur-state) var(--ease-out) 300ms backwards;
+}
+
+/* Loading under reduced motion: a slow breath instead of travel, so "still working" stays visible. */
+@keyframes sgw-breathe {
+  to {
+    opacity: 0.4;
+  }
 }
 
 /* Skeletons: a slow chocolate sheen, not a pulse. */
@@ -333,14 +842,90 @@ h3 {
   background-size: 220% 100%;
   animation: sgw-sheen 1.6s linear infinite;
 }
+.sheen {
+  @variant motion-reduce {
+    background-image: none;
+    animation: sgw-breathe 1.2s ease-in-out infinite alternate;
+  }
+}
+.animate-spin {
+  @variant motion-reduce {
+    animation: sgw-breathe 0.8s ease-in-out infinite alternate;
+  }
+}
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+/*
+ * Dialogs rise as a sheet on phones and settle in place from `sm` up; the exit is quicker.
+ * Browsers without @starting-style just show and hide them.
+ */
+.dialog-sheet {
+  transition:
+    translate 160ms var(--ease-out),
+    scale 160ms var(--ease-out),
+    opacity 160ms var(--ease-out),
+    overlay 160ms allow-discrete,
+    display 160ms allow-discrete;
+  translate: 0 100%;
+}
+.dialog-sheet {
+  @variant sm {
+    translate: none;
+    scale: 0.96;
+    opacity: 0;
+  }
+}
+.dialog-sheet[open] {
+  translate: none;
+  scale: none;
+  opacity: 1;
+  transition-duration: var(--dur-pin);
+}
+@starting-style {
+  .dialog-sheet[open] {
+    translate: 0 100%;
+  }
+  .dialog-sheet[open] {
+    @variant sm {
+      translate: none;
+      scale: 0.96;
+      opacity: 0;
+    }
+  }
+}
+.dialog-sheet::backdrop {
+  opacity: 0;
+  transition:
+    opacity 160ms var(--ease-out),
+    overlay 160ms allow-discrete,
+    display 160ms allow-discrete;
+}
+.dialog-sheet[open]::backdrop {
+  opacity: 1;
+  transition-duration: var(--dur-state);
+}
+@starting-style {
+  .dialog-sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
+.dialog-sheet,
+.dialog-sheet[open] {
+  @variant motion-reduce {
+    translate: none;
+    scale: none;
+  }
+}
+@starting-style {
+  .dialog-sheet[open] {
+    @variant motion-reduce {
+      translate: none;
+      scale: none;
+      opacity: 0;
+    }
+  }
+}
+.dialog-sheet:not([open]) {
+  @variant motion-reduce {
+    opacity: 0;
   }
 }

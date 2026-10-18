@@ -9,15 +9,21 @@ import {
   CircleDot,
   CircleHelp,
   Clock,
+  Coins,
+  DoorOpen,
   Droplets,
   Footprints,
   Globe,
+  Milk,
+  Scroll,
+  ShowerHead,
+  SoapDispenserDroplet,
   Sparkles,
   TriangleAlert,
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { ActiveStatus, Feature, ToiletSummary, ToiletTier } from "@/lib/api/types";
 import {
   BAD_STATUS,
@@ -34,6 +40,9 @@ import {
   timeAgo,
   walkMinutes,
 } from "@/lib/format";
+import { FEATURE_HUE, FILTER_HUE, HUE_TEXT } from "@/lib/feature-hues";
+import type { FilterKey } from "@/lib/filters";
+import { openFromCard } from "@/lib/toilet-handoff";
 import { PinGlyph, tierPinVariant } from "./pin";
 import { Dialog, cx } from "./ui";
 
@@ -165,20 +174,67 @@ const FEATURE_ICON: Partial<Record<Feature, React.ComponentType<{ className?: st
   ACCESSIBLE: Accessibility,
   BABY_CHANGE: Baby,
   SITTING: Armchair,
+  FREE: Coins,
+  TOILET_PAPER: Scroll,
+  HAND_SOAP: SoapDispenserDroplet,
 };
+
+const FILTER_ICON: Record<FilterKey, React.ComponentType<{ className?: string }>> = {
+  BIDET: Droplets,
+  ACCESSIBLE: Accessibility,
+  FREE: Coins,
+  SITTING: Armchair,
+  BABY_CHANGE: Baby,
+  OPEN_NOW: Clock,
+  UNPAID_AREA: DoorOpen,
+  NURSING_ROOM: Milk,
+  SHOWER: ShowerHead,
+  UNISEX: Users,
+};
+
+/** A filter chip's contents: its feature-group icon in that group's hue (ink-coloured once the chip is picked). */
+export function FilterChipLabel({ k, label, active }: { k: FilterKey; label: string; active: boolean }) {
+  const Icon = FILTER_ICON[k];
+  const hue = FILTER_HUE[k];
+  return (
+    <>
+      <Icon className={cx("size-4 shrink-0", !active && (hue ? HUE_TEXT[hue] : "text-muted"))} aria-hidden />
+      {label}
+    </>
+  );
+}
 
 const HIGHLIGHT: Feature[] = ["BIDET", "ACCESSIBLE", "FREE", "SITTING", "BABY_CHANGE", "TOILET_PAPER", "HAND_SOAP"];
 
-export function FeatureChips({ features, max = 4 }: { features: Feature[]; max?: number }) {
+/** Card feature chips stay fudge; the group hue rides on the icon only, so tier and walk time lead the card. */
+export function FeatureChips({ features, max = 4, plain }: { features: Feature[]; max?: number; plain?: boolean }) {
   const shown = HIGHLIGHT.filter((f) => features.includes(f)).slice(0, max);
   if (!shown.length) return null;
+  if (plain) {
+    // Dense lists (area pages): the hue icon and the word, no pill, so a row stays one line of facts.
+    return (
+      <ul className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm font-medium text-muted" aria-label="Features">
+        {shown.map((f) => {
+          const Icon = FEATURE_ICON[f];
+          const hue = FEATURE_HUE[f];
+          return (
+            <li key={f} className="inline-flex items-center gap-1">
+              {Icon ? <Icon className={cx("size-3.5", hue && HUE_TEXT[hue])} aria-hidden /> : null}
+              {FEATURE_LABELS[f]}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
   return (
     <ul className="flex flex-wrap gap-1.5" aria-label="Features">
       {shown.map((f) => {
         const Icon = FEATURE_ICON[f];
+        const hue = FEATURE_HUE[f];
         return (
-          <li key={f} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-bold">
-            {Icon ? <Icon className="size-3.5" aria-hidden /> : null}
+          <li key={f} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-bold text-fg">
+            {Icon ? <Icon className={cx("size-3.5", hue && HUE_TEXT[hue])} aria-hidden /> : null}
             {FEATURE_LABELS[f]}
           </li>
         );
@@ -198,13 +254,13 @@ export function StatusChips({ statuses }: { statuses: ActiveStatus[] }) {
             key={s.kind}
             className={cx(
               "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-extrabold",
-              bad ? "bg-danger-soft text-danger" : "bg-ok-soft text-ok",
+              bad ? "bg-danger-soft text-danger" : "bg-mint-soft text-mint",
             )}
           >
             <CircleDot className="size-3" aria-hidden />
             {STATUS_LABELS[s.kind]}
             {s.count > 1 ? ` ×${s.count}` : ""}
-            <span className="font-normal opacity-80">· {timeAgo(s.latestAt)}</span>
+            <span className="font-normal">· {timeAgo(s.latestAt)}</span>
           </li>
         );
       })}
@@ -215,14 +271,14 @@ export function StatusChips({ statuses }: { statuses: ActiveStatus[] }) {
 export function OpenNow({ openNow }: { openNow: boolean | null }) {
   if (openNow === null) return <span className="text-xs text-muted">Hours unknown</span>;
   return (
-    <span className={cx("inline-flex items-center gap-1 text-xs font-semibold", openNow ? "text-ok" : "text-danger")}>
+    <span className={cx("inline-flex items-center gap-1 text-xs font-semibold", openNow ? "text-mint" : "text-danger")}>
       <Clock className="size-3.5" aria-hidden />
       {openNow ? "Open now" : "Closed now"}
     </span>
   );
 }
 
-export function ToiletCard({
+function ToiletCardInner({
   t,
   selected,
   onHover,
@@ -235,12 +291,15 @@ export function ToiletCard({
   return (
     <Link
       href={`/toilets/${t.id}`}
+      // Going deeper: the detail page arrives from the right (and shows this name while it loads).
+      transitionTypes={["push"]}
+      onClick={() => openFromCard(t.id, t.venue.name)}
       onMouseEnter={() => onHover?.(t.id)}
       onMouseLeave={() => onHover?.(null)}
       onFocus={() => onHover?.(t.id)}
       onBlur={() => onHover?.(null)}
       className={cx(
-        "group flex items-start gap-3 rounded-3xl border bg-surface p-3 shadow-rest transition hover:brightness-110",
+        "group flex items-start gap-3 rounded-3xl border bg-surface p-3 shadow-rest transition hover:brightness-110 active:scale-[0.98]",
         selected ? "border-primary ring-2 ring-primary" : "border-border/70",
       )}
       data-testid="toilet-card"
@@ -277,3 +336,6 @@ export function ToiletCard({
     </Link>
   );
 }
+
+/** Memoised: the map page re-renders on every selection, and a list holds up to 50 of these. */
+export const ToiletCard = memo(ToiletCardInner);

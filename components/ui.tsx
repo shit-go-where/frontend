@@ -1,11 +1,22 @@
 "use client";
 
 import { LoaderCircle, RefreshCw, Star, TriangleAlert, X } from "lucide-react";
-import { forwardRef, useEffect, useId, useRef } from "react";
+import { forwardRef, useEffect, useId, useRef, useState } from "react";
+import { HUE_CHIP, type Hue } from "@/lib/feature-hues";
+import { EASE_OUT, reducedMotion } from "@/lib/motion";
 import { Mascot, type MascotMood } from "./mascot";
 import { SIZES, VARIANTS, buttonClass, cx, type ButtonSize, type ButtonVariant } from "./styles";
 
 export { buttonClass, cx };
+
+/** A section's candy sticker: its icon on its hue, so long pages are easy to scan and less brown. */
+export function SectionIcon({ icon: Icon, hue }: { icon: React.ComponentType<{ className?: string }>; hue: Hue }) {
+  return (
+    <span className={cx("inline-flex size-9 shrink-0 -rotate-3 items-center justify-center rounded-xl shadow-gloss", HUE_CHIP[hue])} aria-hidden>
+      <Icon className="size-5" />
+    </span>
+  );
+}
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -37,6 +48,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   );
 });
 
+/** Turning a chip on: its icon squashes and springs back, the mascot's plop in miniature. */
+const CHIP_POP: Keyframe[] = [
+  { transform: "none" },
+  { transform: "translateY(1px) scale(1.25, 0.8)", offset: 0.35 },
+  { transform: "translateY(-1px) scale(0.92, 1.1)", offset: 0.7 },
+  { transform: "none" },
+];
+
 export function Chip({
   active,
   onClick,
@@ -54,9 +73,14 @@ export function Chip({
     <button
       type="button"
       aria-pressed={active}
-      onClick={onClick}
+      onClick={(e) => {
+        // Only a tap turning it on pops: chips that load already on stay still.
+        const icon = !active && !reducedMotion() ? e.currentTarget.querySelector("svg") : null;
+        icon?.animate(CHIP_POP, { duration: 320, easing: EASE_OUT });
+        onClick();
+      }}
       className={cx(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full border-2 font-bold transition",
+        "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border-2 font-bold transition duration-150 active:scale-[0.96] [&_svg]:origin-bottom",
         size === "lg" ? "min-h-12 px-5 text-base" : "min-h-11 px-4 text-sm",
         active
           ? "border-primary bg-primary text-primary-fg shadow-gloss"
@@ -71,7 +95,7 @@ export function Chip({
 
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return (
-    <div role="status" className="flex items-center justify-center gap-2 py-6 text-muted">
+    <div role="status" className="delay-in flex items-center justify-center gap-2 py-6 text-muted">
       <LoaderCircle className="size-5 animate-spin" aria-hidden />
       <span>{label}…</span>
     </div>
@@ -142,7 +166,7 @@ export function Stars({ value, max = 5, label }: { value: number; max?: number; 
         <Star
           key={i}
           aria-hidden
-          className={cx("size-4", i < Math.round(value) ? "fill-accent text-accent" : "text-border")}
+          className={cx("size-4", i < Math.round(value) ? "fill-accent text-accent" : "text-border-strong")}
         />
       ))}
     </span>
@@ -190,7 +214,10 @@ export function StarInput({
   );
 }
 
-/** Accessible modal built on <dialog> (focus trap + Esc for free). */
+/** Matches the `.dialog-sheet` exit in globals.css. */
+const DIALOG_EXIT_MS = 160;
+
+/** Accessible modal built on <dialog> (focus trap + Esc for free). Rises in as a sheet (`.dialog-sheet`). */
 export function Dialog({
   open,
   onClose,
@@ -206,11 +233,17 @@ export function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // The content outlives `open` by the exit transition, so the sheet doesn't slide away empty.
+  const [shown, setShown] = useState(open);
+  if (open && !shown) setShown(true);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
+    if (open) return;
+    const t = window.setTimeout(() => setShown(false), DIALOG_EXIT_MS);
+    return () => window.clearTimeout(t);
   }, [open]);
   // Close when the route is hidden by <Activity> so it doesn't reappear open.
   useEffect(() => () => ref.current?.close(), []);
@@ -224,9 +257,9 @@ export function Dialog({
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
-      className="m-auto mb-0 w-full max-w-lg rounded-t-[28px] border-t border-border bg-surface p-0 text-fg shadow-card backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px] sm:mb-auto sm:rounded-[28px] sm:border"
+      className="dialog-sheet m-auto mb-0 w-full max-w-lg rounded-t-[28px] border-t border-border bg-surface p-0 text-fg shadow-card backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px] sm:mb-auto sm:rounded-[28px] sm:border"
     >
-      {open ? (
+      {shown ? (
         <div className="flex max-h-[85dvh] flex-col">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
             <h2 id={titleId} className="text-xl">
@@ -237,41 +270,99 @@ export function Dialog({
             </button>
           </div>
           <div className="overflow-y-auto px-4 py-4">{children}</div>
-          {footer ? <div className="border-t border-border px-4 py-3 safe-bottom">{footer}</div> : null}
+          {/* Always a real gap under the actions; on phones with a home indicator, clear it too. */}
+          {footer ? (
+            <div className="border-t border-border px-4 pt-3 pb-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))]">{footer}</div>
+          ) : null}
         </div>
       ) : null}
     </dialog>
   );
 }
 
+/**
+ * The pink pill under a pill track's picked option. It slides from option to option rather than
+ * blinking between them (reduced motion: it just moves). Put it first inside a `relative grid` track
+ * with `p-1 gap-1` and equal columns.
+ */
+export function SlidingPill({ index, count, vtName }: { index: number; count: number; vtName?: string }) {
+  return (
+    <span
+      aria-hidden
+      className="absolute inset-y-1 left-1 rounded-full bg-primary shadow-gloss transition-transform duration-[340ms] motion-reduce:transition-none"
+      style={{
+        width: `calc((100% - 0.5rem - ${count - 1} * 0.25rem) / ${count})`,
+        transform: `translateX(calc(${Math.max(0, index)} * (100% + 0.25rem)))`,
+        transitionTimingFunction: EASE_OUT,
+        // When the tab swap runs inside a view transition, the browser pauses rendering and the CSS
+        // slide above never shows. A name (page-unique) lets the transition glide the pill instead.
+        ...(vtName ? { viewTransitionName: vtName, viewTransitionClass: "tab-pill" } : {}),
+      }}
+    />
+  );
+}
+
+/**
+ * Pill tabs. `idBase` wires each tab to its panel (`${idBase}-tab-${value}`, `${idBase}-panel`) and,
+ * when the panel swaps inside a view transition, names the pill so it still slides. Arrow keys move between tabs.
+ */
 export function Tabs<T extends string>({
   tabs,
   value,
   onChange,
   label,
+  idBase,
 }: {
   tabs: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   label: string;
+  idBase?: string;
 }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const index = tabs.findIndex((t) => t.value === value);
+  const onKeyDown = (e: React.KeyboardEvent, i: number) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const next = (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    onChange(tabs[next].value);
+    refs.current[next]?.focus();
+  };
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 rounded-full bg-surface-2 p-1">
-      {tabs.map((t) => (
-        <button
-          key={t.value}
-          role="tab"
-          type="button"
-          aria-selected={value === t.value}
-          onClick={() => onChange(t.value)}
-          className={cx(
-            "min-h-11 flex-1 rounded-full px-3 text-sm font-extrabold transition",
-            value === t.value ? "bg-primary text-primary-fg shadow-gloss" : "text-muted hover:text-fg",
-          )}
-        >
-          {t.label}
-        </button>
-      ))}
+    <div
+      role="tablist"
+      aria-label={label}
+      className="relative grid gap-1 rounded-full bg-surface-2 p-1"
+      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+    >
+      <SlidingPill index={index} count={tabs.length} vtName={idBase ? `${idBase}-tab-pill` : undefined} />
+      {tabs.map((t, i) => {
+        const on = value === t.value;
+        return (
+          <button
+            key={t.value}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            id={idBase ? `${idBase}-tab-${t.value}` : undefined}
+            aria-controls={idBase ? `${idBase}-panel` : undefined}
+            role="tab"
+            type="button"
+            aria-selected={on}
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(t.value)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={cx(
+              "relative min-h-11 rounded-full px-3 text-sm font-extrabold transition-[color,transform] duration-200 active:scale-[0.97]",
+              on ? "text-primary-fg" : "text-muted hover:text-fg",
+            )}
+            // Named too, so in a view transition the labels stay above the gliding pill and recolour with it.
+            style={idBase ? { viewTransitionName: `${idBase}-tab-${t.value}`, viewTransitionClass: "tab-pill" } : undefined}
+          >
+            {t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -299,7 +390,7 @@ export function Field({
 }
 
 export const inputClass =
-  "min-h-12 w-full rounded-2xl border-2 border-border bg-surface-2 px-4 py-2 text-base text-fg placeholder:text-muted focus:border-primary";
+  "min-h-12 w-full rounded-2xl border-2 border-border-strong bg-surface-2 px-4 py-2 text-base text-fg placeholder:text-muted focus:border-primary";
 
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: string; children?: React.ReactNode }) {
   return (

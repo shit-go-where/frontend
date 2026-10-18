@@ -27,22 +27,15 @@ export function setThemePref(pref: ThemePref) {
   else el.dataset.theme = pref;
 }
 
+/** The boot script resolves data-theme and the device setting into data-scheme. */
 function resolved(): "light" | "dark" {
-  const attr = document.documentElement.dataset.theme;
-  if (attr === "light") return "light";
-  if (attr === "system") return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-  return "dark";
+  return document.documentElement.dataset.scheme === "light" ? "light" : "dark";
 }
 
 function subscribe(cb: () => void) {
-  const mq = window.matchMedia("(prefers-color-scheme: light)");
-  mq.addEventListener("change", cb);
   const mo = new MutationObserver(cb);
-  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  return () => {
-    mq.removeEventListener("change", cb);
-    mo.disconnect();
-  };
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-scheme"] });
+  return () => mo.disconnect();
 }
 
 export function useResolvedTheme(): "light" | "dark" {
