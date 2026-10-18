@@ -11,7 +11,7 @@ Scope: the whole frontend (map + sheet, /go urgent and calm results and route, t
 
 Audience and job: locals on phones, one-handed, often underground or at night, who need a decent toilet now; contributors check in and review in calmer moments. Proof and content are unchanged: trust tiers, open-data caveats, "no toilet here" notes, URL-state routing, check-in loop.
 
-Constraints: WCAG 2.2 AA in both themes; tiers stay legible without colour (fill, outline, dash); standard controls only; Singlish in display headings, facts in plain text; no mascot on data surfaces; OneMap ships only fixed raster styles, so its Grey tiles are gradient-mapped to chocolate (dark) or caramel paper (light) in the browser.
+Constraints: WCAG 2.2 AA in both themes; tiers stay legible without colour (fill, outline, dash); standard controls only; Singlish in display headings, facts in plain text; no mascot on data surfaces; OneMap's own raster styles are used unmodified (Night dark, Default light); recolouring them was tried and rejected as flat.
 
 Open decisions resolved at build: urgency red against the candy palette, light-theme ground, four mascot moods (happy, worried, celebrating, lost).
 
@@ -23,7 +23,7 @@ OWN-WORLD: Chocolate-dark ground with warm brown surfaces; glossy vinyl poo brow
 
 STORY: The visitor sees nearby toilets at once, trusts what each one claims because the tier shows plainly, and taps the poo when it is urgent. They walk there, check in, and the mascot cheers them.
 
-FIRST VIEWPORT: Phone, dark. A chocolate-and-toffee map fills the top half with recoloured toilet-roll pins; rounded search pill and pill filter chips float over it. A chocolate sheet below holds a display headline ("50 toilets within 1 km"), the pin key, and sticker cards with a mint walk-minute block, name, tier, cleanliness. The bottom nav holds Map, Add, Ranks, Me around the raised glossy poo mascot labelled I NEED TO GO.
+FIRST VIEWPORT: Phone, dark. OneMap's Night map fills the top half with recoloured toilet-roll pins; rounded search pill and pill filter chips float over it. A chocolate sheet below holds a display headline ("50 toilets within 1 km"), the pin key, and sticker cards with a mint walk-minute block, name, tier, cleanliness. The bottom nav holds Map, Add, Ranks, Me around the raised glossy poo mascot labelled I NEED TO GO.
 
 FORM: Unko Pop (Japanese poo-character pop), position 1 of 7 on the ordered list (IMPECCABLE'S PICK, chosen over the assigned Hawker Lightbox). seed:7df63651bc18b899. Signature interaction: pressing the mascot squishes and plops before navigating to urgent mode; its ring pulse is the only perpetual motion.
 
