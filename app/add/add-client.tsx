@@ -1,13 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Building2, Check, CircleHelp, LocateFixed, Plus, Search, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Check, LocateFixed, Plus, Search, Users } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ToiletMap } from "@/components/map";
 import { Mascot } from "@/components/mascot";
 import { PhotoPicker } from "@/components/photo-picker";
 import { PinGlyph } from "@/components/pin";
+import { TriToggle, type Tri } from "@/components/tri-toggle";
 import { Button, Card, Field, PageHeader, Spinner, buttonClass, cx, inputClass } from "@/components/ui";
 import { api, errorMessage, isApiError } from "@/lib/api/client";
 import {
@@ -28,8 +29,6 @@ import { AREA_TYPE_LABELS, FEATURE_GROUPS, FEATURE_LABELS, VENUE_TYPE_LABELS, fo
 import { haversineM, useLocation, type LatLng } from "@/lib/location";
 
 const STEPS = ["Pin", "Venue", "Details", "Features", "Photo", "Submit"] as const;
-
-type Tri = "yes" | "no" | "unknown";
 
 interface Draft {
   pin: LatLng | null;
@@ -100,6 +99,8 @@ export function AddClient() {
   const meQ = useRequireAuth();
   const loc = useLocation();
   const [step, setStep] = useState(0);
+  // Which way the last Next / Back went, so the new step slides in from that side.
+  const [stepDir, setStepDir] = useState<1 | -1>(1);
   const [d, setD] = useState<Draft>(EMPTY);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -122,11 +123,18 @@ export function AddClient() {
   const user = loc.source === "gps" ? loc.coords : null;
   const place = useNearestPlace(pin);
 
+  /** Steps slide in the way you're going (globals.css "Wizard steps"). */
+  function goStep(dir: 1 | -1) {
+    setStepDir(dir);
+    setStep((s) => s + dir);
+  }
+
   // Move focus to the new step's heading so screen readers and keyboards start at the top of it.
+  // A layout effect, so any scroll to the heading lands before the new step paints.
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const doneHeading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
       return;
@@ -179,11 +187,8 @@ export function AddClient() {
     return (
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 pb-8 pt-10" data-testid="add-success">
         <div className="flex flex-col items-center gap-3 text-center">
-          {/* The one authored moment: the mascot plops in, squashed, and springs upright. */}
-          <Mascot
-            mood="celebrating"
-            className="size-28 origin-bottom transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] starting:translate-y-3 starting:scale-x-110 starting:scale-y-75"
-          />
+          {/* The celebration: the mascot plops in, squashed, and springs upright (shared with check-in). */}
+          <Mascot mood="celebrating" className="celebrate-in size-28" />
           <h1 ref={doneHeading} tabIndex={-1} className="text-3xl leading-tight sm:text-4xl">
             Steady lah! Submitted.
           </h1>
@@ -239,8 +244,13 @@ export function AddClient() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pb-8 pt-4 md:pt-10">
-      <PageHeader title="Add a toilet" subtitle="Found one that's not on the map? Every toilet added helps someone in a hurry." />
+    // Bottom padding on phones clears the fixed action bar (below) as well as the nav. Clipped
+    // sideways on phones, so a step sliding in never widens the page and makes the browser zoom out.
+    <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-4 max-md:overflow-x-clip md:pb-0 md:pt-10">
+      <PageHeader title="Add a toilet">
+        {/* Phones need the room for the step itself, so the pin step fits above the action bar. */}
+        <p className="text-muted max-sm:hidden">Found one that&apos;s not on the map? Every toilet added helps someone in a hurry.</p>
+      </PageHeader>
 
       <ol className="mb-6 flex gap-1.5" aria-label="Progress">
         {STEPS.map((s, i) => (
@@ -265,229 +275,248 @@ export function AddClient() {
         ))}
       </ol>
 
-      <h2 ref={stepHeading} className="mb-4 text-2xl leading-tight" tabIndex={-1}>
-        <span className="text-muted">
-          Step {step + 1} of {STEPS.length}:
-        </span>{" "}
-        {["Where is it?", "Which place is it in?", "Help people find it", "What's inside?", "Snap a photo", "Check and submit"][step]}
-      </h2>
+      {/* Keyed by step, so each Next / Back replays the entrance. Never blocks taps while it plays. */}
+      <div key={step} className={step === 0 && stepDir > 0 ? undefined : stepDir > 0 ? "step-in-next" : "step-in-back"}>
+        <h2 ref={stepHeading} className="mb-4 text-2xl leading-tight" tabIndex={-1}>
+          <span className="text-muted">
+            Step {step + 1} of {STEPS.length}:
+          </span>{" "}
+          {["Where is it?", "Which place is it in?", "Help people find it", "What's inside?", "Snap a photo", "Check and submit"][step]}
+        </h2>
 
-      {step === 0 ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-muted">Drag the map so the pin sits on the toilet entrance.</p>
-          <div className="h-[50dvh] overflow-hidden rounded-3xl border border-border/70 shadow-rest">
-            <ToiletMap
-              className="size-full"
-              center={pin}
-              recenterKey={recenter}
-              zoom={18}
-              showPins
-              user={user}
-              onCenterChange={(c) => set("pin", c)}
-              label="Pick the toilet location"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-border/70 bg-surface p-4 shadow-rest">
-            <PinGlyph variant="picker" className="size-8" />
-            <p className="min-w-0 flex-1" aria-live="polite">
-              <PinPlaceText place={place} />
-              <span className="block text-sm text-muted">
-                {fromYouText(pin, user) ?? "Tap “Use my location” to see how far it is from you."}
-              </span>
-            </p>
-            <Button
-              variant="secondary"
-              className="w-full sm:w-auto"
-              onClick={async () => {
-                const c = await loc.locate();
-                if (c) {
-                  set("pin", c);
-                  setRecenter((n) => n + 1);
-                }
-              }}
-            >
-              <LocateFixed className="size-4" aria-hidden /> Use my location
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {step === 1 ? <VenueStep pin={pin} d={d} setD={setD} /> : null}
-
-      {step === 2 ? (
-        <div className="flex flex-col gap-5">
-          <Field label="Label (optional)" htmlFor="label" hint='E.g. "Near Exit B", "Beside food court"'>
-            <input id="label" className={inputClass} maxLength={80} value={d.label} onChange={(e) => set("label", e.target.value)} />
-          </Field>
-          <Field label="Level (optional)" htmlFor="level" hint="B1, L1, L3…">
-            <input id="level" className={inputClass} maxLength={10} value={d.level} onChange={(e) => set("level", e.target.value)} />
-          </Field>
-          <fieldset aria-describedby="area-help">
-            <legend className="font-bold">Fare gates</legend>
-            <p id="area-help" className="mb-3 text-sm text-muted">
-              MRT and bus interchange toilets inside the fare gates need a card tap to reach. Pick &ldquo;No fare gates&rdquo;
-              for malls, hawker centres and anywhere else.
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {AREA_TYPES.map((a) => (
-                <label
-                  key={a}
-                  className={cx(
-                    "flex min-h-12 cursor-pointer items-center gap-3 rounded-full border-2 px-4 py-2 transition-colors",
-                    d.areaType === a
-                      ? "border-primary bg-primary-soft font-extrabold"
-                      : "border-border/70 bg-surface font-bold shadow-rest hover:border-primary/60",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="areaType"
-                    value={a}
-                    checked={d.areaType === a}
-                    onChange={() => set("areaType", a)}
-                    className="size-5 shrink-0 appearance-none rounded-full border-2 border-muted bg-surface transition-[border-width,border-color] checked:border-[6px] checked:border-primary focus-visible:rounded-full"
-                  />
-                  {AREA_TYPE_LABELS[a]}
-                </label>
-              ))}
+        {step === 0 ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-muted">Drag the map so the pin sits on the toilet entrance.</p>
+            {/* Sized so the whole step fits above the action bar on a typical phone and laptop. */}
+            <div className="relative h-[max(15rem,38dvh)] overflow-hidden rounded-3xl border border-border/70 shadow-rest md:h-[max(15rem,42dvh)]">
+              <ToiletMap
+                className="size-full"
+                center={pin}
+                recenterKey={recenter}
+                zoom={18}
+                showPins
+                user={user}
+                onCenterChange={(c) => set("pin", c)}
+                label="Pick the toilet location"
+              />
+              {/* On the map, where the eyes already are; top left, clear of the zoom buttons. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="absolute left-3 top-3 border-2 border-border bg-surface shadow-card active:scale-[0.96]"
+                onClick={async () => {
+                  const c = await loc.locate();
+                  if (c) {
+                    set("pin", c);
+                    setRecenter((n) => n + 1);
+                  }
+                }}
+              >
+                <LocateFixed className={cx("size-4 text-primary", loc.status === "locating" && "animate-pulse")} aria-hidden />{" "}
+                Use my location
+              </Button>
             </div>
-          </fieldset>
-          <Field label="Access note (optional)" htmlFor="access" hint='E.g. "Customers only", "Ask counter for key"'>
-            <textarea
-              id="access"
-              rows={2}
-              className={inputClass}
-              maxLength={300}
-              value={d.accessNote}
-              onChange={(e) => set("accessNote", e.target.value)}
-            />
-          </Field>
-        </div>
-      ) : null}
+            <div className="flex items-center gap-3 rounded-3xl border border-border/70 bg-surface px-4 py-3 shadow-rest">
+              <PinGlyph variant="picker" className="size-8 shrink-0" />
+              <p className="min-w-0 flex-1" aria-live="polite">
+                <PinPlaceText place={place} />
+                <span className="block text-sm text-muted">
+                  {fromYouText(pin, user) ?? "Tap “Use my location” to see how far it is from you."}
+                </span>
+              </p>
+            </div>
+          </div>
+        ) : null}
 
-      {step === 3 ? (
-        <div className="flex flex-col gap-6">
-          <p className="text-muted">
-            Everything starts as <strong className="font-extrabold text-fg">Not sure</strong>. Only change what you&apos;ve
-            seen with your own eyes; a wrong &ldquo;Yes&rdquo; is worse than a blank.
-          </p>
-          {FEATURE_GROUPS.map((g) => (
-            <div key={g.title}>
-              <h3 className="mb-2.5 font-display text-lg">{g.title}</h3>
-              <ul className="flex flex-col gap-2">
-                {g.features.map((f) => (
-                  <li key={f}>
-                    <TriToggle
-                      label={FEATURE_LABELS[f]}
-                      value={d.features[f] ?? "unknown"}
-                      onChange={(v) => setD((x) => ({ ...x, features: { ...x.features, [f]: v } }))}
+        {step === 1 ? <VenueStep pin={pin} d={d} setD={setD} /> : null}
+
+        {step === 2 ? (
+          <div className="flex flex-col gap-5">
+            <Field label="Label (optional)" htmlFor="label" hint='E.g. "Near Exit B", "Beside food court"'>
+              <input id="label" className={inputClass} maxLength={80} value={d.label} onChange={(e) => set("label", e.target.value)} />
+            </Field>
+            <Field label="Level (optional)" htmlFor="level" hint="B1, L1, L3…">
+              <input id="level" className={inputClass} maxLength={10} value={d.level} onChange={(e) => set("level", e.target.value)} />
+            </Field>
+            <fieldset aria-describedby="area-help">
+              <legend className="font-bold">Fare gates</legend>
+              <p id="area-help" className="mb-3 text-sm text-muted">
+                MRT and bus interchange toilets inside the fare gates need a card tap to reach. Pick &ldquo;No fare gates&rdquo;
+                for malls, hawker centres and anywhere else.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {AREA_TYPES.map((a) => (
+                  <label
+                    key={a}
+                    className={cx(
+                      "flex min-h-12 cursor-pointer items-center gap-3 rounded-full border-2 px-4 py-2 transition-colors",
+                      d.areaType === a
+                        ? "border-primary bg-primary-soft font-extrabold"
+                        : "border-border/70 bg-surface font-bold shadow-rest hover:border-primary/60",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="areaType"
+                      value={a}
+                      checked={d.areaType === a}
+                      onChange={() => set("areaType", a)}
+                      className="size-5 shrink-0 appearance-none rounded-full border-2 border-muted bg-surface transition-[border-width,border-color] checked:border-[6px] checked:border-primary focus-visible:rounded-full"
                     />
-                  </li>
+                    {AREA_TYPE_LABELS[a]}
+                  </label>
                 ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {step === 4 ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-muted">
-            A photo of the entrance or signage helps reviewers confirm it. Please don&apos;t include people. We shrink it and
-            strip location data before uploading.
-          </p>
-          <PhotoPicker value={d.photos} onChange={(p) => set("photos", p)} max={3} label="Take or choose photo" required />
-          {d.photos.length === 0 ? <p className="text-sm font-bold">At least one photo is required.</p> : null}
-        </div>
-      ) : null}
-
-      {step === 5 ? (
-        <div className="flex flex-col gap-3">
-          <Card className="p-5">
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-              <Row k="Place" v={d.venue ? d.venue.name : `${d.newVenue?.name} (new ${VENUE_TYPE_LABELS[d.newVenue!.type].toLowerCase()})`} />
-              <Row k="Pin" v={pinSummary(place.nearest, fromYouText(pin, user))} />
-              <Row k="Label" v={d.label || "—"} />
-              <Row k="Level" v={d.level || "—"} />
-              <Row k="Fare gates" v={AREA_TYPE_LABELS[d.areaType]} />
-              <Row k="Access" v={d.accessNote || "—"} />
-              <Row
-                k="Has"
-                v={
-                  Object.entries(d.features)
-                    .filter(([, v]) => v === "yes")
-                    .map(([f]) => FEATURE_LABELS[f as Feature])
-                    .join(", ") || "—"
-                }
+              </div>
+            </fieldset>
+            <Field label="Access note (optional)" htmlFor="access" hint='E.g. "Customers only", "Ask counter for key"'>
+              <textarea
+                id="access"
+                rows={2}
+                className={inputClass}
+                maxLength={300}
+                value={d.accessNote}
+                onChange={(e) => set("accessNote", e.target.value)}
               />
-              <Row
-                k="Doesn't have"
-                v={
-                  Object.entries(d.features)
-                    .filter(([, v]) => v === "no")
-                    .map(([f]) => FEATURE_LABELS[f as Feature])
-                    .join(", ") || "—"
-                }
-              />
-              <Row k="Photos" v={`${d.photos.length}`} />
-            </dl>
-          </Card>
+            </Field>
+          </div>
+        ) : null}
 
-          {dupes ? (
-            <Card className="border-2 border-warn bg-warn-soft p-5" role="alert">
-              <h3 className="font-display text-xl">Is it one of these?</h3>
-              <p className="mt-1">We already have toilets very close to your pin.</p>
-              {dupes.length ? (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {dupes.map((t) => (
-                    <li
-                      key={t.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-surface px-4 py-3 shadow-rest"
-                    >
-                      <span className="min-w-0">
-                        <span className="block font-extrabold">{t.venue.name}</span>
-                        <span className="text-sm text-muted">
-                          {[t.label, t.level && `Level ${t.level}`, formatDistance(t.distanceM ?? haversineM(pin, t))]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </span>
-                      </span>
-                      <Link href={`/toilets/${t.id}`} className={buttonClass("secondary", "sm", "shrink-0 whitespace-nowrap")}>
-                        Yes, view
-                      </Link>
+        {step === 3 ? (
+          <div className="flex flex-col gap-6">
+            <p className="text-muted">
+              Everything starts as <strong className="font-extrabold text-fg">Not sure</strong>. Only change what you&apos;ve
+              seen with your own eyes; a wrong &ldquo;Yes&rdquo; is worse than a blank.
+            </p>
+            {FEATURE_GROUPS.map((g) => (
+              <div key={g.title}>
+                <h3 className="mb-2.5 font-display text-lg">{g.title}</h3>
+                <ul className="flex flex-col gap-2">
+                  {g.features.map((f) => (
+                    <li key={f}>
+                      <TriToggle
+                        label={FEATURE_LABELS[f]}
+                        value={d.features[f] ?? "unknown"}
+                        onChange={(v) => setD((x) => ({ ...x, features: { ...x.features, [f]: v } }))}
+                      />
                     </li>
                   ))}
                 </ul>
-              ) : null}
-              <Button variant="primary" className="mt-3 w-full" loading={submitting} onClick={() => void submit(true)}>
-                No, it&apos;s a different toilet
-              </Button>
-            </Card>
-          ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
 
-          {submitError ? (
-            <p role="alert" className="rounded-2xl bg-danger-soft px-4 py-3 font-bold text-danger">
-              {submitError}
+        {step === 4 ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-muted">
+              A photo of the entrance or signage helps reviewers confirm it. Please don&apos;t include people. We shrink it and
+              strip location data before uploading.
             </p>
+            <PhotoPicker value={d.photos} onChange={(p) => set("photos", p)} max={3} label="Take or choose photo" required />
+            {d.photos.length === 0 ? <p className="text-sm font-bold">At least one photo is required.</p> : null}
+          </div>
+        ) : null}
+
+        {step === 5 ? (
+          <div className="flex flex-col gap-3">
+            <Card className="p-5">
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                <Row k="Place" v={d.venue ? d.venue.name : `${d.newVenue?.name} (new ${VENUE_TYPE_LABELS[d.newVenue!.type].toLowerCase()})`} />
+                <Row k="Pin" v={pinSummary(place.nearest, fromYouText(pin, user))} />
+                <Row k="Label" v={d.label || "—"} />
+                <Row k="Level" v={d.level || "—"} />
+                <Row k="Fare gates" v={AREA_TYPE_LABELS[d.areaType]} />
+                <Row k="Access" v={d.accessNote || "—"} />
+                <Row
+                  k="Has"
+                  v={
+                    Object.entries(d.features)
+                      .filter(([, v]) => v === "yes")
+                      .map(([f]) => FEATURE_LABELS[f as Feature])
+                      .join(", ") || "—"
+                  }
+                />
+                <Row
+                  k="Doesn't have"
+                  v={
+                    Object.entries(d.features)
+                      .filter(([, v]) => v === "no")
+                      .map(([f]) => FEATURE_LABELS[f as Feature])
+                      .join(", ") || "—"
+                  }
+                />
+                <Row k="Photos" v={`${d.photos.length}`} />
+              </dl>
+            </Card>
+
+            {dupes ? (
+              <Card className="border-2 border-warn bg-warn-soft p-5" role="alert">
+                <h3 className="font-display text-xl">Is it one of these?</h3>
+                <p className="mt-1">We already have toilets very close to your pin.</p>
+                {dupes.length ? (
+                  <ul className="mt-3 flex flex-col gap-2">
+                    {dupes.map((t) => (
+                      <li
+                        key={t.id}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-surface px-4 py-3 shadow-rest"
+                      >
+                        <span className="min-w-0">
+                          <span className="block font-extrabold">{t.venue.name}</span>
+                          <span className="text-sm text-muted">
+                            {[t.label, t.level && `Level ${t.level}`, formatDistance(t.distanceM ?? haversineM(pin, t))]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        </span>
+                        <Link href={`/toilets/${t.id}`} className={buttonClass("secondary", "sm", "shrink-0 whitespace-nowrap")}>
+                          Yes, view
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <Button variant="primary" className="mt-3 w-full" loading={submitting} onClick={() => void submit(true)}>
+                  No, it&apos;s a different toilet
+                </Button>
+              </Card>
+            ) : null}
+
+            {submitError ? (
+              <p role="alert" className="rounded-2xl bg-danger-soft px-4 py-3 font-bold text-danger">
+                {submitError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {/*
+        Always in reach: on phones a bar fixed above the bottom nav (its padding runs down behind
+        the nav and clears the raised mascot button), from md up a bar stuck to the window bottom.
+      */}
+      <div
+        className={cx(
+          "fixed inset-x-0 bottom-0 z-30 rounded-t-[28px] border-t border-border bg-surface px-4 pt-3 shadow-card",
+          "pb-[calc(7.25rem+env(safe-area-inset-bottom))]",
+          "md:sticky md:inset-x-auto md:-mx-4 md:mt-6 md:rounded-none md:bg-bg md:pb-6 md:pt-4 md:shadow-none",
+        )}
+      >
+        <div className="mx-auto flex max-w-2xl gap-2">
+          {step > 0 ? (
+            <Button variant="secondary" size="lg" onClick={() => goStep(-1)}>
+              <ArrowLeft className="size-5" aria-hidden /> Back
+            </Button>
+          ) : null}
+          {step < STEPS.length - 1 ? (
+            <Button size="lg" className="flex-1" disabled={!canNext} onClick={() => goStep(1)} data-testid="add-next">
+              Next <ArrowRight className="size-5" aria-hidden />
+            </Button>
+          ) : !dupes ? (
+            <Button size="lg" className="flex-1" loading={submitting} onClick={() => void submit(false)} data-testid="add-submit">
+              <Check className="size-5" aria-hidden /> Submit for review
+            </Button>
           ) : null}
         </div>
-      ) : null}
-
-      <div className="mt-6 flex gap-2">
-        {step > 0 ? (
-          <Button variant="secondary" size="lg" onClick={() => setStep((s) => s - 1)}>
-            <ArrowLeft className="size-5" aria-hidden /> Back
-          </Button>
-        ) : null}
-        {step < STEPS.length - 1 ? (
-          <Button size="lg" className="flex-1" disabled={!canNext} onClick={() => setStep((s) => s + 1)} data-testid="add-next">
-            Next <ArrowRight className="size-5" aria-hidden />
-          </Button>
-        ) : !dupes ? (
-          <Button size="lg" className="flex-1" loading={submitting} onClick={() => void submit(false)} data-testid="add-submit">
-            <Check className="size-5" aria-hidden /> Submit for review
-          </Button>
-        ) : null}
       </div>
     </div>
   );
@@ -536,52 +565,6 @@ function NextStep({ icon, title, children }: { icon: React.ReactNode; title: str
         <span className="block text-muted">{children}</span>
       </span>
     </li>
-  );
-}
-
-function TriToggle({ label, value, onChange }: { label: string; value: Tri; onChange: (v: Tri) => void }) {
-  const name = useId();
-  // Selected Yes is a solid ok fill (text-surface keeps it ≥4.5:1 in both themes); No is soft danger; Not sure is plain.
-  const opts: { v: Tri; text: string; icon: React.ReactNode; on: string }[] = [
-    { v: "yes", text: "Yes", icon: <Check className="size-4" aria-hidden />, on: "bg-ok text-surface shadow-gloss" },
-    { v: "no", text: "No", icon: <X className="size-4" aria-hidden />, on: "bg-danger-soft text-danger ring-2 ring-inset ring-danger" },
-    { v: "unknown", text: "Not sure", icon: <CircleHelp className="size-4" aria-hidden />, on: "bg-surface text-fg shadow-rest" },
-  ];
-  return (
-    <fieldset
-      className={cx(
-        "flex items-center gap-3 rounded-[28px] border-2 bg-surface py-1.5 pl-4 pr-1.5 shadow-rest transition-colors",
-        value === "unknown" ? "border-border/70" : "border-primary/70",
-      )}
-    >
-      <legend className="sr-only">{label}</legend>
-      <span aria-hidden className="min-w-0 flex-1 font-bold">
-        {label}
-      </span>
-      <div className="flex shrink-0 gap-0.5 rounded-full bg-surface-2 p-1">
-        {opts.map((o) => (
-          <label
-            key={o.v}
-            className={cx(
-              "flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-1 rounded-full px-3 text-sm font-extrabold transition-colors has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
-              value === o.v ? o.on : "text-muted hover:text-fg",
-            )}
-          >
-            <input
-              type="radio"
-              name={name}
-              value={o.v}
-              checked={value === o.v}
-              onChange={() => onChange(o.v)}
-              className="sr-only"
-              aria-label={`${label}: ${o.text}`}
-            />
-            {o.icon}
-            <span aria-hidden>{o.text}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 }
 
@@ -652,7 +635,7 @@ function VenueStep({ pin, d, setD }: { pin: LatLng; d: Draft; setD: React.Dispat
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 rounded-full border-2 border-border bg-surface-2 px-4 focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring">
+      <div className="flex items-center gap-2 rounded-full border-2 border-border-strong bg-surface-2 px-4 focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring">
         <Search className="size-5 shrink-0 text-muted" aria-hidden />
         <label htmlFor="venue-q" className="sr-only">
           Search places

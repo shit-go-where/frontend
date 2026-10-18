@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Accessibility,
+  Activity,
   Armchair,
   ArrowLeft,
   Baby,
@@ -10,24 +11,29 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
+  ClipboardCheck,
   Clock,
   Coins,
-  DoorOpen,
+  Droplet,
   Droplets,
+  FlipHorizontal2,
   Footprints,
   Frame,
-  Layers,
+  GlassWater,
+  HandHeart,
   MapPin,
   Mars,
+  MessageSquareHeart,
   MessageSquareMore,
   Milk,
+  PackageOpen,
   PersonStanding,
   Route,
+  Scroll,
   Shirt,
   ShowerHead,
   Signpost,
   SoapDispenserDroplet,
-  Ticket,
   TriangleAlert,
   Venus,
   VenusAndMars,
@@ -36,13 +42,29 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { LineBadge, OpenNow, TierBadge, TierHelpDialog, UnverifiedClaim, lastVerifiedText } from "@/components/toilet-bits";
-import { Card, ErrorState, Skeleton, Stars, buttonClass, cx } from "@/components/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LineBadge, StatusChips, TierBadge, TierHelpDialog, UnverifiedClaim, lastVerifiedText } from "@/components/toilet-bits";
+import { arriving } from "@/lib/toilet-handoff";
+import { BackButton } from "@/components/back-button";
+import { ErrorState, SectionIcon, Skeleton, Stars, buttonClass, cx } from "@/components/ui";
+import { FoldDetails } from "@/components/fold-details";
 import { api, errorMessage } from "@/lib/api/client";
 import type { Feature, FeatureDetail, OpeningHours, Survey, ToiletDetail } from "@/lib/api/types";
-import { AREA_TYPE_LABELS, FEATURE_GROUPS, FEATURE_LABELS, TIER_LABELS, VENUE_TYPE_LABELS, formatDate } from "@/lib/format";
-import { CheckInButton, FlagButton, LiveStatus, Reviews, ShareButton, SuggestEditButton } from "./detail-actions";
+import { BAD_STATUS, FEATURE_GROUPS, FEATURE_LABELS, TIER_LABELS, VENUE_TYPE_LABELS, areaSlug, formatDate, formatDistance, walkMinutes } from "@/lib/format";
+import { FEATURE_HUE, HUE_CHIP, type Hue } from "@/lib/feature-hues";
+import { FILTERS } from "@/lib/filters";
+import { estimateWalkSeconds, haversineM, useLocation } from "@/lib/location";
+import { useStoredFilters } from "@/lib/use-filters";
+import {
+  CheckInButton,
+  FlagButton,
+  LiveStatusList,
+  ReportButton,
+  ReviewButton,
+  ReviewList,
+  ShareButton,
+  SuggestEditButton,
+} from "./detail-actions";
 
 export function ToiletDetailView({
   id,
@@ -76,160 +98,159 @@ export function ToiletDetailView({
         </div>
       );
     }
-    return (
-      <div className="mx-auto w-full max-w-3xl px-4 pt-2" aria-busy>
-        <span className="sr-only">Loading toilet…</span>
-        <Skeleton className="mt-11 h-10 w-2/3" />
-        <Skeleton className="mt-3 h-5 w-1/3" />
-        <Skeleton className="mt-4 h-7 w-44 rounded-full" />
-        <Skeleton className="mt-5 h-14 rounded-full" />
-        <Skeleton className="mt-4 h-40 rounded-3xl" />
-      </div>
-    );
+    return <DetailSkeleton />;
   }
 
   return <Detail t={q.data} />;
 }
 
+/** Same shape as the page: title, verdict card, the walk button. Shared with the route's Suspense fallback. */
+export function DetailSkeleton() {
+  // Opened from a card: the name is already known, so the real heading shows while the rest loads.
+  // No URL read here: this is the page's Suspense fallback, and the tap that got here is the only fresh hand-off.
+  const [opened] = useState(arriving);
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 pt-2 md:max-w-7xl" aria-busy>
+      <span className="sr-only">Loading toilet…</span>
+      {opened ? (
+        <>
+          <BackLink />
+          <h1 className={cx(TITLE_CLASS, "mt-1")}>{opened.name}</h1>
+        </>
+      ) : (
+        <>
+          <Skeleton className="h-11 w-20 rounded-full" />
+          <Skeleton className="mt-1 h-9 w-2/3" />
+        </>
+      )}
+      <Skeleton className="mt-3 h-5 w-1/2" />
+      <Skeleton className="mt-4 h-64 rounded-[28px] md:w-1/2 lg:w-[28rem]" />
+      <Skeleton className="mt-4 h-14 rounded-full md:w-1/2 lg:w-[28rem]" />
+    </div>
+  );
+}
+
+/** Shared by the page and its loading state, so the heading doesn't shift when the data lands. */
+const TITLE_CLASS = "text-3xl leading-tight text-balance sm:text-[2.5rem]";
+
+/** Back to the map, the area list or wherever this toilet was opened from; the map when opened fresh. */
 function BackLink() {
   return (
-    <Link
-      href="/"
+    <BackButton
+      fallback={{ href: "/", label: "Map" }}
+      icon={ArrowLeft}
+      iconClassName="size-5"
       className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2"
-    >
-      <ArrowLeft className="size-5" aria-hidden /> Map
-    </Link>
+    />
   );
+}
+
+/**
+ * Decide and go: the first screen answers "is this one right for me, and how far?"
+ * (verdict card), then gets the visitor walking. Contributing sits below in "Been here?",
+ * and everything else is folded into one list. Phones read top to bottom; from `md` the
+ * verdict column sticks on the left beside the folds. The page shares the header's 7xl
+ * container so the title lines up with the logo; from `lg` the verdict keeps a phone-like
+ * 28rem and the folds take the rest, so the two never read as a near-miss pair.
+ */
+/** Header height plus breathing room: the pinned column sits at `top-20` and needs to clear the window's bottom edge. */
+const PIN_CLEARANCE_PX = 80 + 24;
+
+/**
+ * Pin the verdict column only while all of it fits in the window. A taller column would stay
+ * stuck with "Been here?" cut off below the fold until the page ran out.
+ */
+function useFitsWindow(ref: React.RefObject<HTMLElement | null>) {
+  const [fits, setFits] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setFits(el.offsetHeight + PIN_CLEARANCE_PX <= window.innerHeight);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    window.addEventListener("resize", check);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", check);
+    };
+  }, [ref]);
+  return fits;
 }
 
 function Detail({ t }: { t: ToiletDetail }) {
   const pending = t.status === "PENDING";
-  const [tierHelp, setTierHelp] = useState(false);
-  const tierName = pending ? "Pending review" : TIER_LABELS[t.tier];
-  const accessibleFromOpenData = t.featureDetails.some((d) => d.feature === "ACCESSIBLE" && d.present);
+  const pinRef = useRef<HTMLDivElement>(null);
+  const fits = useFitsWindow(pinRef);
 
   return (
-    <article className="mx-auto w-full max-w-3xl px-4 pb-10 pt-2" data-testid="toilet-detail">
-      <BackLink />
+    <article className="mx-auto w-full max-w-3xl px-4 pb-10 pt-2 md:max-w-7xl" data-testid="toilet-detail">
+      {/* The title sits above both columns, so the verdict and the folds start on the same line beneath it. */}
+      <div>
+        <BackLink />
 
-      <header className="mt-1">
-        <h1 className="text-3xl leading-tight text-balance sm:text-[2.5rem]">{t.venue.name}</h1>
-        {t.label ? <p className="mt-1 text-lg font-bold text-muted">{t.label}</p> : null}
+        <header className="mt-1">
+          <h1 className={TITLE_CLASS}>{t.venue.name}</h1>
+          {t.label ? <p className="mt-0.5 text-lg font-bold text-muted">{t.label}</p> : null}
+          <VenueLine t={t} />
+        </header>
+      </div>
 
-        <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm font-bold text-muted">
-          {t.venue.type !== "OTHER" ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Building2 className="size-4" aria-hidden />
-              {VENUE_TYPE_LABELS[t.venue.type]}
-            </span>
-          ) : null}
-          {t.venue.lines.length ? (
-            <span className="inline-flex flex-wrap items-center gap-1">
-              {t.venue.lines.map((l) => (
-                <LineBadge key={l} line={l} />
+      {/* The columns get their own grid so the pinned one stops where the folds end, never over the footer. */}
+      <div className="md:grid md:grid-cols-2 md:items-start md:gap-x-8 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-x-12">
+        <div ref={pinRef} data-fits={fits ? "" : undefined} className="md:data-fits:sticky md:data-fits:top-20">
+          <Verdict t={t} />
+
+          <div className="mt-4 flex gap-2">
+            {pending ? (
+              <Link href="/review" className={buttonClass("primary", "lg", "flex-1")}>
+                <Vote className="size-5" aria-hidden /> Help review it
+              </Link>
+            ) : (
+              <Link href={`/go?to=${encodeURIComponent(t.id)}`} className={buttonClass("primary", "lg", "flex-1")}>
+                <Footprints className="size-5" aria-hidden /> Walk there
+              </Link>
+            )}
+            <ShareButton toilet={t} />
+          </div>
+
+          {t.photos.length ? (
+            <ul aria-label="Photos" className="no-scrollbar -mx-4 mt-4 flex snap-x gap-2 overflow-x-auto px-4">
+              {t.photos.map((p) => (
+                <li key={p.id} className="shrink-0 snap-start">
+                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="block rounded-3xl">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.thumbUrl ?? p.url}
+                      alt={`Photo of the toilet at ${t.venue.name}`}
+                      loading="lazy"
+                      className="h-32 w-44 rounded-3xl border border-border/70 bg-surface-2 object-cover shadow-rest"
+                    />
+                  </a>
+                </li>
               ))}
-            </span>
+            </ul>
           ) : null}
-          {t.venue.planningArea ? (
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin className="size-4" aria-hidden />
-              {t.venue.planningArea}
-            </span>
-          ) : null}
-        </p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="inline-flex items-center">
-            <TierBadge tier={t.tier} pending={pending} />
-            <button
-              type="button"
-              onClick={() => setTierHelp(true)}
-              className="tap -my-2 inline-flex items-center justify-center rounded-full text-primary hover:bg-surface-2"
-              aria-haspopup="dialog"
-              aria-label={`What does ${tierName} mean?`}
-            >
-              <CircleHelp className="size-5" aria-hidden />
-            </button>
-          </span>
-          <span className="text-sm font-medium text-muted">{lastVerifiedText(t)}</span>
-          <OpenNow openNow={t.openNow} />
-          {t.status === "CLOSED" || t.status === "RENOVATION" ? (
-            <span className="rounded-full bg-danger-soft px-2.5 py-0.5 text-xs font-extrabold text-danger">
-              {t.status === "CLOSED" ? "Closed" : "Under renovation"}
-            </span>
-          ) : null}
+          <section aria-labelledby="been-here" className="mt-8">
+            <h2 id="been-here" className="text-xl leading-tight">
+              Been here?
+            </h2>
+            <div className="mt-3 flex gap-2">
+              <CheckInButton toilet={t} />
+              <ReportButton toilet={t} />
+              <ReviewButton toilet={t} />
+            </div>
+          </section>
         </div>
-        <TierHelpDialog open={tierHelp} onClose={() => setTierHelp(false)} />
 
-        {t.needsResurvey ? (
-          <p className="mt-3 flex items-start gap-2 rounded-2xl bg-warn-soft px-4 py-2.5 text-sm font-medium">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
-            This toilet was renovated or changed since our last survey. Details may be out of date.
-          </p>
-        ) : null}
-        {pending ? (
-          <p className="mt-3 rounded-2xl border-2 border-dashed border-warn px-4 py-2.5 text-sm font-medium">
-            Added by the community and waiting for review. Not used for directions yet.
-          </p>
-        ) : null}
-      </header>
-
-      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-        {pending ? (
-          <Link href="/review" className={buttonClass("primary", "lg", "sm:flex-1")}>
-            <Vote className="size-5" aria-hidden /> Help review it
-          </Link>
-        ) : (
-          <Link href={`/go?to=${encodeURIComponent(t.id)}`} className={buttonClass("primary", "lg", "sm:flex-1")}>
-            <Footprints className="size-5" aria-hidden /> Walk there
-          </Link>
-        )}
-        <div className="flex gap-2 sm:flex-1">
-          <CheckInButton toilet={t} className="flex-1" />
-          <ShareButton toilet={t} className="shrink-0" />
+        {/* From md, top-aligned with the verdict card (both 16px under the title). */}
+        <div className="mt-8 md:mt-4">
+          <MoreInfo t={t} />
         </div>
       </div>
 
-      <KeyFacts t={t} />
-
-      <LiveStatus toilet={t} />
-
-      <Section title="What's inside">
-        {t.tier === "IMPORTED" && accessibleFromOpenData ? (
-          <div className="mb-3">
-            <UnverifiedClaim t={t} required={["ACCESSIBLE"]} />
-          </div>
-        ) : null}
-        <Features details={t.featureDetails} />
-      </Section>
-
-      <Section title="Survey score">
-        <SurveyBlock survey={t.latestSurvey} count={t.surveyCount} score={t.scoreCleanliness} ras={t.rasStars} />
-      </Section>
-
-      {t.photos.length ? (
-        <Section title="Photos">
-          <ul className="no-scrollbar -mx-4 flex snap-x gap-2 overflow-x-auto px-4">
-            {t.photos.map((p) => (
-              <li key={p.id} className="shrink-0 snap-start">
-                <a href={p.url} target="_blank" rel="noopener noreferrer" className="block rounded-3xl">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.thumbUrl ?? p.url}
-                    alt={`Photo of the toilet at ${t.venue.name}`}
-                    loading="lazy"
-                    className="h-40 w-56 rounded-3xl border border-border/70 bg-surface-2 object-cover shadow-rest"
-                  />
-                </a>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
-
-      <Reviews toilet={t} />
-
-      <footer className="mt-10 flex flex-col gap-2 border-t border-border/70 pt-4 text-sm font-medium text-muted">
+      {/* Below both columns, not under the shorter one. */}
+      <footer className="mt-8 flex flex-col gap-2 border-t border-border/70 pt-4 text-sm font-medium text-muted md:mt-12">
         <FlagButton toilet={t} />
         <p>
           Source: {sourceLabel(t.source)}
@@ -240,89 +261,375 @@ function Detail({ t }: { t: ToiletDetail }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** One quiet row under the name: what kind of place, which lines, which area. */
+function VenueLine({ t }: { t: ToiletDetail }) {
+  const type = t.venue.type !== "OTHER" ? VENUE_TYPE_LABELS[t.venue.type] : null;
+  if (!type && !t.venue.lines.length && !t.venue.planningArea) return null;
   return (
-    <section className="mt-10">
-      <h2 className="mb-3 text-2xl leading-tight">{title}</h2>
-      {children}
+    <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm font-bold text-muted">
+      {type ? (
+        <span className="inline-flex items-center gap-1.5">
+          <Building2 className="size-4" aria-hidden />
+          {type}
+        </span>
+      ) : null}
+      {t.venue.lines.length ? (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {t.venue.lines.map((l) => (
+            <LineBadge key={l} line={l} />
+          ))}
+        </span>
+      ) : null}
+      {t.venue.planningArea ? (
+        <Link
+          href={`/areas/${areaSlug(t.venue.planningArea)}`}
+          className="-my-3 inline-flex min-h-11 items-center gap-1.5 underline decoration-border-strong underline-offset-4 hover:text-fg hover:decoration-primary"
+        >
+          <MapPin className="size-4" aria-hidden />
+          {t.venue.planningArea}
+          <span className="sr-only">: see every toilet in this area</span>
+        </Link>
+      ) : null}
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Verdict: everything needed to decide, in the order it's needed
+// ---------------------------------------------------------------------------
+
+function Verdict({ t }: { t: ToiletDetail }) {
+  const pending = t.status === "PENDING";
+  const [tierHelp, setTierHelp] = useState(false);
+  const tierName = pending ? "Pending review" : TIER_LABELS[t.tier];
+  const loc = useLocation();
+  const { active } = useStoredFilters();
+
+  // Only from a real GPS fix: never a walk from the fallback place (DESIGN.md).
+  const distanceM = loc.source === "gps" ? haversineM(loc.coords, t) : null;
+  const mins = distanceM !== null ? walkMinutes(estimateWalkSeconds(distanceM)) : null;
+
+  const musts = useMemo(() => mustHaves(t, active), [t, active]);
+  // Open-data must-haves get the full sentence, not just the chip suffix (DESIGN.md "Do say so").
+  const unverified = musts.filter((m) => m.state === "yes" && m.openData && (m.required || m.feature === "ACCESSIBLE")).map((m) => m.feature);
+  const where = whereParts(t);
+  const missing = missingFacts(t);
+
+  return (
+    <section aria-label="At a glance" className="mt-4 rounded-[28px] border border-border/70 bg-surface p-4 shadow-rest">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPill t={t} />
+        <StatusChips statuses={t.activeStatus} />
+      </div>
+
+      {t.venue.note ? <p className="mt-3 rounded-2xl bg-surface-2 px-3 py-2 text-sm font-bold">{t.venue.note}</p> : null}
+      {pending ? (
+        <p className="mt-3 rounded-2xl border-2 border-dashed border-warn px-3 py-2 text-sm font-medium">
+          Added by the community and waiting for review. Not used for directions yet.
+        </p>
+      ) : null}
+      {t.needsResurvey ? (
+        <p className="mt-3 flex items-start gap-2 rounded-2xl bg-warn-soft px-3 py-2 text-sm font-medium">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
+          Renovated or changed since our last survey. Details may be out of date.
+        </p>
+      ) : null}
+
+      {mins === null && t.scoreCleanliness === null ? (
+        // Nothing to put in big type: say so in a line rather than an empty box.
+        <p className="mt-3 text-sm font-bold">
+          <span className="text-muted">Cleanliness:</span> no score yet
+        </p>
+      ) : (
+        <div className="mt-4 flex items-stretch gap-2">
+          {mins !== null ? (
+            <div className="flex w-24 shrink-0 flex-col items-center justify-center rounded-2xl bg-mint px-2 py-2.5 text-center text-mint-fg shadow-gloss">
+              <Footprints className="size-4" aria-hidden />
+              <span className="mt-0.5 font-display text-4xl leading-none">{mins}</span>
+              <span className="mt-1 text-xs font-extrabold">min walk</span>
+              <span className="text-[11px] font-bold tabular-nums">{formatDistance(distanceM)}</span>
+            </div>
+          ) : null}
+          <div className="flex min-w-0 flex-1 flex-col justify-center rounded-2xl bg-surface-2 px-4 py-2.5">
+            <p className="text-sm font-bold text-muted">Cleanliness</p>
+            {t.scoreCleanliness !== null ? (
+              <p className="mt-0.5 font-display text-4xl leading-none">
+                {t.scoreCleanliness.toFixed(1)}
+                <span className="ml-0.5 text-lg text-muted">/10</span>
+              </p>
+            ) : (
+              <p className="mt-1 font-bold">No score yet</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="inline-flex items-center">
+          <TierBadge tier={t.tier} pending={pending} />
+          <button
+            type="button"
+            onClick={() => setTierHelp(true)}
+            className="tap -my-2 inline-flex items-center justify-center rounded-full text-primary hover:bg-surface-2"
+            aria-haspopup="dialog"
+            aria-label={`What does ${tierName} mean?`}
+          >
+            <CircleHelp className="size-5" aria-hidden />
+          </button>
+        </span>
+        <span className="text-sm font-medium text-muted">{lastVerifiedText(t)}</span>
+      </div>
+      <TierHelpDialog open={tierHelp} onClose={() => setTierHelp(false)} />
+
+      {where.length ? (
+        <p className="mt-2 flex items-start gap-2 font-bold">
+          <MapPin className="mt-1 size-4 shrink-0 text-muted" aria-hidden />
+          <span>{where.join(" · ")}</span>
+        </p>
+      ) : null}
+
+      {musts.length ? (
+        <ul aria-label="Must-haves" className="mt-3 flex flex-wrap gap-1.5">
+          {musts.map((m) => (
+            <MustHaveChip key={m.feature} m={m} />
+          ))}
+        </ul>
+      ) : null}
+      {t.tier === "IMPORTED" && unverified.length ? (
+        <div className="mt-3">
+          <UnverifiedClaim t={t} required={unverified} />
+        </div>
+      ) : null}
+
+      {missing.length ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 border-t border-border/70 pt-1 text-sm">
+          <p className="font-medium text-muted">{sentenceCase(joinAnd(missing))} not known yet.</p>
+          <SuggestEditButton toilet={t} />
+        </div>
+      ) : null}
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Key facts: known facts as a clean list, unknowns folded into one prompt
-// ---------------------------------------------------------------------------
-
-type Fact = { key: string; icon: React.ReactNode; label: string; value: string };
-
-function KeyFacts({ t }: { t: ToiletDetail }) {
-  const known: Fact[] = [];
-  const missing: string[] = [];
-  const add = (key: string, icon: React.ReactNode, label: string, value: string | null | undefined, missingAs: string) => {
-    if (value) known.push({ key, icon, label, value });
-    else missing.push(missingAs);
-  };
-  const icon = (I: React.ComponentType<{ className?: string }>) => <I className="size-4" aria-hidden />;
-
-  add("address", icon(MapPin), "Address", t.venue.address, "address");
-  add("level", icon(Layers), "Level", t.level ? t.level.split(";").map((s) => s.trim()).join(", ") : null, "level");
-  add("exit", icon(DoorOpen), "Nearest exit", t.nearestExit, "nearest exit");
-  let gatesUnknown = false;
-  if (t.areaType === "PAID_AREA" || t.areaType === "UNPAID_AREA") {
-    known.push({ key: "gates", icon: icon(Ticket), label: "Fare gates", value: AREA_TYPE_LABELS[t.areaType] });
-  } else if (t.areaType === "UNKNOWN" && t.venue.type === "MRT_STATION") {
-    gatesUnknown = true;
+function StatusPill({ t }: { t: ToiletDetail }) {
+  const base = "inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-sm font-extrabold";
+  if (t.status === "CLOSED" || t.status === "RENOVATION") {
+    return (
+      <span className={cx(base, "bg-danger-soft text-danger")}>
+        <X className="size-4" aria-hidden />
+        {t.status === "CLOSED" ? "Closed" : "Under renovation"}
+      </span>
+    );
   }
-  add("access", icon(Route), "Getting in", t.accessNote, "access");
-  add("hours", icon(Clock), "Opening hours", hoursText(t.openingHours), "opening hours");
-  // "We don't know the level, nearest exit or access yet, or whether it's inside the fare gates."
-  const unknownText = [
-    missing.length ? `the ${joinList(missing)} yet` : null,
-    gatesUnknown ? (missing.length ? "or whether it's inside the fare gates" : "whether it's inside the fare gates yet") : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
+  if (t.openNow === null) {
+    return (
+      <span className={cx(base, "bg-surface-2 text-muted")}>
+        <Clock className="size-4" aria-hidden />
+        Hours unknown
+      </span>
+    );
+  }
   return (
-    <Card className="mt-5 p-5">
-      {known.length ? (
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-          {known.map((f) => (
-            <div key={f.key}>
-              <dt className="flex items-center gap-1.5 text-sm font-bold text-muted">
-                {f.icon}
-                {f.label}
-              </dt>
-              <dd className="mt-0.5 font-bold">{f.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      {t.venue.note ? (
-        <p className={cx("rounded-2xl bg-surface-2 px-4 py-2.5 text-sm font-medium", known.length > 0 && "mt-4")}>
-          {t.venue.note}
-        </p>
-      ) : null}
-      {unknownText ? (
-        <div
-          className={cx(
-            "flex flex-wrap items-center gap-x-2 text-sm",
-            (known.length > 0 || !!t.venue.note) && "mt-4 border-t border-border/70 pt-2",
-          )}
-        >
-          <p className="font-medium text-muted">
-            We don&apos;t know {unknownText}. Seen it?
-          </p>
-          <SuggestEditButton toilet={t} />
-        </div>
-      ) : null}
-    </Card>
+    <span className={cx(base, t.openNow ? "bg-mint-soft text-mint" : "bg-danger-soft text-danger")}>
+      <Clock className="size-4" aria-hidden />
+      {t.openNow ? "Open now" : "Closed now"}
+    </span>
   );
 }
 
-function joinList(items: string[]): string {
+function levelText(level: string): string {
+  const parts = level.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
+  return `${parts.length > 1 ? "Levels" : "Level"} ${parts.join(", ")}`;
+}
+
+function whereParts(t: ToiletDetail): string[] {
+  const out: string[] = [];
+  if (t.level) out.push(levelText(t.level));
+  if (t.nearestExit) out.push(/^exit/i.test(t.nearestExit) ? t.nearestExit : `Exit ${t.nearestExit}`);
+  if (t.areaType === "PAID_AREA") out.push("Inside fare gates");
+  if (t.areaType === "UNPAID_AREA") out.push("Outside fare gates");
+  return out;
+}
+
+/** The where-facts nobody has recorded yet, for the "Seen it?" line. */
+function missingFacts(t: ToiletDetail): string[] {
+  const station = t.venue.type === "MRT_STATION";
+  const out: string[] = [];
+  if (!t.level) out.push("level");
+  if (station && !t.nearestExit) out.push("exit");
+  if (station && t.areaType === "UNKNOWN") out.push("fare gates");
+  if (!t.openingHours) out.push("hours");
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Must-haves: the visitor's saved filters first, then what this toilet is known to have
+// ---------------------------------------------------------------------------
+
+type MustHave = { feature: Feature; state: "yes" | "no" | "unknown"; openData: boolean; required: boolean };
+
+/** Filled in when the visitor has saved fewer than four must-haves. Things people ask first. */
+const FILL_ORDER: Feature[] = ["ACCESSIBLE", "BIDET", "TOILET_PAPER", "FREE", "BABY_CHANGE", "SITTING", "HAND_SOAP"];
+const MAX_CHIPS = 4;
+
+function mustHaves(t: ToiletDetail, saved: ReadonlySet<string>): MustHave[] {
+  const byF = new Map(t.featureDetails.map((d) => [d.feature, d]));
+  const out: MustHave[] = [];
+  // Open now and fare gates have their own places in the card.
+  for (const f of FILTERS) {
+    if (!saved.has(f.key) || f.key === "OPEN_NOW" || f.key === "UNPAID_AREA") continue;
+    const feature = f.key as Feature;
+    const d = byF.get(feature);
+    out.push({ feature, state: d ? (d.present ? "yes" : "no") : "unknown", openData: !!d && isOpenData(d), required: true });
+  }
+  for (const feature of FILL_ORDER) {
+    if (out.length >= MAX_CHIPS) break;
+    const d = byF.get(feature);
+    if (d?.present && !out.some((m) => m.feature === feature)) out.push({ feature, state: "yes", openData: isOpenData(d), required: false });
+  }
+  return out;
+}
+
+function MustHaveChip({ m }: { m: MustHave }) {
+  const Icon = FEATURE_ICONS[m.feature] ?? Check;
+  const label = FEATURE_LABELS[m.feature];
+  const base = "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-bold";
+  if (m.state === "no") {
+    return (
+      <li className={cx(base, "bg-surface-2 text-fg")}>
+        <X className="size-4 shrink-0 text-muted" aria-hidden />
+        No {label.toLowerCase()}
+      </li>
+    );
+  }
+  if (m.state === "unknown") {
+    return (
+      <li className={cx(base, "border border-border text-muted")}>
+        <CircleHelp className="size-4 shrink-0" aria-hidden />
+        {label}: not known
+      </li>
+    );
+  }
+  const hue = FEATURE_HUE[m.feature];
+  return (
+    <li className={cx(base, hue ? HUE_CHIP[hue] : "border border-border/70 bg-surface-2")}>
+      <Icon className="size-4 shrink-0" aria-hidden />
+      {label}
+      {m.openData ? <span className="text-xs font-medium">· open data</span> : null}
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// More info: one grouped list of folds, each with a summary on its closed face
+// ---------------------------------------------------------------------------
+
+function MoreInfo({ t }: { t: ToiletDetail }) {
+  const all = FEATURE_GROUPS.flatMap((g) => g.features);
+  const known = t.featureDetails.filter((d) => all.includes(d.feature)).length;
+  const reports = t.activeStatus.reduce((n, s) => n + s.count, 0);
+  const anyBad = t.activeStatus.some((s) => BAD_STATUS.includes(s.kind));
+  const hours = hoursText(t.openingHours);
+  const hasPlace = !!(t.venue.address || hours || t.accessNote);
+  const rasStars = t.rasStars ?? t.latestSurvey?.rasStars ?? null;
+  const accessibleFromOpenData = t.featureDetails.some((d) => d.feature === "ACCESSIBLE" && d.present && isOpenData(d));
+
+  return (
+    <div className="divide-y divide-border/70 overflow-hidden rounded-[28px] border border-border/70 bg-surface shadow-rest">
+      <Fold title="Live status" icon={Activity} hue="mint" meta={reports ? `${reports} report${reports === 1 ? "" : "s"}` : "Quiet"} alert={anyBad}>
+        <LiveStatusList toilet={t} />
+      </Fold>
+      <Fold title="What's inside" icon={PackageOpen} hue="soda" meta={`${known}/${all.length} known`}>
+        {t.tier === "IMPORTED" && accessibleFromOpenData ? (
+          <div className="mb-3">
+            <UnverifiedClaim t={t} required={["ACCESSIBLE"]} />
+          </div>
+        ) : null}
+        <Features details={t.featureDetails} />
+        {t.featureDetails.length ? (
+          <p className="mt-3 text-sm font-medium text-muted">Been here? Check in to update what&apos;s inside.</p>
+        ) : null}
+      </Fold>
+      {t.latestSurvey || rasStars ? (
+        <Fold
+          title="Survey"
+          icon={ClipboardCheck}
+          hue="gold"
+          meta={t.latestSurvey ? `${t.latestSurvey.total}/50` : `${rasStars}/5 stars`}
+        >
+          <SurveyBreakdown survey={t.latestSurvey} count={t.surveyCount} ras={rasStars} />
+        </Fold>
+      ) : null}
+      {hasPlace ? (
+        <Fold title="Address & hours" icon={MapPin} hue="papaya">
+          <dl className="flex flex-col gap-3">
+            {t.venue.address ? <Fact icon={MapPin} label="Address" value={t.venue.address} /> : null}
+            {hours ? <Fact icon={Clock} label="Opening hours" value={hours} /> : null}
+            {t.accessNote ? <Fact icon={Route} label="Getting in" value={t.accessNote} /> : null}
+          </dl>
+        </Fold>
+      ) : null}
+      <Fold title="Reviews" icon={MessageSquareHeart} hue="taro" meta={String(t.reviewCount)}>
+        <ReviewList toilet={t} />
+      </Fold>
+    </div>
+  );
+}
+
+function Fold({
+  title,
+  icon,
+  hue,
+  meta,
+  alert,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  hue: Hue;
+  meta?: string;
+  alert?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <FoldDetails
+      className="group/fold"
+      summaryClassName="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-2 hover:bg-surface-2 focus-visible:-outline-offset-4 [&::-webkit-details-marker]:hidden"
+      summary={
+        <>
+          <SectionIcon icon={icon} hue={hue} />
+          <h2 className="min-w-0 flex-1 text-lg leading-tight">{title}</h2>
+          {meta ? (
+            <span className={cx("shrink-0 text-sm font-bold tabular-nums", alert ? "text-danger" : "text-muted")}>{meta}</span>
+          ) : null}
+          <ChevronDown className="size-5 shrink-0 text-muted transition-transform duration-200 group-data-expanded/fold:rotate-180" aria-hidden />
+        </>
+      }
+    >
+      <div className="px-4 pb-5 pt-1">{children}</div>
+    </FoldDetails>
+  );
+}
+
+function Fact({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
+  return (
+    <div>
+      <dt className="flex items-center gap-1.5 text-sm font-bold text-muted">
+        <Icon className="size-4" aria-hidden />
+        {label}
+      </dt>
+      <dd className="mt-0.5 font-bold">{value}</dd>
+    </div>
+  );
+}
+
+function joinAnd(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
-  return `${items.slice(0, -1).join(", ")} or ${items.at(-1)}`;
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+function sentenceCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -373,12 +680,17 @@ const FEATURE_ICONS: Partial<Record<Feature, React.ComponentType<{ className?: s
   CHILD: Baby,
   SITTING: Armchair,
   BIDET: Droplets,
+  TOILET_PAPER: Scroll,
   HAND_SOAP: SoapDispenserDroplet,
   AUTO_SOAP: SoapDispenserDroplet,
   HAND_DRYER: Wind,
   BABY_CHANGE: Baby,
   NURSING_ROOM: Milk,
   SHOWER: ShowerHead,
+  MIRROR: FlipHorizontal2,
+  WATER_REFILL: GlassWater,
+  ABLUTION: HandHeart,
+  PERIOD_PRODUCTS: Droplet,
   COAT_HOOK: Shirt,
   FEEDBACK_DEVICE: MessageSquareMore,
   SIGNAGE: Signpost,
@@ -390,11 +702,6 @@ function namesList(features: Feature[], max = 5): string {
   const names = features.map((f) => FEATURE_LABELS[f].toLowerCase());
   if (names.length <= max) return joinAnd(names);
   return `${names.slice(0, max).join(", ")} and ${names.length - max} more`;
-}
-
-function joinAnd(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? "";
-  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 
 function Features({ details }: { details: FeatureDetail[] }) {
@@ -420,20 +727,24 @@ function Features({ details }: { details: FeatureDetail[] }) {
       {has.length ? (
         <div className="flex flex-col gap-3">
           {has.map((g) => (
-            <div key={g.title} className="sm:flex sm:items-start sm:gap-4">
-              <h3 className="mb-1.5 text-sm font-bold text-muted sm:mb-0 sm:w-28 sm:shrink-0 sm:pt-2">{g.title}</h3>
+            <div key={g.title}>
+              <h3 className="mb-1.5 text-sm font-bold text-muted">{g.title}</h3>
               <ul className="flex flex-wrap gap-1.5">
                 {g.items.map((f) => {
                   const Icon = FEATURE_ICONS[f] ?? Check;
                   const open = isOpenData(byFeature.get(f)!);
+                  const hue = FEATURE_HUE[f];
                   return (
                     <li
                       key={f}
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border/70 bg-surface-2 px-3.5 text-sm font-bold shadow-rest"
+                      className={cx(
+                        "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-bold",
+                        hue ? HUE_CHIP[hue] : "border border-border/70 bg-surface-2",
+                      )}
                     >
-                      <Icon className="size-4 shrink-0 text-mint" aria-hidden />
+                      <Icon className="size-4 shrink-0" aria-hidden />
                       {FEATURE_LABELS[f]}
-                      {open ? <span className="text-xs font-medium text-muted">· open data</span> : null}
+                      {open ? <span className="text-xs font-medium">· open data</span> : null}
                     </li>
                   );
                 })}
@@ -465,70 +776,117 @@ function Features({ details }: { details: FeatureDetail[] }) {
         </div>
       ) : null}
 
-      <details className="group overflow-hidden rounded-3xl border border-border/70 bg-surface shadow-rest">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 rounded-3xl px-5 font-extrabold hover:bg-surface-2 focus-visible:-outline-offset-4 [&::-webkit-details-marker]:hidden">
-          All {all.length} features
-          <ChevronDown className="size-5 text-muted transition-transform group-open:rotate-180" aria-hidden />
-        </summary>
-        <table className="w-full border-t border-border/70 text-sm">
-          <caption className="sr-only">Every feature, whether this toilet has it, and where that comes from</caption>
-          {FEATURE_GROUPS.map((g) => (
-            <tbody key={g.title}>
-              <tr>
-                <th colSpan={2} scope="rowgroup" className="bg-surface-2 px-5 py-1.5 text-left font-extrabold text-muted">
-                  {g.title}
-                </th>
-              </tr>
-              {g.features.map((f) => {
-                const d = byFeature.get(f);
-                return (
-                  <tr key={f} className="border-t border-border/70 first:border-t-0">
-                    <th scope="row" className="px-5 py-2.5 text-left font-bold">
-                      {FEATURE_LABELS[f]}
-                      {d ? (
-                        <span className="block text-xs font-medium text-muted">
-                          {isOpenData(d) ? `Open data (${sourceLabel(d.source)})` : (SOURCE_SHORT[d.source] ?? sourceLabel(d.source))}
-                          {d.observedAt ? `, ${formatDate(d.observedAt)}` : ""}
-                        </span>
-                      ) : null}
-                    </th>
-                    <td className="px-5 py-2.5 text-right">
-                      <FeatureState d={d} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          ))}
-        </table>
-      </details>
+      {/* A plain row, not a box: it opens inside the fold, so a second panel would nest a card in a card. */}
+      <FoldDetails
+        className="group border-t border-border/70 pt-1"
+        summaryClassName="-mx-2 inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2 [&::-webkit-details-marker]:hidden"
+        summary={
+          <>
+            <span className="group-data-expanded:hidden">Show all {all.length} features and sources</span>
+            <span className="hidden group-data-expanded:inline">Hide the full list</span>
+            <ChevronDown className="size-5 transition-transform duration-200 group-data-expanded:rotate-180" aria-hidden />
+          </>
+        }
+      >
+        <FeatureChecklist byFeature={byFeature} />
+      </FoldDetails>
     </div>
   );
 }
 
-function FeatureState({ d }: { d: FeatureDetail | undefined }) {
-  const base = "inline-flex min-h-7 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 text-xs font-extrabold";
-  if (!d)
+type SourceKey = string;
+const sourceKey = (d: FeatureDetail): SourceKey => `${d.source}|${d.observedAt ? formatDate(d.observedAt) : ""}`;
+function sourceText(d: FeatureDetail): string {
+  const name = isOpenData(d) ? `Open data (${sourceLabel(d.source)})` : (SOURCE_SHORT[d.source] ?? sourceLabel(d.source));
+  return d.observedAt ? `${name}, ${formatDate(d.observedAt)}` : name;
+}
+
+/**
+ * Every feature as a two-column checklist. Sources are stated once: the most common
+ * source and date leads, and only features recorded elsewhere carry their own note.
+ */
+function FeatureChecklist({ byFeature }: { byFeature: Map<Feature, FeatureDetail> }) {
+  const counts = new Map<SourceKey, { d: FeatureDetail; n: number }>();
+  for (const d of byFeature.values()) {
+    const k = sourceKey(d);
+    const c = counts.get(k);
+    if (c) c.n++;
+    else counts.set(k, { d, n: 1 });
+  }
+  const sources = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  const main = sources[0]?.[0];
+
+  return (
+    <div className="@container pb-1 pt-2">
+      <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold text-muted" aria-hidden>
+        <span className="inline-flex items-center gap-1">
+          <StateMark state="yes" /> Yes
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <StateMark state="no" /> No
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <StateMark state="unknown" /> Not recorded
+        </span>
+      </p>
+
+      {FEATURE_GROUPS.map((g) => (
+        <div key={g.title} className="mt-3">
+          <h3 className="text-sm font-bold text-muted">{g.title}</h3>
+          <ul className="mt-1 grid grid-cols-2 gap-x-3 @lg:grid-cols-3">
+            {g.features.map((f) => {
+              const d = byFeature.get(f);
+              const state = !d ? "unknown" : d.present ? "yes" : "no";
+              return (
+                <li key={f} className="flex min-h-8 items-start gap-2 py-1 text-sm">
+                  <StateMark state={state} />
+                  <span className={cx("min-w-0 leading-tight", state === "unknown" ? "font-medium text-muted" : "font-bold")}>
+                    {FEATURE_LABELS[f]}
+                    <span className="sr-only">: {state === "yes" ? "yes" : state === "no" ? "no" : "not recorded"}</span>
+                    {d && sourceKey(d) !== main ? (
+                      <span className="block text-xs font-medium text-muted">{sourceText(d)}</span>
+                    ) : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+
+      {sources.length ? (
+        <p className="mt-4 border-t border-border/70 pt-3 text-xs font-medium text-muted">
+          <span className="font-bold">Source:</span> {sourceText(sources[0][1].d)}
+          {sources.length > 1 ? " unless marked under a feature." : "."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function StateMark({ state }: { state: "yes" | "no" | "unknown" }) {
+  const base = "inline-flex size-5 shrink-0 items-center justify-center rounded-full";
+  if (state === "yes")
     return (
-      <span className={cx(base, "border-border text-muted")}>
-        <CircleHelp className="size-3.5" aria-hidden /> Not sure
+      <span className={cx(base, "bg-mint-soft text-mint")} aria-hidden>
+        <Check className="size-3.5" strokeWidth={3} />
       </span>
     );
-  if (d.present)
+  if (state === "no")
     return (
-      <span className={cx(base, "border-ok/40 bg-ok-soft text-ok")}>
-        <Check className="size-3.5" aria-hidden /> Yes
+      <span className={cx(base, "bg-surface-2 text-fg")} aria-hidden>
+        <X className="size-3.5" strokeWidth={3} />
       </span>
     );
   return (
-    <span className={cx(base, "border-transparent bg-surface-2 text-fg")}>
-      <X className="size-3.5" aria-hidden /> No
+    <span className={cx(base, "text-muted")} aria-hidden>
+      <CircleHelp className="size-4" />
     </span>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Survey
+// Survey breakdown (the headline cleanliness score lives in the verdict card)
 // ---------------------------------------------------------------------------
 
 const RUBRIC: { key: keyof Pick<Survey, "cleanliness" | "scent" | "aesthetics" | "music" | "toiletries" | "facilities">; label: string; max: number }[] = [
@@ -540,55 +898,18 @@ const RUBRIC: { key: keyof Pick<Survey, "cleanliness" | "scent" | "aesthetics" |
   { key: "facilities", label: "Facilities", max: 20 },
 ];
 
-function SurveyBlock({
-  survey,
-  count,
-  score,
-  ras,
-}: {
-  survey: Survey | null;
-  count: number;
-  score: number | null;
-  ras: number | null;
-}) {
-  const rasStars = ras ?? survey?.rasStars ?? null;
-  if (!survey && score === null && !rasStars) {
-    return <p className="font-medium text-muted">Not surveyed yet. Reviews from people like you fill the gap.</p>;
-  }
+function SurveyBreakdown({ survey, count, ras }: { survey: Survey | null; count: number; ras: number | null }) {
   return (
-    <Card className="p-5">
-      <div className="flex flex-wrap items-start gap-x-10 gap-y-5">
-        <div>
-          <p className="text-sm font-bold text-muted">Cleanliness score</p>
-          <p className="mt-1 font-display text-5xl leading-none">
-            {score !== null ? score.toFixed(1) : "–"}
-            <span className="ml-0.5 text-xl text-muted">/10</span>
-          </p>
-          <p className="mt-1.5 text-xs font-medium text-muted">Survey plus recent reviews</p>
-        </div>
-        {survey ? (
-          <div>
-            <p className="text-sm font-bold text-muted">Survey total</p>
-            <p className="mt-1 font-display text-5xl leading-none">
-              {survey.total}
-              <span className="ml-0.5 text-xl text-muted">/50</span>
-            </p>
-            <p className="mt-1.5 text-xs font-medium text-muted">Our 50-point rubric</p>
-          </div>
-        ) : null}
-        {rasStars ? (
-          <div>
-            <p className="text-sm font-bold text-muted">Happy Toilet rating</p>
-            <div className="mt-2.5 [&_svg]:size-6">
-              <Stars value={rasStars} label={`Happy Toilet rating ${rasStars} of 5 stars`} />
-            </div>
-            <p className="mt-1.5 text-xs font-medium text-muted">From the Restroom Association of Singapore</p>
-          </div>
-        ) : null}
-      </div>
+    <div className="flex flex-col gap-4">
       {survey ? (
         <>
-          <ul className="mt-6 flex flex-col gap-3">
+          <p className="text-sm font-medium text-muted">
+            <span className="font-extrabold text-fg">{survey.total}/50</span> on our 50-point rubric, surveyed in person{" "}
+            {formatDate(survey.surveyedAt)}
+            {survey.phase ? ` (${survey.phase})` : ""}
+            {count > 1 ? ` · ${count} surveys on record` : ""}. The cleanliness score above blends it with recent reviews.
+          </p>
+          <ul className="flex flex-col gap-3">
             {RUBRIC.map((r) => {
               const v = survey[r.key];
               const pct = Math.max(0, Math.min(100, (v / r.max) * 100));
@@ -601,31 +922,32 @@ function SurveyBlock({
                     </span>
                   </div>
                   <div
-                    className="mt-1 h-3 overflow-hidden rounded-full bg-surface-2"
+                    className="mt-1 h-2.5 overflow-hidden rounded-full bg-surface-2"
                     role="meter"
                     aria-label={r.label}
                     aria-valuemin={0}
                     aria-valuemax={r.max}
                     aria-valuenow={v}
                   >
-                    <div className="h-full rounded-full bg-tier shadow-gloss" style={{ width: `${pct}%` }} />
+                    <div className="h-full rounded-full bg-accent shadow-gloss" style={{ width: `${pct}%` }} />
                   </div>
                 </li>
               );
             })}
           </ul>
-          <p className="mt-4 text-xs font-medium text-muted">
-            Surveyed in person {formatDate(survey.surveyedAt)}
-            {survey.phase ? ` (${survey.phase})` : ""}
-            {count > 1 ? ` · ${count} surveys on record` : ""}
-          </p>
           {survey.remarks ? (
-            <p className="mt-3 rounded-2xl bg-surface-2 px-4 py-2.5 text-sm font-medium">&ldquo;{survey.remarks}&rdquo;</p>
+            <p className="rounded-2xl bg-surface-2 px-4 py-2.5 text-sm font-medium">&ldquo;{survey.remarks}&rdquo;</p>
           ) : null}
         </>
       ) : (
-        <p className="mt-4 font-medium text-muted">Not surveyed yet. Reviews from people like you fill the gap.</p>
+        <p className="font-medium text-muted">Not surveyed in person yet. Reviews from people like you fill the gap.</p>
       )}
-    </Card>
+      {ras ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Stars value={ras} label={`Happy Toilet rating ${ras} of 5 stars`} />
+          <span className="text-sm font-medium text-muted">Happy Toilet rating, Restroom Association of Singapore</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
