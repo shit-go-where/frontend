@@ -194,9 +194,10 @@ export function HomeClient() {
     const el = overlayRef.current;
     if (!el) return;
     const measure = () => {
-      setOverlayBottom(Math.round(el.getBoundingClientRect().bottom));
       // Zero while the map page is hidden on another tab; keep the last real value.
-      if (el.offsetHeight) setOverlayDepth(el.offsetTop + el.offsetHeight);
+      if (!el.offsetHeight) return;
+      setOverlayBottom(Math.round(el.getBoundingClientRect().bottom));
+      setOverlayDepth(el.offsetTop + el.offsetHeight);
     };
     measure();
     const ro = new ResizeObserver(measure);

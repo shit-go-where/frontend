@@ -75,12 +75,20 @@ export function BottomSheet({
     const update = () => {
       setVh(window.innerHeight);
       const el = ref.current;
-      // Skip while hidden on another tab (it measures as zero) or mid-gesture.
-      if (el && !el.style.transform && el.offsetParent) setBottomEdge(Math.round(el.getBoundingClientRect().bottom));
+      if (!el || el.style.transform) return; // mid-gesture: the box is held, not at rest
+      const r = el.getBoundingClientRect();
+      // Zero while hidden on another tab (offsetParent can't tell: it's always null for a fixed element).
+      if (r.height) setBottomEdge(Math.round(r.bottom));
     };
     update();
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    // Also catches the page being shown again after another tab, and the nav settling in.
+    const ro = new ResizeObserver(update);
+    if (ref.current) ro.observe(ref.current);
+    return () => {
+      window.removeEventListener("resize", update);
+      ro.disconnect();
+    };
   }, []);
 
   const maxPx = topInset ? bottomEdge - topInset - TOP_GAP_PX : Infinity;

@@ -30,6 +30,26 @@ test.describe("find", () => {
     // Imported toilets carry OSM attribution.
     await expect(page.getByText("© OpenStreetMap contributors (ODbL)")).toBeVisible();
   });
+
+  test("the list sheet stops below the search and filters", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/");
+    const sheet = page.getByRole("region", { name: "Nearby toilets" });
+    const handle = sheet.getByRole("button", { name: "Expand list" });
+    await expect(handle).toBeVisible();
+    // Tapping the grabber cycles up: peek → middle → top.
+    await handle.click();
+    await handle.click();
+    await expect(sheet.getByRole("button", { name: "Collapse list" })).toBeVisible();
+
+    const filters = page.getByRole("group", { name: "Filters" });
+    await expect
+      .poll(async () => {
+        const [s, f] = await Promise.all([sheet.boundingBox(), filters.boundingBox()]);
+        return s && f ? Math.round(s.y - (f.y + f.height)) : -1;
+      })
+      .toBeGreaterThanOrEqual(0);
+  });
 });
 
 test.describe("route", () => {
