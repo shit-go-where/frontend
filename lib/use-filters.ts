@@ -6,6 +6,8 @@ import { FILTERS, type FilterKey } from "./filters";
 const KEY = "sgw:filters";
 const VALID = new Set<string>(FILTERS.map((f) => f.key));
 const listeners = new Set<(v: Set<FilterKey>) => void>();
+/** The latest set, so two taps in the same tick build on each other instead of on a stale render. */
+let current: Set<FilterKey> | null = null;
 
 function read(): Set<FilterKey> {
   try {
@@ -19,7 +21,7 @@ function read(): Set<FilterKey> {
 }
 
 /**
- * Must-have filters, shared by the map and the "Find a toilet" wizard and kept
+ * Must-have filters, shared by the map and the "Help me choose" wizard and kept
  * across visits, so someone who always needs an accessible toilet sets it once.
  */
 export function useStoredFilters() {
@@ -27,8 +29,9 @@ export function useStoredFilters() {
 
   useEffect(() => {
     // Storage is client-only; load after hydration.
+    current ??= read();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActive(read());
+    setActive(current);
     listeners.add(setActive);
     return () => {
       listeners.delete(setActive);
@@ -36,6 +39,7 @@ export function useStoredFilters() {
   }, []);
 
   const set = useCallback((next: Set<FilterKey>) => {
+    current = next;
     try {
       localStorage.setItem(KEY, JSON.stringify([...next]));
     } catch {
@@ -46,7 +50,7 @@ export function useStoredFilters() {
 
   const toggle = useCallback(
     (k: FilterKey) => {
-      const next = new Set(active);
+      const next = new Set(current ?? active);
       if (next.has(k)) next.delete(k);
       else next.add(k);
       set(next);

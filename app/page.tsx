@@ -1,5 +1,7 @@
-import { HomeClient } from "./home-client";
-
+/**
+ * The map itself is rendered by `PersistentHome` in the root layout, so it
+ * survives tab switches; this route only has to exist.
+ */
 export default function Home() {
-  return <HomeClient />;
+  return null;
 }

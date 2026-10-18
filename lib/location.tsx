@@ -134,6 +134,11 @@ export function roundCoord(n: number, places = 4) {
   return Math.round(n * f) / f;
 }
 
+/** The API's `walkSecondsEstimate` (backend/src/common/geo.ts): straight line plus 30% detour at 1.25 m/s. Keep in step. */
+export function estimateWalkSeconds(straightLineM: number): number {
+  return Math.round((straightLineM * 1.3) / 1.25);
+}
+
 export function haversineM(a: LatLng, b: LatLng): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;

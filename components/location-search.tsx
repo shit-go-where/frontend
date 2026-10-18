@@ -17,7 +17,16 @@ function useDebounced<T>(value: T, ms: number) {
 }
 
 /** OneMap-backed place search (GET /geo/search) that sets the manual location. */
-export function LocationSearch({ className, autoFocus }: { className?: string; autoFocus?: boolean }) {
+export function LocationSearch({
+  className,
+  autoFocus,
+  showLocate = true,
+}: {
+  className?: string;
+  autoFocus?: boolean;
+  /** False where the page has its own locate button (the home map). */
+  showLocate?: boolean;
+}) {
   const { setManual, locate, status } = useLocation();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -34,7 +43,12 @@ export function LocationSearch({ className, autoFocus }: { className?: string; a
 
   return (
     <div className={cx("relative", className)}>
-      <div className="flex items-center gap-2 rounded-full border-2 border-border bg-surface pl-4 pr-1 shadow-card focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring">
+      <div
+        className={cx(
+          "flex items-center gap-2 rounded-full border-2 border-border-strong bg-surface pl-4 shadow-card focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring",
+          q || showLocate ? "pr-1" : "pr-4",
+        )}
+      >
         <Search className="size-5 shrink-0 text-muted" aria-hidden />
         <label htmlFor={`${listId}-input`} className="sr-only">
           Search a place, MRT station or postal code
@@ -65,7 +79,7 @@ export function LocationSearch({ className, autoFocus }: { className?: string; a
           <button type="button" className="tap flex items-center justify-center text-muted" onClick={() => setQ("")} aria-label="Clear search">
             <X className="size-5" aria-hidden />
           </button>
-        ) : (
+        ) : showLocate ? (
           <button
             type="button"
             onClick={() => void locate()}
@@ -75,7 +89,7 @@ export function LocationSearch({ className, autoFocus }: { className?: string; a
           >
             <LocateFixed className={cx("size-5", status === "locating" && "animate-pulse")} aria-hidden />
           </button>
-        )}
+        ) : null}
       </div>
       {open && dq.length >= 2 ? (
         <ul

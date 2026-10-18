@@ -46,3 +46,5 @@ export function ToiletMap(props: ToiletMapProps) {
 }
 
 export type { ToiletMapProps };
+export type { MapFocus } from "./focus";
+export type { Bounds, MapView } from "./ToiletMap";

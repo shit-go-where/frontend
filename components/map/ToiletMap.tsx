@@ -14,46 +14,39 @@ import Map, {
   type MapRef,
 } from "react-map-gl/maplibre";
 import { api } from "@/lib/api/client";
-import type { Feature, ToiletPin, ToiletTier } from "@/lib/api/types";
+import type { AreaType, Feature, ToiletPin, ToiletTier } from "@/lib/api/types";
 import type { LatLng } from "@/lib/location";
+import { cameraMotion, easeSheet, reducedMotion } from "@/lib/motion";
 import { useResolvedTheme } from "@/lib/theme";
-import { PIN_PATH, PinGlyph, ROLL_BODY, ROLL_TAIL } from "../pin";
+import { SHEET_SETTLE_MS } from "../bottom-sheet";
+import { PIN_PATH, PinGlyph, ROLL_BODY, ROLL_TAIL, tierPinVariant } from "../pin";
 import { cx } from "../ui";
-import { MAP_GROUND, TINT_TILES, ensureTintProtocol } from "./tint";
+import type { MapFocus } from "./focus";
+import { OffscreenHint } from "./offscreen-hint";
 
 /** [west, south, east, north] */
 export const SG_BOUNDS: [number, number, number, number] = [103.55, 1.15, 104.15, 1.49];
 
 const ONEMAP_ATTRIBUTION =
-  '<img src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" style="height:20px;width:20px;"/>&nbsp;<a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener noreferrer">OneMap</a>&nbsp;&copy;&nbsp;contributors&nbsp;&#124;&nbsp;<a href="https://www.sla.gov.sg/" target="_blank" rel="noopener noreferrer">Singapore Land Authority</a>';
+  '<img src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" alt="" style="height:20px;width:20px;"/>&nbsp;<a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener noreferrer">OneMap</a>&nbsp;&copy;&nbsp;contributors&nbsp;&#124;&nbsp;<a href="https://www.sla.gov.sg/" target="_blank" rel="noopener noreferrer">Singapore Land Authority</a>';
 const OSM_ATTRIBUTION =
   '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">&copy; OpenStreetMap contributors</a>';
 
-ensureTintProtocol();
-
 function basemap(dark: boolean): StyleSpecification {
-  const theme = dark ? "dark" : "light";
   return {
     version: 8,
     sources: {
       onemap: {
         type: "raster",
-        // Grey keeps OneMap's MRT exits and bus glyphs quiet so the toilets lead; tint.ts recolours it in chocolate.
-        tiles: [
-          TINT_TILES
-            ? `sgw-tint://${theme}/{z}/{x}/{y}`
-            : `https://www.onemap.gov.sg/maps/tiles/${dark ? "Night" : "Grey"}/{z}/{x}/{y}.png`,
-        ],
+        // OneMap's own full-colour styles: parks, water and MRT line colours stay readable.
+        tiles: [`https://www.onemap.gov.sg/maps/tiles/${dark ? "Night" : "Default"}/{z}/{x}/{y}.png`],
         tileSize: 256,
         minzoom: 11,
         maxzoom: 19,
         attribution: ONEMAP_ATTRIBUTION,
       },
     },
-    layers: [
-      { id: "ground", type: "background", paint: { "background-color": MAP_GROUND[theme] } },
-      { id: "onemap", type: "raster", source: "onemap" },
-    ],
+    layers: [{ id: "onemap", type: "raster", source: "onemap" }],
   };
 }
 
@@ -139,7 +132,16 @@ export interface ToiletMapProps {
   /** Load pins for the visible area from /toilets/in-bounds. */
   showPins?: boolean;
   features?: Feature[];
+  /** The same filters the page's list uses, so pins and list agree. */
+  openNow?: boolean;
+  areaType?: AreaType;
   selectedId?: string | null;
+  /** Overrides `selectedId`: marks this toilet (picked or just looked at), wherever its pin is. */
+  focus?: MapFocus | null;
+  /** Point at the focused toilet from the edge of the open map when its pin is out of view. */
+  focusHint?: boolean;
+  /** Extra room the pill keeps from the open map's edges, for controls floating over the map. */
+  focusInset?: { top?: number; bottom?: number };
   onSelect?: (id: string) => void;
   /** [lat, lng] pairs */
   route?: [number, number][] | null;
@@ -148,21 +150,31 @@ export interface ToiletMapProps {
   fitPoints?: LatLng[] | null;
   /** Crosshair picker: reports the map centre as it moves. */
   onCenterChange?: (c: LatLng) => void;
+  /** Reports the part of the map left open by the overlays once it settles after a move. */
+  onViewChange?: (v: MapView) => void;
   /** Extra space for overlays (bottom sheet / side panel) when fitting. */
   padding?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Overlays that cover the map (search on top, sheet below): the camera centres in what's left. */
   viewPadding?: { top: number; bottom: number };
+  /** The page's filters changed and fresh pins are on the way: fade the stale ones back. */
+  dimPins?: boolean;
   /** False for small preview maps: no panning, zooming or controls. */
   interactive?: boolean;
   className?: string;
   label?: string;
 }
 
-interface Bounds {
+export interface Bounds {
   minLat: number;
   maxLat: number;
   minLng: number;
   maxLng: number;
+}
+
+/** The map as the person sees it: `open` leaves out what the `viewPadding` overlays cover. */
+export interface MapView {
+  center: LatLng;
+  open: Bounds;
 }
 
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -174,19 +186,43 @@ export default function ToiletMap({
   user,
   showPins = true,
   features = [],
+  openNow,
+  areaType,
   selectedId,
+  focus,
+  focusHint = true,
+  focusInset,
   onSelect,
   route,
   destination,
   fitPoints,
   onCenterChange,
+  onViewChange,
   padding,
   viewPadding,
+  dimPins = false,
   interactive = true,
   className,
   label = "Map of toilets",
 }: ToiletMapProps) {
   const mapRef = useRef<MapRef>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // MapLibre labels every marker wrapper `button "Map marker"`, though the wrapper does nothing;
+  // our markers carry their own names (a cluster button, "You are here"), so drop the wrapper's.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const unlabel = () =>
+      box.querySelectorAll(".maplibregl-marker[role='button']").forEach((el) => {
+        el.removeAttribute("role");
+        el.removeAttribute("aria-label");
+      });
+    unlabel();
+    const mo = new MutationObserver(unlabel);
+    mo.observe(box, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
   const dark = useResolvedTheme() === "dark";
   const darkRef = useRef(dark);
   const style = useMemo(() => basemap(dark), [dark]);
@@ -194,25 +230,56 @@ export default function ToiletMap({
   const [clusters, setClusters] = useState<{ id: number; lat: number; lng: number; count: number }[]>([]);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * The map, but only while it has a style. Before the style attaches (on remount) and after
+   * remove() (which calls setStyle(null) while late events still fire), style calls would throw.
+   */
+  const liveMap = useCallback(() => {
+    const m = mapRef.current?.getMap();
+    return m?.style ? m : null;
+  }, []);
+
   // A theme switch swaps the style, which drops custom images; redraw them in the new colours.
   useEffect(() => {
     darkRef.current = dark;
-    const m = mapRef.current?.getMap();
+    // On (re)mount the style isn't attached yet; onLoad / styleimagemissing add the pins then.
+    const m = liveMap();
     if (!m) return;
     for (const tier of TIERS) if (m.hasImage(`pin-${tier}`)) m.removeImage(`pin-${tier}`);
     addPinImages(m, dark);
-  }, [dark]);
+  }, [dark, liveMap]);
 
   const pinsQ = useQuery({
-    queryKey: ["in-bounds", bounds, features],
-    queryFn: ({ signal }) => api.toiletsInBounds({ ...bounds!, features, includePending: true }, signal),
+    queryKey: ["in-bounds", bounds, features, openNow ?? false, areaType ?? null],
+    queryFn: ({ signal }) =>
+      api.toiletsInBounds({ ...bounds!, features, openNow: openNow || undefined, areaType, includePending: true }, signal),
     enabled: showPins && !!bounds,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
   const pins = useMemo(() => pinsQ.data?.items ?? [], [pinsQ.data]);
+  // Also dim while this map's own pins for new filters are still in flight (not while merely panning).
+  const filterKey = `${features.join(",")}|${openNow ? 1 : 0}|${areaType ?? ""}`;
+  const [shownFilters, setShownFilters] = useState(filterKey);
+  if (pinsQ.data && !pinsQ.isPlaceholderData && shownFilters !== filterKey) setShownFilters(filterKey);
+  const dim = dimPins || (pinsQ.isPlaceholderData && shownFilters !== filterKey);
+  const pinFade = { duration: 220, delay: 0 };
   const pending = useMemo(() => pins.filter((p) => p.status === "PENDING"), [pins]);
   const hasImported = useMemo(() => pins.some((p) => p.tier === "IMPORTED"), [pins]);
+  // Selection is drawn as its own marker, so hovering or tapping never re-uploads the pin data.
+  const selectedPin = useMemo(
+    () => (selectedId ? (pins.find((p) => p.id === selectedId && p.status !== "PENDING") ?? null) : null),
+    [pins, selectedId],
+  );
+  // A focus is drawn from its own coordinates, so it shows even before (or without) its pin loading.
+  // Pending pins are already their own markers. No focus yet (a tapped pin still loading): mark the pin itself.
+  const mark = focus
+    ? focus.pending
+      ? null
+      : { id: focus.id, lat: focus.lat, lng: focus.lng, tier: focus.tier, picked: focus.picked }
+    : selectedPin
+        ? { id: selectedPin.id, lat: selectedPin.lat, lng: selectedPin.lng, tier: selectedPin.tier, picked: true }
+        : null;
 
   const geojson = useMemo(
     () => ({
@@ -223,10 +290,10 @@ export default function ToiletMap({
           type: "Feature" as const,
           id: p.id,
           geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
-          properties: { id: p.id, tier: p.tier, hasIssue: p.hasIssue, selected: p.id === selectedId },
+          properties: { id: p.id, tier: p.tier, hasIssue: p.hasIssue },
         })),
     }),
-    [pins, selectedId],
+    [pins],
   );
 
   const routeGeo = useMemo(
@@ -241,17 +308,35 @@ export default function ToiletMap({
     [route],
   );
 
+  // Read through a ref so the debounced and onLoad calls always reach the page's latest handler.
+  const onViewChangeRef = useRef(onViewChange);
+  useEffect(() => {
+    onViewChangeRef.current = onViewChange;
+  }, [onViewChange]);
+
   const readBounds = useCallback(() => {
     const m = mapRef.current;
-    if (!m) return;
+    // Hidden on another tab (the map page stays mounted): its size is zero, so its "bounds" are meaningless.
+    if (!m || !m.getContainer().offsetWidth) return;
     const b = m.getBounds();
     setBounds({ minLat: r4(b.getSouth()), maxLat: r4(b.getNorth()), minLng: r4(b.getWest()), maxLng: r4(b.getEast()) });
     const c = m.getCenter();
     onCenterChange?.({ lat: c.lat, lng: c.lng });
+    if (onViewChangeRef.current) {
+      // The corners of the area between the overlays (the map never rotates, so two corners are enough).
+      const { offsetWidth: w, offsetHeight: h } = m.getContainer();
+      const { top = 0, bottom = 0, left = 0, right = 0 } = m.getPadding();
+      const nw = m.unproject([left, top]);
+      const se = m.unproject([w - right, Math.max(top, h - bottom)]);
+      onViewChangeRef.current({
+        center: { lat: c.lat, lng: c.lng },
+        open: { minLat: se.lat, maxLat: nw.lat, minLng: nw.lng, maxLng: se.lng },
+      });
+    }
   }, [onCenterChange]);
 
   const updateClusters = useCallback(() => {
-    const m = mapRef.current?.getMap();
+    const m = liveMap();
     if (!m || !m.getSource("toilets")) return;
     const seen = new Set<number>();
     const next: { id: number; lat: number; lng: number; count: number }[] = [];
@@ -265,7 +350,7 @@ export default function ToiletMap({
     setClusters((prev) =>
       prev.length === next.length && prev.every((p, i) => p.id === next[i].id && p.count === next[i].count) ? prev : next,
     );
-  }, []);
+  }, [liveMap]);
 
   const onMoveEnd = useCallback(() => {
     if (debounce.current) clearTimeout(debounce.current);
@@ -284,25 +369,32 @@ export default function ToiletMap({
       firstCenter.current = false;
       return;
     }
-    mapRef.current?.flyTo({ center: [center.lng, center.lat], zoom: Math.max(mapRef.current.getZoom(), 15), duration: 800 });
+    mapRef.current?.flyTo({ center: [center.lng, center.lat], zoom: Math.max(mapRef.current.getZoom(), 15), duration: 800, ...cameraMotion() });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recenterKey]);
 
   // Fit route / destination.
   const fitKey = fitPoints?.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join("|");
+  // The first run usually comes before react-map-gl hands over the map, so onLoad fits again
+  // (at once: the map was never shown at its starting view).
+  const fitRef = useRef<(animate: boolean) => void>(() => {});
   useEffect(() => {
-    const m = mapRef.current;
-    if (!m || !fitPoints || fitPoints.length === 0) return;
-    const pts = [...fitPoints, ...(route ?? []).map(([lat, lng]) => ({ lat, lng }))];
-    const lats = pts.map((p) => p.lat);
-    const lngs = pts.map((p) => p.lng);
-    m.fitBounds(
-      [
-        [Math.min(...lngs), Math.min(...lats)],
-        [Math.max(...lngs), Math.max(...lats)],
-      ],
-      { padding: { top: 60, bottom: 60, left: 40, right: 40, ...padding }, maxZoom: 18, duration: interactive ? 700 : 0 },
-    );
+    fitRef.current = (animate) => {
+      const m = mapRef.current;
+      if (!m || !fitPoints || fitPoints.length === 0) return;
+      const pts = [...fitPoints, ...(route ?? []).map(([lat, lng]) => ({ lat, lng }))];
+      const lats = pts.map((p) => p.lat);
+      const lngs = pts.map((p) => p.lng);
+      const glide = animate && interactive;
+      m.fitBounds(
+        [
+          [Math.min(...lngs), Math.min(...lats)],
+          [Math.max(...lngs), Math.max(...lats)],
+        ],
+        { padding: { top: 60, bottom: 60, left: 40, right: 40, ...padding }, maxZoom: 18, duration: glide ? 700 : 0, ...(glide ? cameraMotion() : {}) },
+      );
+    };
+    fitRef.current(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, routeGeo]);
 
@@ -310,7 +402,7 @@ export default function ToiletMap({
   const onClick = useCallback(
     (e: MapLayerMouseEvent) => {
       let id = e.features?.[0]?.properties?.id as string | undefined;
-      const m = mapRef.current?.getMap();
+      const m = liveMap();
       if (!id && m && m.getLayer("toilet-points")) {
         const { x, y } = e.point;
         const hits = m.queryRenderedFeatures(
@@ -333,20 +425,20 @@ export default function ToiletMap({
       }
       if (id) onSelect?.(id);
     },
-    [onSelect],
+    [onSelect, liveMap],
   );
 
   const zoomToCluster = useCallback(async (clusterId: number, lng: number, lat: number) => {
-    const m = mapRef.current?.getMap();
+    const m = liveMap();
     const src = m?.getSource("toilets") as GeoJSONSource | undefined;
     if (!m || !src) return;
     try {
       const z = await src.getClusterExpansionZoom(clusterId);
-      m.easeTo({ center: [lng, lat], zoom: z + 0.5, duration: 500 });
+      m.easeTo({ center: [lng, lat], zoom: z + 0.5, duration: 500, ...cameraMotion() });
     } catch {
-      m.easeTo({ center: [lng, lat], zoom: m.getZoom() + 2 });
+      m.easeTo({ center: [lng, lat], zoom: m.getZoom() + 2, ...cameraMotion() });
     }
-  }, []);
+  }, [liveMap]);
 
   // Keep the user and the nearest pins in the visible part of the map as the sheet moves.
   const padTop = viewPadding?.top ?? 0;
@@ -354,14 +446,28 @@ export default function ToiletMap({
   useEffect(() => {
     const m = mapRef.current?.getMap();
     if (!m || !viewPadding) return;
-    m.easeTo({ padding: { top: padTop, bottom: padBottom, left: 0, right: 0 }, duration: 250 });
+    // Pans on the sheet's own curve and duration so map and sheet move as one.
+    m.easeTo({
+      padding: { top: padTop, bottom: padBottom, left: 0, right: 0 },
+      duration: reducedMotion() ? 0 : SHEET_SETTLE_MS,
+      easing: easeSheet,
+      essential: true,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [padTop, padBottom]);
 
   const issueColor = dark ? PIN_COLORS.dark.danger : PIN_COLORS.light.danger;
 
   return (
-    <div className={cx("relative", className)} role="region" aria-label={label}>
+    <div
+      ref={boxRef}
+      className={cx("relative", className)}
+      role="region"
+      aria-label={label}
+      // A picture-only map (a route preview) is out of the tab order and hidden from screen readers;
+      // the card around it says everything it shows.
+      inert={!interactive || undefined}
+    >
       <Map
         ref={mapRef}
         initialViewState={{ latitude: center.lat, longitude: center.lng, zoom }}
@@ -371,6 +477,8 @@ export default function ToiletMap({
         maxBounds={SG_BOUNDS}
         attributionControl={false}
         interactive={interactive}
+        // Pan inertia follows the motion setting in force when the map is created (the map persists across tabs).
+        reduceMotion={reducedMotion()}
         dragRotate={false}
         pitchWithRotate={false}
         touchPitch={false}
@@ -384,6 +492,7 @@ export default function ToiletMap({
             if (ev.id.startsWith("pin-")) addPinImages(m, darkRef.current);
           });
           readBounds();
+          fitRef.current(false);
         }}
         onMoveEnd={onMoveEnd}
         onSourceData={(e) => {
@@ -404,17 +513,12 @@ export default function ToiletMap({
               filter={["!", ["has", "point_count"]]}
               layout={{
                 "icon-image": ["concat", "pin-", ["get", "tier"]],
-                "icon-size": ["case", ["get", "selected"], 1.25, 1],
                 "icon-anchor": "bottom",
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true,
-                "symbol-sort-key": [
-                  "case",
-                  ["get", "selected"],
-                  3,
-                  ["match", ["get", "tier"], "VERIFIED", 2, "COMMUNITY", 1, 0],
-                ],
+                "symbol-sort-key": ["match", ["get", "tier"], "VERIFIED", 2, "COMMUNITY", 1, 0],
               }}
+              paint={{ "icon-opacity": dim ? 0.35 : 1, "icon-opacity-transition": pinFade }}
             />
             <Layer
               id="toilet-issues"
@@ -426,6 +530,10 @@ export default function ToiletMap({
                 "circle-stroke-color": dark ? PIN_COLORS.dark.bg : PIN_COLORS.light.surface,
                 "circle-stroke-width": 2,
                 "circle-translate": [14, -34],
+                "circle-opacity": dim ? 0.35 : 1,
+                "circle-opacity-transition": pinFade,
+                "circle-stroke-opacity": dim ? 0.35 : 1,
+                "circle-stroke-opacity-transition": pinFade,
               }}
             />
           </Source>
@@ -454,7 +562,10 @@ export default function ToiletMap({
                 <button
                   type="button"
                   onClick={() => zoomToCluster(c.id, c.lng, c.lat)}
-                  className="flex size-11 items-center justify-center rounded-full border-[3px] border-bg bg-tier font-display text-sm text-tier-fg shadow-card"
+                  className={cx(
+                    "pin-pop flex size-11 items-center justify-center rounded-full border-[3px] border-bg bg-tier font-display text-sm text-tier-fg shadow-card transition-[transform,opacity] duration-200 active:scale-90",
+                    dim && "opacity-40",
+                  )}
                   aria-label={`${c.count} toilets here, zoom in`}
                 >
                   {c.count}
@@ -477,6 +588,31 @@ export default function ToiletMap({
               </Marker>
             ))
           : null}
+
+        {showPins && mark ? (
+          <Marker
+            key={`${mark.picked ? "s" : "e"}${mark.id}`}
+            longitude={mark.lng}
+            latitude={mark.lat}
+            anchor="bottom"
+            style={{ zIndex: 2 }}
+          >
+            {mark.picked ? (
+              /* "You picked this": a candy-pink puddle under the pin, which plops down onto it. */
+              <span className="pointer-events-none relative flex flex-col items-center" aria-hidden>
+                <PinGlyph variant={tierPinVariant(mark.tier)} className="pin-plop size-[50px] drop-shadow-[0_3px_3px_rgb(10_5_2/0.55)]" />
+                <span className="pin-puddle absolute -bottom-1 h-2.5 w-7 rounded-[50%] bg-primary/80" />
+              </span>
+            ) : (
+              /* "You're looking at this": the card's pin lifts above its neighbours, no puddle (nothing is picked yet). */
+              <span className="pointer-events-none flex" aria-hidden>
+                <PinGlyph variant={tierPinVariant(mark.tier)} className="rise-in size-12 drop-shadow-[0_5px_4px_rgb(10_5_2/0.5)]" />
+              </span>
+            )}
+          </Marker>
+        ) : null}
+
+        {interactive && showPins && focus && focusHint ? <OffscreenHint key={focus.id} focus={focus} inset={focusInset} /> : null}
 
         {destination ? (
           <Marker longitude={destination.lng} latitude={destination.lat} anchor="bottom">
