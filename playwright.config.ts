@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3100;
+// E2E_PORT lets a run sit beside a server already holding 3100.
+const PORT = Number(process.env.E2E_PORT ?? 3100);
 
 /**
  * Smoke tests for the three core flows (find, route, submit). Every /api/**
@@ -30,7 +31,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm build && pnpm exec next start --port ${PORT}`,
+    command: `pnpm build && node e2e/serve.mjs ${PORT}`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

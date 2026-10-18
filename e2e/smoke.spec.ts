@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { PNG_BYTES, TOILETS } from "./fixtures";
+import { expect, test, type Locator } from "@playwright/test";
+import { CHECK_IN, PNG_BYTES, TOILETS, TOILET_DETAIL } from "./fixtures";
 import { mockApi } from "./mock-api";
 
 test.describe("find", () => {
@@ -140,6 +140,105 @@ test.describe("submit", () => {
         areaType: "UNPAID_AREA",
         features: { BIDET: true, SQUAT: false },
         photoIds: ["photo-1"],
+      },
+    });
+  });
+});
+
+test.describe("what's inside", () => {
+  const ID = TOILET_DETAIL.id;
+  /** Clicks the visible Yes / No / Not sure segment that wraps the named radio. */
+  const pick = (scope: Locator, name: string) => scope.getByRole("radio", { name, exact: true }).locator("xpath=..").click();
+  const detailRoutes = {
+    [`GET /toilets/${ID}`]: () => ({ body: TOILET_DETAIL }),
+    [`GET /toilets/${ID}/status`]: () => ({ body: { items: [] } }),
+    [`POST /toilets/${ID}/check-ins`]: () => ({ body: CHECK_IN }),
+    [`POST /toilets/${ID}/verify`]: () => ({ body: { ok: true } }),
+  };
+
+  test("check-in leads into the form and sends only what changed", async ({ page }) => {
+    const api = await mockApi(page, { signedIn: true, overrides: detailRoutes });
+    await page.goto(`/toilets/${ID}`);
+
+    await page.getByRole("button", { name: "Check in" }).click();
+    await expect(page.getByRole("heading", { name: "Shiok! Checked in" })).toBeVisible();
+    await page.getByRole("button", { name: "Quick check: what's inside?" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "What's inside?" });
+    // Recorded features start from the listing; level and fare gates are known, so not asked.
+    await expect(dialog.getByRole("radio", { name: "Bidet: Yes", exact: true })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Hand soap: Not sure", exact: true })).toBeChecked();
+    await expect(dialog.getByLabel("Level")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "All correct" })).toBeVisible();
+
+    await pick(dialog, "Bidet: No");
+    await pick(dialog, "Hand soap: Yes");
+    // Not sure on a recorded feature is not a change.
+    await pick(dialog, "Accessible: Not sure");
+    await dialog.getByRole("button", { name: "Send 2 changes for review" }).click();
+    await expect(dialog.getByRole("heading", { name: "Sent for review" })).toBeVisible();
+
+    expect(api.find("POST", "/toilets/" + ID + "/verify")).toHaveLength(0);
+    const [sub] = api.find("POST", "/submissions");
+    expect(sub.body).toEqual({
+      kind: "EDIT_TOILET",
+      toiletId: ID,
+      lat: 1.2993,
+      lng: 103.8455,
+      payload: { changes: { features: { BIDET: false, HAND_SOAP: true } } },
+    });
+  });
+
+  test("no changes after a check-in confirms the listing", async ({ page }) => {
+    const api = await mockApi(page, { signedIn: true, overrides: detailRoutes });
+    await page.goto(`/toilets/${ID}`);
+    await page.getByRole("button", { name: "Check in" }).click();
+    await page.getByRole("button", { name: "Quick check: what's inside?" }).click();
+    await page.getByRole("button", { name: "All correct" }).click();
+    await expect(page.getByRole("heading", { name: "Thanks, legend!" })).toBeVisible();
+    expect(api.find("POST", "/toilets/" + ID + "/verify")[0].body).toEqual({ lat: 1.2993, lng: 103.8455, accurate: true });
+    expect(api.find("POST", "/submissions")).toHaveLength(0);
+  });
+
+  test("checked in recently: no points, but the form is still there, level and fare gates included", async ({ page }) => {
+    const api = await mockApi(page, {
+      signedIn: true,
+      overrides: {
+        ...detailRoutes,
+        [`GET /toilets/${ID}`]: () => ({ body: { ...TOILET_DETAIL, level: null, areaType: "UNKNOWN" } }),
+        [`POST /toilets/${ID}/check-ins`]: () => ({
+          status: 429,
+          body: { statusCode: 429, message: "You already checked in here in the last 2 hours" },
+        }),
+      },
+    });
+    await page.goto(`/toilets/${ID}`);
+
+    // The fold points at check-in rather than offering its own way in.
+    await page.getByText("What's inside", { exact: true }).click();
+    await expect(page.getByText("Been here? Check in to update what's inside.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Check in" }).click();
+    await expect(page.getByRole("heading", { name: "Already checked in" })).toBeVisible();
+    await page.getByRole("button", { name: "Update what's inside" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "What's inside?" });
+    await dialog.getByLabel("Level").fill("B2");
+    await dialog.getByText("Inside the fare gates", { exact: true }).click();
+    await pick(dialog, "Baby change: Yes");
+    await dialog.getByLabel("Anything else? (optional)").fill("Moved after the renovation");
+    await dialog.getByRole("button", { name: "Send 3 changes for review" }).click();
+    await expect(dialog.getByRole("heading", { name: "Sent for review" })).toBeVisible();
+
+    const [sub] = api.find("POST", "/submissions");
+    expect(sub.body).toEqual({
+      kind: "EDIT_TOILET",
+      toiletId: ID,
+      lat: 1.2993,
+      lng: 103.8455,
+      payload: {
+        changes: { features: { BABY_CHANGE: true }, level: "B2", areaType: "PAID_AREA" },
+        note: "Moved after the renovation",
       },
     });
   });

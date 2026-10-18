@@ -1,11 +1,13 @@
 /** Fixtures shaped exactly like backend/API_CONTRACT.md (via lib/api/types). */
 import type {
+  CheckInResult,
   Me,
   NearbyVenue,
   PhotoRef,
   PresignResponse,
   RecommendResponse,
   SubmissionView,
+  ToiletDetail,
   ToiletPin,
   ToiletSummary,
   VenueLite,
@@ -113,6 +115,36 @@ export const TOILETS: ToiletSummary[] = [
     walkSecondsEstimate: 250,
   }),
 ];
+
+/** TOILETS[0] as GET /toilets/:id returns it: level and fare gates known, a few features recorded. */
+export const TOILET_DETAIL: ToiletDetail = {
+  ...TOILETS[0],
+  venue: { ...dhobyGhaut, address: "11 Orchard Road", planningArea: "Museum" },
+  accessNote: null,
+  nearestExit: "A",
+  openingHours: null,
+  featureDetails: (["BIDET", "ACCESSIBLE", "TOILET_PAPER"] as const).map((feature) => ({
+    feature,
+    present: true,
+    source: "COMMUNITY",
+    observedAt: "2026-09-01T00:00:00.000Z",
+  })),
+  latestSurvey: null,
+  surveyCount: 0,
+  reviews: [],
+  photos: [],
+  myReview: null,
+  source: "COMMUNITY",
+  attribution: null,
+};
+
+export const CHECK_IN: CheckInResult = {
+  id: "checkin-1",
+  distanceM: 12,
+  pointsAwarded: 5,
+  newBadges: [],
+  verifyPrompt: ["BIDET", "ACCESSIBLE", "TOILET_PAPER", "HAND_SOAP", "SITTING"],
+};
 
 export const PINS: ToiletPin[] = [
   ...TOILETS.map((t) => ({
