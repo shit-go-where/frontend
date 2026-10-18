@@ -1,0 +1,12 @@
+/** Map pin with a toilet roll inside. Same artwork as app/icon.svg. */
+export function Logo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" className={className} aria-hidden focusable="false">
+      <path d="M32 3C19.3 3 9 13 9 25.6 9 42 32 61 32 61s23-19 23-35.4C55 13 44.7 3 32 3Z" fill="#8a4b23" />
+      <path d="M20 21v15a12 6 0 0 0 24 0V21Z" fill="#fff1e0" />
+      <path d="M38 40.5h6V49l-3-2-3 2Z" fill="#fff1e0" />
+      <ellipse cx="32" cy="21" rx="12" ry="6" fill="#f0d6b8" />
+      <ellipse cx="32" cy="21" rx="4" ry="2.2" fill="#d9934f" />
+    </svg>
+  );
+}

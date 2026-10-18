@@ -1,26 +1,346 @@
 @import "tailwindcss";
 
+/*
+ * Unko Pop theme tokens. Dark (chocolate) is the default; light (caramel)
+ * applies when the user picks it on /me, or picks "Match device" on a light
+ * device (<html data-theme="light|system">).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --bg: #1e120b;
+  --surface: #352114;
+  --surface-2: #47301f;
+  --fg: #fff1e0;
+  --muted: #d4b597;
+  --border: #6e4a32;
+  /* Candy pink: selection, primary actions, links, focus. */
+  --primary: #ff8cc2;
+  --primary-fg: #3b0d22;
+  --primary-soft: #4a2033;
+  /* Hot red: urgency only. */
+  --urgent: #ff5a3c;
+  --urgent-fg: #2a0800;
+  /* Caramel: trust tiers on pins and badges. */
+  --tier: #f0a85e;
+  --tier-fg: #2a1508;
+  /* Mint: walk time and good news. */
+  --mint: #5ee0bd;
+  --mint-fg: #062b22;
+  --mint-soft: #173a30;
+  /* Glossy poo brown: the mascot and brand marks. */
+  --poo: #8a4b23;
+  --poo-hi: #d9934f;
+  --poo-ink: #24150d;
+  --accent: #ffc46b;
+  --accent-fg: #2b1d00;
+  --ok: #6ee3a6;
+  --ok-soft: #173a2a;
+  --warn: #ffd76b;
+  --warn-soft: #3f2814;
+  --danger: #ff7a6b;
+  --danger-soft: #43201a;
+  --danger-fg: #2a0a07;
+  --ring: #ff8cc2;
+  --shadow: 0 10px 28px rgb(0 0 0 / 0.55);
+  --lift: 0 1px 0 rgb(255 241 224 / 0.14) inset, 0 3px 0 rgb(0 0 0 / 0.4), 0 8px 18px rgb(0 0 0 / 0.3);
+  --gloss: inset 0 2px 0 rgb(255 255 255 / 0.35), inset 0 -3px 0 rgb(0 0 0 / 0.2);
+  --overlay: rgb(10 5 2 / 0.7);
+  /* Imported pins: pale and plain, but never lost on the night map. */
+  --pin-imported: #cdb79e;
+  --pin-imported-ink: #1e120b;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Caramel light theme: shared by an explicit pick and "Match device" on a light device. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2d3b1;
+  --surface: #fff5ea;
+  --surface-2: #ecc7a2;
+  --fg: #2a160b;
+  --muted: #6a3f22;
+  --border: #cf9d72;
+  --primary: #a8124f;
+  --primary-fg: #ffffff;
+  --primary-soft: #f9cfe0;
+  --urgent: #c62f16;
+  --urgent-fg: #ffffff;
+  --tier: #8a4b23;
+  --tier-fg: #ffffff;
+  --mint: #0b7a5c;
+  --mint-fg: #ffffff;
+  --mint-soft: #c9efe1;
+  --poo: #8a4b23;
+  --poo-hi: #d9934f;
+  --poo-ink: #24150d;
+  --accent: #876500;
+  --accent-fg: #ffffff;
+  --ok: #0b6b3c;
+  --ok-soft: #cdeeda;
+  --warn: #9b3d00;
+  --warn-soft: #fbe0bf;
+  --danger: #b42318;
+  --danger-soft: #fbd9d2;
+  --danger-fg: #ffffff;
+  --ring: #a8124f;
+  --shadow: 0 10px 28px rgb(74 38 14 / 0.22);
+  --lift: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 2px 0 rgb(122 70 34 / 0.18), 0 6px 14px rgb(122 70 34 / 0.12);
+  --gloss: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -2px 0 rgb(0 0 0 / 0.12);
+  --overlay: rgb(42 22 11 / 0.5);
+  --pin-imported: #ecc7a2;
+  --pin-imported-ink: #6a3f22;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --bg: #f2d3b1;
+    --surface: #fff5ea;
+    --surface-2: #ecc7a2;
+    --fg: #2a160b;
+    --muted: #6a3f22;
+    --border: #cf9d72;
+    --primary: #a8124f;
+    --primary-fg: #ffffff;
+    --primary-soft: #f9cfe0;
+    --urgent: #c62f16;
+    --urgent-fg: #ffffff;
+    --tier: #8a4b23;
+    --tier-fg: #ffffff;
+    --mint: #0b7a5c;
+    --mint-fg: #ffffff;
+    --mint-soft: #c9efe1;
+    --accent: #876500;
+    --accent-fg: #ffffff;
+    --ok: #0b6b3c;
+    --ok-soft: #cdeeda;
+    --warn: #9b3d00;
+    --warn-soft: #fbe0bf;
+    --danger: #b42318;
+    --danger-soft: #fbd9d2;
+    --danger-fg: #ffffff;
+    --ring: #a8124f;
+    --shadow: 0 10px 28px rgb(74 38 14 / 0.22);
+    --lift: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 2px 0 rgb(122 70 34 / 0.18), 0 6px 14px rgb(122 70 34 / 0.12);
+    --gloss: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -2px 0 rgb(0 0 0 / 0.12);
+    --overlay: rgb(42 22 11 / 0.5);
+    --pin-imported: #ecc7a2;
+    --pin-imported-ink: #6a3f22;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-urgent: var(--urgent);
+  --color-urgent-fg: var(--urgent-fg);
+  --color-tier: var(--tier);
+  --color-tier-fg: var(--tier-fg);
+  --color-mint: var(--mint);
+  --color-mint-fg: var(--mint-fg);
+  --color-mint-soft: var(--mint-soft);
+  --color-poo: var(--poo);
+  --color-poo-hi: var(--poo-hi);
+  --color-poo-ink: var(--poo-ink);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-fg: var(--danger-fg);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-rounded), ui-rounded, ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-dela), var(--font-rounded), ui-sans-serif, sans-serif;
+  --shadow-card: var(--shadow);
+  --shadow-rest: var(--lift);
+  --shadow-gloss: var(--gloss);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  accent-color: var(--primary);
+  scrollbar-color: var(--border) transparent;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  caret-color: var(--primary);
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+a {
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 2px;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@layer base {
+  /*
+   * Display voice: one chunky weight. Headings set in it never fake a bold;
+   * hierarchy comes from size. In the base layer so utilities can opt out.
+   */
+  h1,
+  h2,
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-synthesis: none;
+    letter-spacing: 0;
+  }
+
+  /* In the base layer so utilities can opt out (an input whose wrapper draws the ring). */
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+}
+
+/* Tap targets: keep interactive controls at least 44px where we can. */
+.tap {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* MapLibre controls follow the theme. */
+.maplibregl-ctrl-attrib {
+  font-size: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent) !important;
+  /* MapLibre's own `.maplibregl-ctrl.maplibregl-ctrl-attrib` colour is black and outranks this. */
+  color: var(--fg) !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--fg) !important;
+}
+/* The "i" ships as a black SVG; redraw it as a mask so it takes the ink colour in both themes. */
+.maplibregl-ctrl-attrib-button {
+  background: var(--fg) !important;
+  -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill-rule='evenodd' viewBox='0 0 20 20'%3E%3Cpath d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E") center / 24px no-repeat;
+  mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill-rule='evenodd' viewBox='0 0 20 20'%3E%3Cpath d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E") center / 24px no-repeat;
+}
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border-radius: 14px !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: var(--map-icon-filter, invert(0.9) sepia(0.4));
+}
+:root[data-theme="light"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: none;
+}
+/* Phones pinch to zoom; the +/- buttons would sit under the search box. */
+@media (max-width: 767px) {
+  .maplibregl-ctrl-top-right {
+    display: none;
+  }
+}
+.maplibregl-canvas:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: -3px;
+}
+
+/* The urgency ring behind the mascot: the app's only perpetual motion. */
+@keyframes sgw-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--urgent) 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--urgent) 0%, transparent);
+  }
+}
+.urgent-pulse {
+  animation: sgw-pulse 2.4s ease-in-out infinite;
+}
+
+/* Signature interaction: the mascot squishes on press and plops back on release. */
+@keyframes sgw-plop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  30% {
+    transform: translateY(5px) scale(1.14, 0.84);
+  }
+  60% {
+    transform: translateY(-7px) scale(0.94, 1.08);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+.mascot-press {
+  transform-origin: 50% 92%;
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.group:active .mascot-press,
+.mascot-press:active {
+  transform: translateY(4px) scale(1.12, 0.86);
+}
+.group:hover .mascot-press,
+.group:focus-visible .mascot-press {
+  animation: sgw-plop 520ms cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+
+/* Skeletons: a slow chocolate sheen, not a pulse. */
+@keyframes sgw-sheen {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -20% 0;
+  }
+}
+.sheen {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--fg) 7%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  animation: sgw-sheen 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
