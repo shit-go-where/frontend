@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MobileTopBar } from "@/components/nav";
 import { MeClient } from "./me-client";
 
 export const metadata: Metadata = {
@@ -7,5 +8,10 @@ export const metadata: Metadata = {
 };
 
 export default function MePage() {
-  return <MeClient />;
+  return (
+    <>
+      <MobileTopBar title="Me" />
+      <MeClient />
+    </>
+  );
 }
