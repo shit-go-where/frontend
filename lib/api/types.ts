@@ -32,8 +32,17 @@ export const FEATURES = [
   "FEMALE",
   "UNISEX",
   "FREE",
+  "SANITARY_BIN",
+  "PERIOD_PRODUCTS",
+  "MIRROR",
+  "WATER_REFILL",
+  "ABLUTION",
 ] as const;
 export type Feature = (typeof FEATURES)[number];
+
+/** Why someone is going; soft ranking preferences in /routing/recommend. */
+export const PURPOSES = ["PEE", "POO", "BABY", "SHOWER", "FRESHEN_UP", "PERIOD"] as const;
+export type Purpose = (typeof PURPOSES)[number];
 
 export const VENUE_TYPES = [
   "MRT_STATION",
@@ -214,7 +223,7 @@ export interface Me {
   needsHandle: boolean;
 }
 
-export type SubmissionKind = "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET" | "NEW_VENUE";
+export type SubmissionKind = "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
 export type SubmissionState = "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED";
 
 export interface NewToiletPayload {
@@ -278,7 +287,7 @@ interface CreateSubmissionBase {
   force?: boolean;
 }
 
-/** Discriminated on `kind`, matching the backend. NEW_VENUE is rejected by the API in v1. */
+/** Discriminated on `kind`, matching the backend. A new place is created through NEW_TOILET's `newVenue`. */
 export type CreateSubmissionBody = CreateSubmissionBase &
   (
     | { kind: "NEW_TOILET"; payload: NewToiletPayload }
@@ -297,6 +306,7 @@ export interface RecommendBody {
   lat: number;
   lng: number;
   urgent?: boolean;
+  purpose?: Purpose;
   require?: Feature[];
   areaType?: AreaType;
   openNow?: boolean;
@@ -365,6 +375,39 @@ export interface UserLeaderboard {
 export interface ToiletLeaderboard {
   items: { rank: number; toilet: ToiletSummary; score: number }[];
   areas: string[];
+}
+
+export type Region = "CENTRAL" | "EAST" | "NORTH" | "NORTH_EAST" | "WEST";
+
+export interface AreaSummary {
+  slug: string;
+  name: string;
+  region: Region | null;
+  /** ACTIVE toilets only. */
+  toiletCount: number;
+  verifiedCount: number;
+  venueCount: number;
+  /** False for thin areas: the page renders but stays out of search engines. */
+  indexable: boolean;
+}
+
+export interface AreaVenue extends VenueLite {
+  address: string | null;
+  /** Set only when the place has no address: the closest named place in the area. */
+  near: { name: string; type: VenueType; distanceM: number } | null;
+  toilets: ToiletSummary[];
+}
+
+export interface AreaDetail extends AreaSummary {
+  pendingCount: number;
+  center: { lat: number; lng: number } | null;
+  venues: AreaVenue[];
+  noToiletVenues: VenueLite[];
+}
+
+export interface SitemapToilet {
+  id: string;
+  updatedAt: string;
 }
 
 export interface PresignResponse {

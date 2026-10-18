@@ -196,6 +196,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/toilets/sitemap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ToiletsController_sitemap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/toilets/{id}": {
         parameters: {
             query?: never;
@@ -724,6 +740,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AreasController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/areas/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AreasController_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -830,7 +878,7 @@ export interface components {
         /** @enum {string} */
         ToiletStatus_Output: "ACTIVE" | "CLOSED" | "RENOVATION" | "PENDING" | "REJECTED";
         /** @enum {string} */
-        Feature_Output: "TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE";
+        Feature_Output: "TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION";
         ActiveStatus_Output: {
             kind: components["schemas"]["StatusKind_Output"];
             count: number;
@@ -866,6 +914,12 @@ export interface components {
         };
         ToiletPinListDto_Output: {
             items: components["schemas"]["ToiletPin_Output"][];
+        };
+        ToiletSitemapDto_Output: {
+            items: {
+                id: string;
+                updatedAt: string;
+            }[];
         };
         OpeningHours_Output: {
             /** @constant */
@@ -973,13 +1027,16 @@ export interface components {
             areas: string[];
         };
         /** @enum {string} */
-        Feature: "TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE";
+        Purpose: "PEE" | "POO" | "BABY" | "SHOWER" | "FRESHEN_UP" | "PERIOD";
+        /** @enum {string} */
+        Feature: "TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION";
         /** @enum {string} */
         AreaType: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
         RecommendBodyDto: {
             lat: number;
             lng: number;
             urgent?: boolean;
+            purpose?: components["schemas"]["Purpose"];
             require?: components["schemas"]["Feature"][];
             areaType?: components["schemas"]["AreaType"];
             openNow?: boolean;
@@ -1091,19 +1148,11 @@ export interface components {
             lat?: number;
             lng?: number;
             force?: boolean;
-        } | {
-            /** @constant */
-            kind: "NEW_VENUE";
-            payload: unknown;
-            toiletId?: string;
-            lat?: number;
-            lng?: number;
-            force?: boolean;
         };
         SubmissionViewDto_Output: {
             id: string;
             /** @enum {string} */
-            kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET" | "NEW_VENUE";
+            kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
             /** @enum {string} */
             state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED";
             payload: {
@@ -1183,7 +1232,7 @@ export interface components {
             items: {
                 id: string;
                 /** @enum {string} */
-                kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET" | "NEW_VENUE";
+                kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
                 /** @enum {string} */
                 state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED";
                 payload: {
@@ -1287,7 +1336,7 @@ export interface components {
                 icon: string;
                 awardedAt?: string;
             }[];
-            verifyPrompt: ("TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE")[];
+            verifyPrompt: ("TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION")[];
         };
         VerifyDto: {
             lat: number;
@@ -1491,6 +1540,53 @@ export interface components {
                 needsResurvey: number;
                 unknownAreaType: number;
             };
+        };
+        AreaSummary_Output: {
+            slug: string;
+            name: string;
+            region: components["schemas"]["Region_Output"] | null;
+            toiletCount: number;
+            verifiedCount: number;
+            venueCount: number;
+            indexable: boolean;
+        };
+        /** @enum {string} */
+        Region_Output: "CENTRAL" | "EAST" | "NORTH" | "NORTH_EAST" | "WEST";
+        AreaListDto_Output: {
+            items: components["schemas"]["AreaSummary_Output"][];
+        };
+        AreaVenue_Output: {
+            id: string;
+            name: string;
+            type: components["schemas"]["VenueType_Output"];
+            lines: string[];
+            lat: number;
+            lng: number;
+            toiletStatus: components["schemas"]["VenueToiletStatus_Output"];
+            note: string | null;
+            address: string | null;
+            near: {
+                name: string;
+                type: components["schemas"]["VenueType_Output"];
+                distanceM: number;
+            } | null;
+            toilets: components["schemas"]["ToiletSummary_Output"][];
+        };
+        AreaDetailDto_Output: {
+            slug: string;
+            name: string;
+            region: components["schemas"]["Region_Output"] | null;
+            toiletCount: number;
+            verifiedCount: number;
+            venueCount: number;
+            indexable: boolean;
+            pendingCount: number;
+            center: {
+                lat: number;
+                lng: number;
+            } | null;
+            venues: components["schemas"]["AreaVenue_Output"][];
+            noToiletVenues: components["schemas"]["VenueLite_Output"][];
         };
     };
     responses: never;
@@ -1788,6 +1884,8 @@ export interface operations {
                 maxLng: number;
                 features?: string;
                 tier?: string;
+                areaType?: components["schemas"]["AreaType"];
+                openNow?: "0" | "1" | "true" | "false";
                 includePending?: "0" | "1" | "true" | "false";
             };
             header?: never;
@@ -1802,6 +1900,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToiletPinListDto_Output"];
+                };
+            };
+        };
+    };
+    ToiletsController_sitemap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToiletSitemapDto_Output"];
                 };
             };
         };
@@ -2576,6 +2693,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataQualityDto_Output"];
+                };
+            };
+        };
+    };
+    AreasController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaListDto_Output"];
+                };
+            };
+        };
+    };
+    AreasController_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaDetailDto_Output"];
                 };
             };
         };

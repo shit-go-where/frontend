@@ -196,6 +196,8 @@ export interface BoundsParams {
   minLng: number;
   maxLng: number;
   features?: Feature[];
+  openNow?: boolean;
+  areaType?: AreaType;
   includePending?: boolean;
 }
 
