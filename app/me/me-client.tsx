@@ -1184,6 +1184,9 @@ function SettingsTab({ me }: { me: Me }) {
         <li>
           <VerifierCredit me={me} />
         </li>
+        <li>
+          <TelegramLink me={me} />
+        </li>
         <li className={row}>
           <span id="theme-label" className="font-extrabold">
             Theme
@@ -1457,6 +1460,84 @@ function VerifierCredit({ me }: { me: Me }) {
       {credit.isError ? (
         <p role="alert" className="text-sm text-danger">
           {errorMessage(credit.error)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Connect Telegram (BOT.md T15). The API hands back a one-time t.me link (10 minutes); opening it starts
+ * the bot, which links that chat and moves its banked points here. Same window, so phones hand the link
+ * to the Telegram app. Sign-in never happens inside Telegram, so this row is the only way in.
+ */
+function TelegramLink({ me }: { me: Me }) {
+  const qc = useQueryClient();
+  const [opened, setOpened] = useState(false);
+  const connect = useMutation({
+    mutationFn: api.telegramLinkToken,
+    onSuccess: ({ url }) => {
+      setOpened(true);
+      window.location.href = url;
+    },
+  });
+  const unlink = useMutation({
+    mutationFn: api.unlinkTelegram,
+    onSuccess: () => {
+      setOpened(false);
+      qc.setQueryData<Me | null>(ME_KEY, (m) => (m ? { ...m, telegramLinked: false } : m));
+    },
+  });
+  // Back from Telegram: pick up the new link (window-focus refetch is off app-wide).
+  useEffect(() => {
+    if (!opened || me.telegramLinked) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void qc.invalidateQueries({ queryKey: ME_KEY });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [opened, me.telegramLinked, qc]);
+  const failed = connect.error ?? unlink.error;
+
+  return (
+    <div className={row}>
+      <div className="flex min-h-11 items-center justify-between gap-4">
+        <span>
+          <span className="block font-extrabold">{me.telegramLinked ? "Telegram: linked" : "Connect Telegram"}</span>
+          <span id="telegram-help" className="block text-sm text-muted">
+            {me.telegramLinked
+              ? "Check-ins and reports from the Telegram bot earn points on this account."
+              : opened
+                ? "Tap Start in Telegram to finish. The link works for 10 minutes."
+                : "Find toilets from Telegram, and keep the points from check-ins you make there."}
+          </span>
+        </span>
+        {me.telegramLinked ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="shrink-0"
+            aria-describedby="telegram-help"
+            loading={unlink.isPending}
+            onClick={() => unlink.mutate()}
+          >
+            Unlink
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            className="shrink-0"
+            aria-describedby="telegram-help"
+            loading={connect.isPending}
+            onClick={() => connect.mutate()}
+          >
+            {opened ? "Open again" : "Connect"}
+          </Button>
+        )}
+      </div>
+      {failed ? (
+        <p role="alert" className="text-sm text-danger">
+          {errorMessage(failed)}
         </p>
       ) : null}
     </div>

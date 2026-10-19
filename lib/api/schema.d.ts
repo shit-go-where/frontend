@@ -132,6 +132,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/telegram/link-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["UsersController_telegramLinkToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["UsersController_telegramUnlink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/toilets/{id}/check-ins": {
         parameters: {
             query?: never;
@@ -934,6 +966,7 @@ export interface components {
                 routedWeek: number;
             };
             lastSeenActivityAt: string | null;
+            telegramLinked: boolean;
         };
         UpdateMeDto: {
             handle?: string;
@@ -956,6 +989,10 @@ export interface components {
             /** @constant */
             ok: true;
             seenAt: string;
+        };
+        TelegramLinkTokenDto_Output: {
+            url: string;
+            expiresAt: string;
         };
         CheckInDto: {
             lat: number;
@@ -2259,6 +2296,43 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ActivitySeenDto_Output"];
                 };
+            };
+        };
+    };
+    UsersController_telegramLinkToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkTokenDto_Output"];
+                };
+            };
+        };
+    };
+    UsersController_telegramUnlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Telegram chat unlinked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

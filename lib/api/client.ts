@@ -44,6 +44,7 @@ import type {
   UserLeaderboard,
   VenueLite,
   WalkRoute,
+  TelegramLinkToken,
 } from "./types";
 import { parseSavedHeader, type SavedFrom } from "../offline";
 import { distinctId, firstTouchSource } from "../analytics";
@@ -377,6 +378,9 @@ export const api = {
   activity: (cursor?: string | null) => request<Page<ActivityItem>>("/me/activity", { query: { cursor } }),
   /** Resets Me.unseen (the "Since your last visit" banner and the Me tab dot). */
   markActivitySeen: () => request<ActivitySeen>("/me/activity/seen", { method: "POST" }),
+  /** One-time t.me link (10 minutes) that connects the Telegram chat opening it to this account. */
+  telegramLinkToken: () => request<TelegramLinkToken>("/me/telegram/link-token", { method: "POST" }),
+  unlinkTelegram: () => request<void>("/me/telegram", { method: "DELETE" }),
   passport: () => request<Passport>("/me/passport"),
 
   // Media

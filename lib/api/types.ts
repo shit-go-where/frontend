@@ -265,6 +265,14 @@ export interface Me {
    */
   impact: { toilets: number; routedWeek: number };
   lastSeenActivityAt: string | null;
+  /** A Telegram chat is linked to this account (BOT.md T15). */
+  telegramLinked: boolean;
+}
+
+/** POST /me/telegram/link-token: a one-time t.me deep link, valid 10 minutes. */
+export interface TelegramLinkToken {
+  url: string;
+  expiresAt: string;
 }
 
 export type SubmissionKind = "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";

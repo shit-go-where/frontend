@@ -47,6 +47,7 @@ export type ContractChecks = [
   Assert<Fits<S["StationListDto_Output"]["items"][number], T.StationSummary>>,
   Assert<Fits<S["StationDetailDto_Output"], T.StationDetail>>,
   Assert<Fits<S["LineBoardDto_Output"]["items"][number], T.LineRow>>,
+  Assert<Fits<S["TelegramLinkTokenDto_Output"], T.TelegramLinkToken>>,
   // Request bodies: what the UI sends must be accepted by the backend.
   Assert<Fits<T.RecommendBody, S["RecommendBodyDto"]>>,
   Assert<Fits<T.CreateSubmissionBody, S["CreateSubmissionDto"]>>,

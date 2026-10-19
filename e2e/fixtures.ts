@@ -221,6 +221,7 @@ export const ME: Me = {
   unseen: { resolvedSubmissions: 0, badges: 0, points: 0, routed: 0 },
   impact: { toilets: 0, routedWeek: 0 },
   lastSeenActivityAt: null,
+  telegramLinked: false,
 };
 
 export const NEARBY_VENUES: NearbyVenue[] = [
