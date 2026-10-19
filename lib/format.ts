@@ -168,12 +168,15 @@ export const VENUE_STATUS_LABELS: Record<VenueToiletStatus, string> = {
 };
 
 export const MRT_LINES: Record<string, { name: string; color: string }> = {
-  NSL: { name: "North South Line", color: "#D42E12" },
-  EWL: { name: "East West Line", color: "#009645" },
+  NSL: { name: "North-South Line", color: "#D42E12" },
+  EWL: { name: "East-West Line", color: "#009645" },
   NEL: { name: "North East Line", color: "#9900AA" },
   CCL: { name: "Circle Line", color: "#FA9E0D" },
   DTL: { name: "Downtown Line", color: "#005EC4" },
   TEL: { name: "Thomson-East Coast Line", color: "#9D5B25" },
+  BPLRT: { name: "Bukit Panjang LRT", color: "#748477" },
+  SKLRT: { name: "Sengkang LRT", color: "#748477" },
+  PGLRT: { name: "Punggol LRT", color: "#748477" },
 };
 
 export function lineColor(line: string): string {

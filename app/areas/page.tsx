@@ -1,4 +1,6 @@
+import { TrainFront } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { ErrorState, Skeleton } from "@/components/ui";
 import { getAreasServer } from "@/lib/api/server";
@@ -42,6 +44,13 @@ export default function AreasPage() {
         Going somewhere later? Pick the part of Singapore you&apos;re heading to and see every public toilet we know there, best
         first. Areas follow URA&apos;s planning areas.
       </p>
+      <Link
+        href="/stations"
+        className="-ml-2 mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2"
+      >
+        <TrainFront className="size-5" aria-hidden />
+        Or go by MRT station
+      </Link>
       <Suspense fallback={<AreasSkeleton />}>
         <Areas />
       </Suspense>

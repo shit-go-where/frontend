@@ -4,7 +4,7 @@
  */
 import { cacheLife } from "next/cache";
 import { cache } from "react";
-import type { AreaDetail, AreaSummary, List, SitemapToilet, ToiletDetail } from "./types";
+import type { AreaDetail, AreaSummary, LineRow, List, SitemapToilet, StationDetail, StationSummary, ToiletDetail } from "./types";
 
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "");
 
@@ -49,5 +49,14 @@ export const getToiletServer = cache((id: string) =>
 export const getAreasServer = cache(() => cachedGet<List<AreaSummary>>("/areas"));
 
 export const getAreaServer = cache((slug: string) => cachedGet<AreaDetail>(`/areas/${encodeURIComponent(slug)}`));
+
+/** Every MRT and LRT station A to Z, for /stations and the sitemap. */
+export const getStationsServer = cache(() => cachedGet<List<StationSummary>>("/stations"));
+
+export const getStationServer = cache((slug: string) =>
+  cachedGet<StationDetail>(`/stations/${encodeURIComponent(slug)}`),
+);
+
+export const getLineBoardServer = cache(() => cachedGet<List<LineRow>>("/leaderboard/lines"));
 
 export const getSitemapToiletsServer = () => cachedGet<List<SitemapToilet>>("/toilets/sitemap");

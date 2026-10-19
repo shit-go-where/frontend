@@ -570,6 +570,7 @@ function PlaceGroup({ v }: { v: AreaVenue }) {
           {latest ? `checked ${timeAgo(latest)}` : null}
         </p>
         {v.note ? <p className="mt-1.5 text-sm text-muted">{v.note}</p> : null}
+        {v.type === "MRT_STATION" ? <StationLink name={v.name} /> : null}
       </div>
       <ul className="mt-1">
         {toilets.entries.map((e) => (
@@ -653,6 +654,24 @@ function OpenDataRow({ v, t }: { v: AreaVenue; t: ToiletSummary }) {
   );
 }
 
+/**
+ * An MRT or LRT place's own station page (/stations/<slug>): what's in the station, the "no toilet,
+ * use X" answer and what's within 400 m. The slug is the kebab-cased venue name, as the API makes it.
+ */
+function StationLink({ name }: { name: string }) {
+  return (
+    <Link
+      href={`/stations/${areaSlug(name)}`}
+      className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-extrabold text-primary hover:bg-surface-2"
+    >
+      <TrainFront className="size-4" aria-hidden />
+      Station page
+      <span className="sr-only">: toilets at and near {name}</span>
+      <ChevronRight className="size-4" aria-hidden />
+    </Link>
+  );
+}
+
 function NoToilet({ venues }: { venues: AreaDetail["noToiletVenues"] }) {
   return (
     <section aria-labelledby="none-h" className="mt-12">
@@ -674,6 +693,7 @@ function NoToilet({ venues }: { venues: AreaDetail["noToiletVenues"] }) {
               <p className="text-sm text-muted">
                 {v.note ?? (v.toiletStatus === "USES_NEARBY" ? "Uses a toilet nearby." : "No toilet here.")}
               </p>
+              {v.type === "MRT_STATION" ? <StationLink name={v.name} /> : null}
             </div>
           </li>
         ))}

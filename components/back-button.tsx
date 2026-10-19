@@ -6,7 +6,12 @@ import { historyBack } from "@/components/route-transition";
 import { usePreviousPath } from "@/lib/use-previous-path";
 
 /** Where a back button says it goes, by the page behind this one. Anything else is plain "Back". */
-const LABELS: Record<string, string> = { "/": "Map", "/areas": "All areas", "/leaderboard": "Ranks" };
+const LABELS: Record<string, string> = {
+  "/": "Map",
+  "/areas": "All areas",
+  "/stations": "All stations",
+  "/leaderboard": "Ranks",
+};
 
 /**
  * Back to wherever the visitor came from in the app, named for it, with the same backwards slide
