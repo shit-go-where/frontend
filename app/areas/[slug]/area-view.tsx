@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowDown,
   BookOpen,
   Bus,
   ChevronLeft,
@@ -11,6 +12,7 @@ import {
   Globe,
   Hospital,
   Landmark,
+  Map as MapIcon,
   MapPin,
   ShoppingBag,
   Sparkles,
@@ -38,7 +40,9 @@ import {
   plural,
   shortAddress,
   timeAgo,
+  scoreNumber,
 } from "@/lib/format";
+import { useLocation } from "@/lib/location";
 import { EASE_OUT, reducedMotion } from "@/lib/motion";
 
 /**
@@ -229,8 +233,8 @@ function AreaBody({
   // away still shows what it held rather than emptying first.
   const navs = useMemo(() => {
     const jumps = [
-      ...sections.map((s) => ({ id: s.id, label: s.title, n: s.venues.length })),
-      ...(openData.length ? [{ id: OPEN_DATA_ID, label: "Open data", n: openData.length }] : []),
+      ...sections.map((s) => ({ id: s.id, label: s.title })),
+      ...(openData.length ? [{ id: OPEN_DATA_ID, label: "Open data" }] : []),
     ];
     return jumps.length >= 2 ? [jumps] : [];
   }, [sections, openData]);
@@ -257,9 +261,15 @@ function AreaBody({
         <span className="tabular-nums">{plural(area.venueCount, "place")}</span>
         {area.region ? `, ${REGION_LABELS[area.region]} region` : ""}. <span className="tabular-nums">{tierMix(area.venues)}</span>.
       </p>
+      <MapLink area={area} />
 
-      <div className="sticky top-0 z-20 -mx-4 mt-5 border-b border-border/70 bg-bg px-4 py-2.5 md:top-16">
-        <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="Must have">
+      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-4 mt-5 border-b border-border/70 bg-bg px-4 py-2.5 md:top-[calc(4rem+env(safe-area-inset-top))]">
+        {/* Runs to the screen edge and fades there, so a chip cut off at the edge reads as "scroll for more". */}
+        <div
+          className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%-2rem),transparent)] [scrollbar-width:none]"
+          role="group"
+          aria-label="Must have"
+        >
           {AREA_FILTERS.map((k) => (
             <Chip key={k} active={active.has(k)} onClick={() => toggle(k)}>
               <FilterChipLabel k={k} label={FILTER_LABEL[k]} active={active.has(k)} />
@@ -287,13 +297,20 @@ function AreaBody({
 
       {nav.entries.map((e) => (
         <Reveal key={e.key} as="nav" aria-label="Jump to" entering={e.entering} leaving={e.leaving} onExited={() => nav.exited(e.key)}>
-          <div className="flex flex-wrap gap-2 pt-4">
+          {/*
+            Links, not chips: pink text with a down arrow, so they never read as more filters. No counts, since a
+            section counts places and the summary above counts toilets, and the two looked like they disagreed.
+          */}
+          <div className="-mx-3 flex flex-wrap gap-x-1 pt-3">
             {e.item.map((j) => (
-              <a key={j.id} href={`#${j.id}`} onClick={(ev) => jumpTo(ev, j.id)} className={buttonClass("secondary", "sm", "gap-1.5")}>
+              <a
+                key={j.id}
+                href={`#${j.id}`}
+                onClick={(ev) => jumpTo(ev, j.id)}
+                className="inline-flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-extrabold text-primary hover:bg-surface-2"
+              >
+                <ArrowDown className="size-4" aria-hidden />
                 {j.label}
-                <Tick value={j.n} className="font-bold text-muted tabular-nums">
-                  {j.n}
-                </Tick>
               </a>
             ))}
           </div>
@@ -397,6 +414,27 @@ function AreaBody({
   );
 }
 
+/**
+ * Opens the home map centred on the area. Home has no URL for a centre, so this sets the area as
+ * the searched place, exactly as picking it in the map's place search would: the map flies there,
+ * the list reads "near {area}", and walk times stay off because it isn't the person's own fix.
+ */
+function MapLink({ area }: { area: AreaDetail }) {
+  const { setManual } = useLocation();
+  const center = area.center;
+  if (!center) return null;
+  return (
+    <Link
+      href="/"
+      onClick={() => setManual({ lat: center.lat, lng: center.lng, name: area.name })}
+      className="-ml-2 mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2"
+    >
+      <MapIcon className="size-5" aria-hidden />
+      See these on the map
+    </Link>
+  );
+}
+
 function SectionHeading({
   id,
   icon: Icon,
@@ -431,7 +469,7 @@ function Score({ t }: { t: ToiletSummary }) {
   return (
     <span className="inline-flex items-center gap-1 text-sm font-bold tabular-nums">
       <Sparkles className="size-3.5 text-accent" aria-hidden />
-      {t.scoreCleanliness.toFixed(1).replace(/\.0$/, "")}/10
+      {scoreNumber(t.scoreCleanliness)}/10
       <span className="sr-only"> clean</span>
     </span>
   );
@@ -460,7 +498,7 @@ function BestBet({ venue, toilet }: { venue: AreaVenue; toilet: ToiletSummary })
           <p className="flex shrink-0 flex-col items-end">
             <span className="inline-flex items-center gap-1">
               <Sparkles className="size-5 text-accent" aria-hidden />
-              <span className="font-display text-4xl leading-none">{toilet.scoreCleanliness!.toFixed(1)}</span>
+              <span className="font-display text-4xl leading-none">{scoreNumber(toilet.scoreCleanliness!)}</span>
             </span>
             <span className="mt-1 text-xs font-extrabold text-muted">clean out of 10</span>
           </p>

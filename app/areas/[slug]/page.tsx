@@ -26,7 +26,8 @@ export async function generateMetadata({ params }: PageProps<"/areas/[slug]">): 
     alternates: { canonical: `/areas/${a.slug}` },
     // Thin areas still render for people, but aren't worth a search result.
     robots: a.indexable ? undefined : { index: false, follow: true },
-    openGraph: { title: `${title} · Shit Go Where`, description, url: `/areas/${a.slug}` },
+    // Images named here: a page's openGraph replaces the root's whole, so the default card would be lost.
+    openGraph: { title: `${title} · Shit Go Where`, description, url: `/areas/${a.slug}`, images: [{ url: "/opengraph-image", width: 1200, height: 630 }] },
   };
 }
 
