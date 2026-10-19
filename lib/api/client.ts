@@ -8,6 +8,7 @@
  */
 import type {
   ActivityItem,
+  ActivitySeen,
   AdminFlag,
   ApiErrorBody,
   AreaType,
@@ -20,6 +21,7 @@ import type {
   ImportRun,
   List,
   Me,
+  ModeratorSubmission,
   NearbyVenue,
   Page,
   Passport,
@@ -28,6 +30,7 @@ import type {
   PresignResponse,
   RecommendBody,
   RecommendResponse,
+  ResolveSubmissionBody,
   Review,
   StatusKind,
   StatusReport,
@@ -37,10 +40,12 @@ import type {
   ToiletPin,
   ToiletSummary,
   ToiletTier,
+  UpdateSubmissionBody,
   UserLeaderboard,
   VenueLite,
   WalkRoute,
 } from "./types";
+import { parseSavedHeader, type SavedFrom } from "../offline";
 
 export const API_BASE = "/api";
 
@@ -65,19 +70,50 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError;
 }
 
-/** Thrown when the network is down or the API is unreachable. */
+/**
+ * Why a request never got a usable answer: "offline" (no network, or the service worker's
+ * synthetic 503 with nothing saved), "timeout" (weak signal: no answer in time) or
+ * "unreachable" (the network is up but the request failed).
+ */
+export type NetworkErrorKind = "offline" | "timeout" | "unreachable";
+
+const OFFLINE_COPY = "No signal right now. Showing what we saved where we can.";
+const TIMEOUT_COPY = "The connection is too slow right now.";
+const SERVER_COPY = "The server is having a moment. Try again shortly.";
+
+/** Thrown when the network is down, too slow, or the API is unreachable. Never retried for long. */
 export class NetworkError extends Error {
-  constructor(cause?: unknown) {
-    super("Can't reach Shit Go Where right now. Check your connection and try again.");
+  readonly kind: NetworkErrorKind;
+
+  constructor(cause?: unknown, kind: NetworkErrorKind = "unreachable") {
+    super(kind === "timeout" ? TIMEOUT_COPY : OFFLINE_COPY);
     this.name = "NetworkError";
     this.cause = cause;
+    this.kind = kind;
   }
+
+  get isTimeout() {
+    return this.kind === "timeout";
+  }
+}
+
+export function isNetworkError(e: unknown): e is NetworkError {
+  return e instanceof NetworkError;
+}
+
+function browserOffline() {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 /** Human-readable message for any thrown value. */
 export function errorMessage(err: unknown): string {
-  if (err instanceof NetworkError) return err.message;
-  if (isApiError(err)) return err.message;
+  // Underground the browser often knows before we do; say so whatever failed.
+  if (browserOffline() && !(isApiError(err) && err.status < 500)) return OFFLINE_COPY;
+  if (err instanceof NetworkError) return err.isTimeout ? TIMEOUT_COPY : OFFLINE_COPY;
+  if (isApiError(err)) {
+    // 4xx messages are written for people; 5xx bodies are Nest's raw "Internal server error".
+    return err.status >= 500 ? SERVER_COPY : err.message;
+  }
   if (err instanceof Error) return err.message;
   return "Something went wrong.";
 }
@@ -113,30 +149,92 @@ interface RequestOptions {
   signal?: AbortSignal;
   /** Don't trigger the global 401 handler (e.g. GET /me probes). */
   silent401?: boolean;
+  /** Give up after this long (headers and body) and throw a "timeout" NetworkError. */
+  timeoutMs?: number;
+}
+
+/** Long enough for a slow 4G hop, short enough that a dead MRT tunnel fails while you can act. */
+export const DEFAULT_TIMEOUT_MS = 10_000;
+/** Urgent mode has an offline fallback (cached toilets ranked on the phone), so fail sooner. */
+export const RECOMMEND_TIMEOUT_MS = 6_000;
+
+/**
+ * One signal that aborts on the caller's signal or our timer, plus a way to tell which fired.
+ * Uses AbortSignal.any where available and forwards the caller's abort by hand otherwise.
+ */
+function timeoutSignal(caller: AbortSignal | undefined, ms: number) {
+  const timer = new AbortController();
+  let timedOut = false;
+  const id = setTimeout(() => {
+    timedOut = true;
+    timer.abort(new DOMException("The request timed out", "TimeoutError"));
+  }, ms);
+  let signal = timer.signal;
+  let unlink = () => {};
+  if (caller) {
+    if (typeof AbortSignal.any === "function") {
+      signal = AbortSignal.any([caller, timer.signal]);
+    } else if (caller.aborted) {
+      timer.abort(caller.reason);
+    } else {
+      const forward = () => timer.abort(caller.reason);
+      caller.addEventListener("abort", forward, { once: true });
+      unlink = () => caller.removeEventListener("abort", forward);
+    }
+  }
+  return {
+    signal,
+    timedOut: () => timedOut && !caller?.aborted,
+    done: () => {
+      clearTimeout(id);
+      unlink();
+    },
+  };
+}
+
+export interface ResponseMeta<T> {
+  data: T;
+  status: number;
+  headers: Headers;
 }
 
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = "GET", query, body, signal, silent401 } = opts;
+  return (await requestWithMeta<T>(path, opts)).data;
+}
+
+/** `request()` plus the response status and headers (e.g. the service worker's X-SGW-Saved). */
+export async function requestWithMeta<T>(path: string, opts: RequestOptions = {}): Promise<ResponseMeta<T>> {
+  const { method = "GET", query, body, signal: callerSignal, silent401, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
+  const t = timeoutSignal(callerSignal, timeoutMs);
   let res: Response;
+  let text: string;
   try {
     res = await fetch(`${API_BASE}${path}${toQuery(query)}`, {
       method,
       credentials: "include",
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
+      signal: t.signal,
     });
+    // The timer covers the body too: on one bar the headers can arrive and the body stall.
+    text = res.status === 204 ? "" : await res.text();
   } catch (e) {
-    if ((e as Error)?.name === "AbortError") throw e;
-    throw new NetworkError(e);
+    if (t.timedOut()) throw new NetworkError(e, "timeout");
+    // The caller gave up (unmount, newer query): stay an abort so TanStack treats it as one.
+    if (callerSignal?.aborted || (e as Error)?.name === "AbortError") throw e;
+    throw new NetworkError(e, browserOffline() ? "offline" : "unreachable");
+  } finally {
+    t.done();
   }
 
-  if (res.status === 204) return undefined as T;
+  // The service worker's synthetic "nothing saved for this" answer: offline, not a server fault.
+  if (res.headers.get("X-SGW-Offline") === "1") throw new NetworkError(null, "offline");
 
-  const text = await res.text();
+  if (res.status === 204) return { data: undefined as T, status: res.status, headers: res.headers };
+
   let data: unknown = null;
   if (text) {
     try {
@@ -154,7 +252,16 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     if (err.isUnauthorized && !silent401) onUnauthorized?.(err);
     throw err;
   }
-  return data as T;
+  return { data: data as T, status: res.status, headers: res.headers };
+}
+
+/** A list response, marked with where and when it was saved if the service worker answered. */
+export type MaybeSaved<T> = List<T> & { saved?: SavedFrom };
+
+async function listMaybeSaved<T>(path: string, opts: RequestOptions): Promise<MaybeSaved<T>> {
+  const { data, headers } = await requestWithMeta<List<T>>(path, opts);
+  const saved = parseSavedHeader(headers.get("X-SGW-Saved"));
+  return saved ? { ...data, saved } : data;
 }
 
 /** Upload raw bytes to a presigned URL (R2/S3) or the API's dev fallback. */
@@ -203,10 +310,11 @@ export interface BoundsParams {
 
 export const api = {
   // Toilets
+  // `saved` is set when the service worker answered from its saved copy (weak or no signal).
   nearbyToilets: (p: NearbyParams, signal?: AbortSignal) =>
-    request<List<ToiletSummary>>("/toilets/nearby", { query: { ...p, openNow: p.openNow || undefined }, signal }),
+    listMaybeSaved<ToiletSummary>("/toilets/nearby", { query: { ...p, openNow: p.openNow || undefined }, signal }),
   toiletsInBounds: (p: BoundsParams, signal?: AbortSignal) =>
-    request<List<ToiletPin>>("/toilets/in-bounds", { query: { ...p }, signal }),
+    listMaybeSaved<ToiletPin>("/toilets/in-bounds", { query: { ...p }, signal }),
   toilet: (id: string, signal?: AbortSignal) =>
     request<ToiletDetail>(`/toilets/${encodeURIComponent(id)}`, { signal, silent401: true }),
   reviews: (id: string, cursor?: string | null) =>
@@ -233,7 +341,7 @@ export const api = {
 
   // Routing & geo
   recommend: (body: RecommendBody, signal?: AbortSignal) =>
-    request<RecommendResponse>("/routing/recommend", { method: "POST", body, signal }),
+    request<RecommendResponse>("/routing/recommend", { method: "POST", body, signal, timeoutMs: RECOMMEND_TIMEOUT_MS }),
   walk: (p: { fromLat: number; fromLng: number; toLat: number; toLng: number }) =>
     request<WalkRoute>("/routing/walk", { query: p }),
   geoSearch: (q: string, signal?: AbortSignal) => request<List<GeoSearchResult>>("/geo/search", { query: { q }, signal }),
@@ -254,6 +362,8 @@ export const api = {
     request<Me>("/me", { method: "PATCH", body }),
   deleteMe: () => request<void>("/me", { method: "DELETE" }),
   activity: (cursor?: string | null) => request<Page<ActivityItem>>("/me/activity", { query: { cursor } }),
+  /** Resets Me.unseen (the "Since your last visit" banner and the Me tab dot). */
+  markActivitySeen: () => request<ActivitySeen>("/me/activity/seen", { method: "POST" }),
   passport: () => request<Passport>("/me/passport"),
 
   // Media
@@ -279,8 +389,15 @@ export const api = {
   submissionQueue: (p: { lat: number; lng: number; radius?: number }) =>
     request<List<SubmissionView>>("/submissions/queue", { query: p }),
   mySubmissions: () => request<List<SubmissionView>>("/submissions/mine"),
+  submission: (id: string) => request<SubmissionView>(`/submissions/${encodeURIComponent(id)}`),
+  /** Owner only, while it needs more info: sends it back to PENDING. */
+  updateSubmission: (id: string, body: UpdateSubmissionBody) =>
+    request<SubmissionView>(`/submissions/${encodeURIComponent(id)}`, { method: "PATCH", body }),
   vote: (id: string, body: { value: "APPROVE" | "REJECT"; comment?: string; lat?: number; lng?: number }) =>
     request<SubmissionView>(`/submissions/${encodeURIComponent(id)}/votes`, { method: "POST", body }),
+  /** Moderators. */
+  resolveSubmission: (id: string, body: ResolveSubmissionBody) =>
+    request<SubmissionView>(`/submissions/${encodeURIComponent(id)}/resolve`, { method: "POST", body }),
 
   // Gamification
   userLeaderboard: (scope: "week" | "all") =>
@@ -298,6 +415,9 @@ export const api = {
     }),
   rejectPhoto: (id: string) => request<{ ok: true }>(`/admin/photos/${encodeURIComponent(id)}/reject`, { method: "POST" }),
   dataQuality: () => request<DataQuality>("/admin/data-quality"),
+  /** Island-wide moderator queue, escalated first then oldest. */
+  adminSubmissions: (state: "pending" | "escalated" | "needs_info" | "all" = "all") =>
+    request<List<ModeratorSubmission>>("/admin/submissions", { query: { state } }),
   imports: () => request<List<ImportRun>>("/admin/imports"),
 };
 

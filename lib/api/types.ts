@@ -133,6 +133,12 @@ export interface ToiletSummary {
   photoThumb: string | null;
   distanceM?: number;
   walkSecondsEstimate?: number;
+  /**
+   * Distinct signed-in people who have been there: the submitter plus first check-ins within 150 m (min 1).
+   * Required by the API, but a list the service worker saved before trust model v2 can lack it, so
+   * readers still treat undefined as "not known".
+   */
+  seenBy: number;
 }
 
 export interface ToiletPin {
@@ -190,6 +196,10 @@ export interface ToiletDetail extends Omit<ToiletSummary, "venue"> {
   myReview: Review | null;
   source: string;
   attribution: string | null;
+  /** Where an unnamed place is, e.g. "120 m from Tampines MRT" (same wording as area pages). Null when it has a name of its own or nothing is close. */
+  near: string | null;
+  /** Pending toilets: the open submission behind it, for /review?id=. */
+  openSubmissionId: string | null;
 }
 
 export interface StatusReport {
@@ -199,6 +209,11 @@ export interface StatusReport {
   createdAt: string;
   expiresAt: string;
   confirmedByMe: boolean;
+  /**
+   * A lone signed-out CLOSED_NOW / BROKEN report: shown, but left out of activeStatus, pins and routing
+   * until a signed-in person backs it up or a second device reports it.
+   */
+  unconfirmed: boolean;
 }
 
 export interface Badge {
@@ -221,10 +236,43 @@ export interface Me {
   points: number;
   badges: Badge[];
   needsHandle: boolean;
+  /** When the handle can next be changed (once per 30 days); null = now. */
+  handleChangeableAt: string | null;
+  /** isTrusted = role TRUSTED or above; score counts toward `threshold` (50). */
+  trust: { score: number; threshold: number; isTrusted: boolean };
+  /** Open submissions from the last 14 days against the cap (10); older ones don't count. */
+  openSubmissions: { count: number; limit: number };
+  /** Since lastSeenActivityAt (else sign-up). resolvedSubmissions counts only APPROVED and REJECTED. */
+  unseen: { resolvedSubmissions: number; badges: number; points: number };
+  lastSeenActivityAt: string | null;
 }
 
 export type SubmissionKind = "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
-export type SubmissionState = "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED";
+/** EXPIRED is legacy (old rows only): expiry now escalates to ESCALATED. */
+export type SubmissionState = "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED" | "ESCALATED";
+/** Which rule decides a new toilet (trust model v2). Edits and closures read "nearby_quorum". */
+export type SubmissionPath = "auto" | "on_site_check_in" | "nearby_quorum";
+export type ResolutionCode =
+  | "auto_on_site_photo"
+  | "confirmed_on_site"
+  | "community_approved"
+  | "trusted_approved"
+  | "moderator_approved"
+  | "moderator_rejected"
+  | "moderator_needs_info"
+  | "peer_needs_info"
+  | "escalated_expired"
+  | "escalated_flagged"
+  | "expired";
+
+export interface ReviewerNote {
+  value: "APPROVE" | "REJECT";
+  note: string | null;
+  createdAt: string;
+  /** Cast within 150 m of the toilet. */
+  nearby: boolean;
+  viaCheckIn: boolean;
+}
 
 export interface NewToiletPayload {
   venueId?: string;
@@ -237,6 +285,8 @@ export interface NewToiletPayload {
   accessNote?: string;
   features: Partial<Record<Feature, boolean>>;
   photoIds: string[];
+  /** Added later through PATCH /submissions/:id when it needs more info. */
+  note?: string;
 }
 
 export interface EditToiletPayload {
@@ -254,6 +304,7 @@ export interface EditToiletPayload {
 export interface CloseToiletPayload {
   status: "CLOSED" | "RENOVATION";
   reason: string;
+  note?: string;
 }
 
 export type SubmissionPayload = NewToiletPayload | EditToiletPayload | CloseToiletPayload;
@@ -266,16 +317,63 @@ export interface SubmissionView {
   toilet: { id: string; label: string | null; venueName: string; lat: number; lng: number } | null;
   venue: VenueLite | null;
   submittedBy: { handle: string | null };
+  /** The submitter stood within 150 m of the toilet. */
+  onSite: boolean;
+  hasPhoto: boolean;
+  path: SubmissionPath;
+  /** APPROVE votes cast within 150 m (check-ins count). */
+  nearbyApprovals: number;
+  /** Nearby confirmations still needed; 0 once decided or when only a moderator can decide. */
+  needed: number;
+  escalated: boolean;
+  /** How far from the toilet the submitter stood (never their coordinates). */
+  submitterDistanceM: number | null;
+  /** Every vote, newest first, anonymised. */
+  reviewerNotes: ReviewerNote[];
+  /** For an open EDIT_TOILET: the toilet's values now for the changed fields (null feature = no record). */
+  current: {
+    label?: string | null;
+    level?: string | null;
+    areaType?: AreaType;
+    accessNote?: string | null;
+    features?: Partial<Record<Feature, boolean | null>>;
+  } | null;
   approvals: number;
   rejections: number;
   createdAt: string;
   expiresAt: string;
   resolvedAt: string | null;
-  resolution: string | null;
+  resolution: ResolutionCode | null;
+  /** Plain English for `resolution`. */
+  resolutionText: string | null;
+  /** A moderator's own words on their decision. */
+  resolutionNote: string | null;
   distanceM?: number;
   myVote: "APPROVE" | "REJECT" | null;
   photos: PhotoRef[];
   canVote: boolean;
+}
+
+/** GET /admin/submissions items. */
+export type ModeratorSubmission = SubmissionView & { ageDays: number };
+
+/** PATCH /submissions/:id while it needs more info (at least one field). */
+export interface UpdateSubmissionBody {
+  note?: string;
+  photoIds?: string[];
+  level?: string;
+}
+
+/** POST /submissions/:id/resolve (moderators). `note` becomes the resolutionNote the submitter sees. */
+export interface ResolveSubmissionBody {
+  state: "APPROVED" | "REJECTED" | "NEEDS_INFO";
+  note?: string;
+}
+
+/** POST /me/activity/seen */
+export interface ActivitySeen {
+  ok: true;
+  seenAt: string;
 }
 
 interface CreateSubmissionBase {
@@ -321,6 +419,11 @@ export interface RecommendItem {
   walkDistanceM: number;
   reasons: string[];
   route: { polyline: [number, number][]; source: "onemap" | "estimate" } | null;
+  /**
+   * A PENDING toilet in calm results: added by the community, not yet confirmed. Never in urgent results.
+   * Always sent by the API; optional only because /go builds items on the phone from saved toilets offline.
+   */
+  unconfirmed?: boolean;
 }
 
 export interface SkippedVenue {
@@ -359,6 +462,12 @@ export interface CheckInResult {
   pointsAwarded: number;
   newBadges: Badge[];
   verifyPrompt: Feature[];
+  /** Signed in at a new toilet someone else added: counted as a confirmation. */
+  confirmedPending: boolean;
+  /** …and that confirmation put a pending toilet live. */
+  wentLive: boolean;
+  /** Signed out: points this phone has saved up, paid on sign-in. 0 when signed in. */
+  bankedPoints: number;
 }
 
 export interface Passport {
@@ -450,6 +559,7 @@ export interface DataQuality {
     toilets: number;
     venues: number;
     pending: number;
+    escalated: number;
     flagsOpen: number;
     photosPending: number;
     noFeatures: number;

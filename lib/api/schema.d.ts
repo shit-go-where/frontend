@@ -116,6 +116,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/activity/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["UsersController_activitySeen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/toilets/{id}/check-ins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["GamificationController_checkIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/toilets/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["GamificationController_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/passport": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GamificationController_passport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leaderboard/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GamificationController_leaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/badges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GamificationController_badges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/venues/nearby": {
         parameters: {
             query?: never;
@@ -353,7 +449,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["SubmissionsController_update"];
         trace?: never;
     };
     "/submissions/{id}/votes": {
@@ -388,78 +484,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/toilets/{id}/check-ins": {
+    "/admin/submissions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        post: operations["GamificationController_checkIn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/toilets/{id}/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["GamificationController_verify"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/me/passport": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["GamificationController_passport"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/leaderboard/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["GamificationController_leaderboard"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/badges": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["GamificationController_badges"];
+        get: operations["AdminSubmissionsController_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -800,6 +832,22 @@ export interface components {
                 awardedAt?: string;
             }[];
             needsHandle: boolean;
+            handleChangeableAt: string | null;
+            trust: {
+                score: number;
+                threshold: number;
+                isTrusted: boolean;
+            };
+            openSubmissions: {
+                count: number;
+                limit: number;
+            };
+            unseen: {
+                resolvedSubmissions: number;
+                badges: number;
+                points: number;
+            };
+            lastSeenActivityAt: string | null;
         };
         UpdateMeDto: {
             handle?: string;
@@ -811,11 +859,77 @@ export interface components {
                 id: string;
                 delta: number;
                 /** @enum {string} */
-                reason: "SUBMISSION_APPROVED" | "REVIEW_POSTED" | "REVIEW_WITH_PHOTO" | "STATUS_CONFIRMED" | "CHECK_IN" | "FIRST_CHECK_IN_AT_TOILET" | "VOTE_MATCHED_OUTCOME" | "SURVEY_COMPLETED";
+                reason: "SUBMISSION_APPROVED" | "REVIEW_POSTED" | "REVIEW_WITH_PHOTO" | "STATUS_CONFIRMED" | "CHECK_IN" | "FIRST_CHECK_IN_AT_TOILET" | "VOTE_MATCHED_OUTCOME" | "SURVEY_COMPLETED" | "NEW_TOILET_SUBMITTED" | "NEW_TOILET_CONFIRMED";
                 refId: string;
                 createdAt: string;
             }[];
             nextCursor: string | null;
+        };
+        ActivitySeenDto_Output: {
+            /** @constant */
+            ok: true;
+            seenAt: string;
+        };
+        CheckInDto: {
+            lat: number;
+            lng: number;
+        };
+        CheckInResultDto_Output: {
+            id: string;
+            distanceM: number;
+            pointsAwarded: number;
+            newBadges: {
+                id: string;
+                name: string;
+                description: string;
+                icon: string;
+                awardedAt?: string;
+            }[];
+            verifyPrompt: ("TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION")[];
+            confirmedPending: boolean;
+            wentLive: boolean;
+            bankedPoints: number;
+        };
+        VerifyDto: {
+            lat: number;
+            lng: number;
+            accurate: boolean;
+            note?: string;
+        };
+        OkDto_Output: {
+            /** @constant */
+            ok: true;
+        };
+        PassportDto_Output: {
+            stamped: number;
+            total: number;
+            stations: {
+                venueId: string;
+                name: string;
+                lines: string[];
+                stampedAt: string | null;
+            }[];
+        };
+        LeaderboardDto_Output: {
+            items: {
+                rank: number;
+                handle: string;
+                avatarUrl: string | null;
+                points: number;
+            }[];
+            me: {
+                rank: number | null;
+                points: number;
+            } | null;
+        };
+        BadgeListDto_Output: {
+            items: {
+                id: string;
+                name: string;
+                description: string;
+                icon: string;
+                awardedAt?: string;
+            }[];
         };
         /** @enum {string} */
         VenueType_Output: "MRT_STATION" | "BUS_INTERCHANGE" | "MALL" | "HAWKER_CENTRE" | "COFFEESHOP" | "COMMUNITY_CLUB" | "PARK" | "LIBRARY" | "HOSPITAL" | "SPORTS_CENTRE" | "OTHER";
@@ -863,6 +977,7 @@ export interface components {
             surveyTotal: number | null;
             rasStars: number | null;
             reviewCount: number;
+            seenBy: number;
             activeStatus: components["schemas"]["ActiveStatus_Output"][];
             lastVerifiedAt: string | null;
             needsResurvey: boolean;
@@ -994,6 +1109,7 @@ export interface components {
             surveyTotal: number | null;
             rasStars: number | null;
             reviewCount: number;
+            seenBy: number;
             activeStatus: components["schemas"]["ActiveStatus_Output"][];
             lastVerifiedAt: string | null;
             needsResurvey: boolean;
@@ -1003,6 +1119,8 @@ export interface components {
             walkSecondsEstimate?: number;
             accessNote: string | null;
             nearestExit: string | null;
+            near: string | null;
+            openSubmissionId: string | null;
             openingHours: components["schemas"]["OpeningHours_Output"] | null;
             featureDetails: {
                 feature: components["schemas"]["Feature_Output"];
@@ -1062,6 +1180,7 @@ export interface components {
                     /** @enum {string} */
                     source: "onemap" | "estimate";
                 } | null;
+                unconfirmed: boolean;
             }[];
             searchedRadiusM: number;
             skippedVenues: {
@@ -1109,7 +1228,9 @@ export interface components {
                 features: {
                     [key: string]: boolean;
                 };
+                /** @default [] */
                 photoIds: string[];
+                note?: string;
             };
             toiletId?: string;
             lat?: number;
@@ -1143,6 +1264,7 @@ export interface components {
                 /** @enum {string} */
                 status: "CLOSED" | "RENOVATION";
                 reason: string;
+                note?: string;
             };
             toiletId?: string;
             lat?: number;
@@ -1154,7 +1276,7 @@ export interface components {
             /** @enum {string} */
             kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
             /** @enum {string} */
-            state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED";
+            state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED" | "ESCALATED";
             payload: {
                 venueId?: string;
                 newVenue?: {
@@ -1172,7 +1294,9 @@ export interface components {
                 features: {
                     [key: string]: boolean;
                 };
+                /** @default [] */
                 photoIds: string[];
+                note?: string;
             } | {
                 changes: {
                     label?: string;
@@ -1190,7 +1314,34 @@ export interface components {
                 /** @enum {string} */
                 status: "CLOSED" | "RENOVATION";
                 reason: string;
+                note?: string;
             };
+            onSite: boolean;
+            hasPhoto: boolean;
+            /** @enum {string} */
+            path: "auto" | "on_site_check_in" | "nearby_quorum";
+            nearbyApprovals: number;
+            needed: number;
+            escalated: boolean;
+            submitterDistanceM: number | null;
+            reviewerNotes: {
+                /** @enum {string} */
+                value: "APPROVE" | "REJECT";
+                note: string | null;
+                createdAt: string;
+                nearby: boolean;
+                viaCheckIn: boolean;
+            }[];
+            current: {
+                label?: string | null;
+                level?: string | null;
+                /** @enum {string} */
+                areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                accessNote?: string | null;
+                features?: {
+                    [key: string]: boolean | null;
+                };
+            } | null;
             toilet: {
                 id: string;
                 label: string | null;
@@ -1218,7 +1369,9 @@ export interface components {
             createdAt: string;
             expiresAt: string;
             resolvedAt: string | null;
-            resolution: string | null;
+            resolution: ("auto_on_site_photo" | "confirmed_on_site" | "community_approved" | "trusted_approved" | "moderator_approved" | "moderator_rejected" | "moderator_needs_info" | "peer_needs_info" | "escalated_expired" | "escalated_flagged" | "expired") | null;
+            resolutionText: string | null;
+            resolutionNote: string | null;
             distanceM?: number;
             myVote: ("APPROVE" | "REJECT") | null;
             photos: {
@@ -1234,7 +1387,7 @@ export interface components {
                 /** @enum {string} */
                 kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
                 /** @enum {string} */
-                state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED";
+                state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED" | "ESCALATED";
                 payload: {
                     venueId?: string;
                     newVenue?: {
@@ -1252,7 +1405,9 @@ export interface components {
                     features: {
                         [key: string]: boolean;
                     };
+                    /** @default [] */
                     photoIds: string[];
+                    note?: string;
                 } | {
                     changes: {
                         label?: string;
@@ -1270,7 +1425,34 @@ export interface components {
                     /** @enum {string} */
                     status: "CLOSED" | "RENOVATION";
                     reason: string;
+                    note?: string;
                 };
+                onSite: boolean;
+                hasPhoto: boolean;
+                /** @enum {string} */
+                path: "auto" | "on_site_check_in" | "nearby_quorum";
+                nearbyApprovals: number;
+                needed: number;
+                escalated: boolean;
+                submitterDistanceM: number | null;
+                reviewerNotes: {
+                    /** @enum {string} */
+                    value: "APPROVE" | "REJECT";
+                    note: string | null;
+                    createdAt: string;
+                    nearby: boolean;
+                    viaCheckIn: boolean;
+                }[];
+                current: {
+                    label?: string | null;
+                    level?: string | null;
+                    /** @enum {string} */
+                    areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    accessNote?: string | null;
+                    features?: {
+                        [key: string]: boolean | null;
+                    };
+                } | null;
                 toilet: {
                     id: string;
                     label: string | null;
@@ -1298,7 +1480,9 @@ export interface components {
                 createdAt: string;
                 expiresAt: string;
                 resolvedAt: string | null;
-                resolution: string | null;
+                resolution: ("auto_on_site_photo" | "confirmed_on_site" | "community_approved" | "trusted_approved" | "moderator_approved" | "moderator_rejected" | "moderator_needs_info" | "peer_needs_info" | "escalated_expired" | "escalated_flagged" | "expired") | null;
+                resolutionText: string | null;
+                resolutionNote: string | null;
                 distanceM?: number;
                 myVote: ("APPROVE" | "REJECT") | null;
                 photos: {
@@ -1308,6 +1492,11 @@ export interface components {
                 }[];
                 canVote: boolean;
             }[];
+        };
+        UpdateSubmissionDto: {
+            note?: string;
+            photoIds?: string[];
+            level?: string;
         };
         VoteDto: {
             /** @enum {string} */
@@ -1321,62 +1510,117 @@ export interface components {
             state: "APPROVED" | "REJECTED" | "NEEDS_INFO";
             note?: string;
         };
-        CheckInDto: {
-            lat: number;
-            lng: number;
-        };
-        CheckInResultDto_Output: {
-            id: string;
-            distanceM: number;
-            pointsAwarded: number;
-            newBadges: {
-                id: string;
-                name: string;
-                description: string;
-                icon: string;
-                awardedAt?: string;
-            }[];
-            verifyPrompt: ("TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION")[];
-        };
-        VerifyDto: {
-            lat: number;
-            lng: number;
-            accurate: boolean;
-            note?: string;
-        };
-        OkDto_Output: {
-            /** @constant */
-            ok: true;
-        };
-        PassportDto_Output: {
-            stamped: number;
-            total: number;
-            stations: {
-                venueId: string;
-                name: string;
-                lines: string[];
-                stampedAt: string | null;
-            }[];
-        };
-        LeaderboardDto_Output: {
-            items: {
-                rank: number;
-                handle: string;
-                avatarUrl: string | null;
-                points: number;
-            }[];
-            me: {
-                rank: number | null;
-                points: number;
-            } | null;
-        };
-        BadgeListDto_Output: {
+        ModeratorSubmissionListDto_Output: {
             items: {
                 id: string;
-                name: string;
-                description: string;
-                icon: string;
-                awardedAt?: string;
+                /** @enum {string} */
+                kind: "NEW_TOILET" | "EDIT_TOILET" | "CLOSE_TOILET";
+                /** @enum {string} */
+                state: "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "EXPIRED" | "ESCALATED";
+                payload: {
+                    venueId?: string;
+                    newVenue?: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "MRT_STATION" | "BUS_INTERCHANGE" | "MALL" | "HAWKER_CENTRE" | "COFFEESHOP" | "COMMUNITY_CLUB" | "PARK" | "LIBRARY" | "HOSPITAL" | "SPORTS_CENTRE" | "OTHER";
+                    };
+                    label?: string;
+                    lat: number;
+                    lng: number;
+                    level?: string;
+                    /** @enum {string} */
+                    areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    accessNote?: string;
+                    features: {
+                        [key: string]: boolean;
+                    };
+                    /** @default [] */
+                    photoIds: string[];
+                    note?: string;
+                } | {
+                    changes: {
+                        label?: string;
+                        level?: string;
+                        /** @enum {string} */
+                        areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                        accessNote?: string;
+                        features?: {
+                            [key: string]: boolean;
+                        };
+                    };
+                    photoIds?: string[];
+                    note?: string;
+                } | {
+                    /** @enum {string} */
+                    status: "CLOSED" | "RENOVATION";
+                    reason: string;
+                    note?: string;
+                };
+                onSite: boolean;
+                hasPhoto: boolean;
+                /** @enum {string} */
+                path: "auto" | "on_site_check_in" | "nearby_quorum";
+                nearbyApprovals: number;
+                needed: number;
+                escalated: boolean;
+                submitterDistanceM: number | null;
+                reviewerNotes: {
+                    /** @enum {string} */
+                    value: "APPROVE" | "REJECT";
+                    note: string | null;
+                    createdAt: string;
+                    nearby: boolean;
+                    viaCheckIn: boolean;
+                }[];
+                current: {
+                    label?: string | null;
+                    level?: string | null;
+                    /** @enum {string} */
+                    areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    accessNote?: string | null;
+                    features?: {
+                        [key: string]: boolean | null;
+                    };
+                } | null;
+                toilet: {
+                    id: string;
+                    label: string | null;
+                    venueName: string;
+                    lat: number;
+                    lng: number;
+                } | null;
+                venue: {
+                    id: string;
+                    name: string;
+                    /** @enum {string} */
+                    type: "MRT_STATION" | "BUS_INTERCHANGE" | "MALL" | "HAWKER_CENTRE" | "COFFEESHOP" | "COMMUNITY_CLUB" | "PARK" | "LIBRARY" | "HOSPITAL" | "SPORTS_CENTRE" | "OTHER";
+                    lines: string[];
+                    lat: number;
+                    lng: number;
+                    /** @enum {string} */
+                    toiletStatus: "HAS_TOILETS" | "NONE" | "UNKNOWN" | "USES_NEARBY";
+                    note: string | null;
+                } | null;
+                submittedBy: {
+                    handle: string | null;
+                };
+                approvals: number;
+                rejections: number;
+                createdAt: string;
+                expiresAt: string;
+                resolvedAt: string | null;
+                resolution: ("auto_on_site_photo" | "confirmed_on_site" | "community_approved" | "trusted_approved" | "moderator_approved" | "moderator_rejected" | "moderator_needs_info" | "peer_needs_info" | "escalated_expired" | "escalated_flagged" | "expired") | null;
+                resolutionText: string | null;
+                resolutionNote: string | null;
+                distanceM?: number;
+                myVote: ("APPROVE" | "REJECT") | null;
+                photos: {
+                    id: string;
+                    url: string;
+                    thumbUrl: string | null;
+                }[];
+                canVote: boolean;
+                ageDays: number;
             }[];
         };
         ReviewPageDto_Output: {
@@ -1406,6 +1650,7 @@ export interface components {
             createdAt: string;
             expiresAt: string;
             confirmedByMe: boolean;
+            unconfirmed: boolean;
         };
         StatusReportListDto_Output: {
             items: components["schemas"]["StatusReport_Output"][];
@@ -1422,6 +1667,7 @@ export interface components {
             createdAt: string;
             expiresAt: string;
             confirmedByMe: boolean;
+            unconfirmed: boolean;
         };
         CreateFlagDto: {
             reason: string;
@@ -1533,6 +1779,7 @@ export interface components {
                 toilets: number;
                 venues: number;
                 pending: number;
+                escalated: number;
                 flagsOpen: number;
                 photosPending: number;
                 noFeatures: number;
@@ -1647,7 +1894,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sets the session cookie and redirects to the app */
+            /** @description Sets the session cookie and redirects to the app; on any failure redirects to /login?redirect=&error=<code> */
             302: {
                 headers: {
                     [name: string]: unknown;
@@ -1775,6 +2022,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityPageDto_Output"];
+                };
+            };
+        };
+    };
+    UsersController_activitySeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivitySeenDto_Output"];
+                };
+            };
+        };
+    };
+    GamificationController_checkIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckInDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckInResultDto_Output"];
+                };
+            };
+        };
+    };
+    GamificationController_verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkDto_Output"];
+                };
+            };
+        };
+    };
+    GamificationController_passport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PassportDto_Output"];
+                };
+            };
+        };
+    };
+    GamificationController_leaderboard: {
+        parameters: {
+            query?: {
+                scope?: "week" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderboardDto_Output"];
+                };
+            };
+        };
+    };
+    GamificationController_badges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadgeListDto_Output"];
                 };
             };
         };
@@ -2119,6 +2494,31 @@ export interface operations {
             };
         };
     };
+    SubmissionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSubmissionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionViewDto_Output"];
+                };
+            };
+        };
+    };
     SubmissionsController_vote: {
         parameters: {
             query?: never;
@@ -2169,79 +2569,10 @@ export interface operations {
             };
         };
     };
-    GamificationController_checkIn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CheckInDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CheckInResultDto_Output"];
-                };
-            };
-        };
-    };
-    GamificationController_verify: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifyDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OkDto_Output"];
-                };
-            };
-        };
-    };
-    GamificationController_passport: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PassportDto_Output"];
-                };
-            };
-        };
-    };
-    GamificationController_leaderboard: {
+    AdminSubmissionsController_list: {
         parameters: {
             query?: {
-                scope?: "week" | "all";
+                state?: "pending" | "escalated" | "needs_info" | "all";
             };
             header?: never;
             path?: never;
@@ -2254,26 +2585,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaderboardDto_Output"];
-                };
-            };
-        };
-    };
-    GamificationController_badges: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BadgeListDto_Output"];
+                    "application/json": components["schemas"]["ModeratorSubmissionListDto_Output"];
                 };
             };
         };
