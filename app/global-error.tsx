@@ -1,14 +1,11 @@
 "use client";
 
-import { Dela_Gothic_One, M_PLUS_Rounded_1c } from "next/font/google";
 import { Mascot } from "@/components/mascot";
 import { buttonClass } from "@/components/styles";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme-script";
+// The layout's own faces and variables (one declaration, no second set of files), so the crash page speaks in the app's voice.
+import { dela, rounded } from "./fonts";
 import "./globals.css";
-
-/** Same faces and variables as app/layout.tsx, so the crash page speaks in the app's voice. */
-const dela = Dela_Gothic_One({ variable: "--font-dela", weight: "400", subsets: ["latin"] });
-const rounded = M_PLUS_Rounded_1c({ variable: "--font-rounded", weight: ["500", "700", "800"], subsets: ["latin"] });
 
 /** Replaces the root layout when it crashes, so it brings its own document, styles, font and theme. */
 export default function GlobalError({ retry }: { error: unknown; retry: () => void }) {

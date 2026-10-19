@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Dela_Gothic_One, M_PLUS_Rounded_1c } from "next/font/google";
 import { Suspense } from "react";
 import { BottomNav, SiteHeader } from "@/components/nav";
 import { PersistentHome } from "@/components/persistent-home";
@@ -7,22 +6,9 @@ import { RouteTransition } from "@/components/route-transition";
 import { MOTION_BOOT_SCRIPT } from "@/lib/motion";
 import { SITE_URL } from "@/lib/site";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme-script";
+import { dela, rounded } from "./fonts";
 import { Providers } from "./providers";
 import "./globals.css";
-
-/** Display voice: one chunky weight for headlines and big numbers. */
-const dela = Dela_Gothic_One({
-  variable: "--font-dela",
-  weight: "400",
-  subsets: ["latin"],
-});
-
-/** Workhorse: rounded sans for everything else. */
-const rounded = M_PLUS_Rounded_1c({
-  variable: "--font-rounded",
-  weight: ["500", "700", "800"],
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   // Resolves relative canonical and Open Graph URLs.
@@ -42,6 +28,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Android: the keyboard shrinks the layout, so docked bars and dialog sheets stay above it.
+  // iOS ignores this; Dialog (components/ui.tsx) lifts itself with visualViewport instead.
+  interactiveWidget: "resizes-content",
   // No themeColor: THEME_BOOT_SCRIPT adds the theme-color meta and keeps it on the chosen theme.
 };
 
@@ -52,9 +41,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT + MOTION_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-dvh">
+        {/* Keeps the installed iPhone app's white status bar readable in both themes (globals.css). */}
+        <div aria-hidden className="status-scrim" />
         <a
           href="#main"
-          className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-fg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+          className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-fg focus:not-sr-only focus:fixed focus:left-4 focus:top-[calc(env(safe-area-inset-top)+1rem)]"
         >
           Skip to content
         </a>
@@ -65,7 +56,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <SiteHeader />
           {/* Before <main> in the DOM so "I need to go" is an early tab stop on phones (it is fixed to the bottom visually). */}
           <BottomNav />
-          <main id="main" className="flex min-h-[calc(100dvh-4rem)] flex-col pb-32 md:pb-0">
+          <main id="main" className="flex min-h-[calc(100dvh-4rem)] flex-col pb-[calc(var(--nav-h)+var(--nav-crown)+env(safe-area-inset-bottom)+1rem)] md:pb-0">
             {/* The map stays mounted across tabs (hidden off "/"), so leaving and returning are instant. */}
             <Suspense fallback={null}>
               <PersistentHome />
