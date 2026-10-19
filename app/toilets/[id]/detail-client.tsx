@@ -527,7 +527,7 @@ function Verdict({ t }: { t: ToiletDetail }) {
             <CircleHelp className="size-5" aria-hidden />
           </button>
         </span>
-        <span className="text-sm font-medium text-muted">{lastVerifiedText(t)}</span>
+        <VerifiedLine t={t} />
       </div>
       <TierHelpDialog open={tierHelp} onClose={() => setTierHelp(false)} />
 
@@ -558,6 +558,23 @@ function Verdict({ t }: { t: ToiletDetail }) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * "Last verified 2 hours ago by @handle" (GROWTH.md 1.7): credit for whoever last tapped "still accurate"
+ * on site. Handle only, never a name, and no link: there are no public profiles. The API sends null when
+ * nobody is known or they turned credit off on /me, and then the line reads as it always did.
+ */
+function VerifiedLine({ t }: { t: ToiletDetail }) {
+  const by = t.lastVerifiedAt ? t.verifiedBy?.handle : null;
+  if (!by) return <span className="text-sm font-medium text-muted">{lastVerifiedText(t)}</span>;
+  return (
+    <span className="text-sm font-medium text-muted">
+      {lastVerifiedText({ lastVerifiedAt: t.lastVerifiedAt, needsResurvey: false })} by{" "}
+      <span className="font-bold text-fg">@{by}</span>
+      {t.needsResurvey ? " · due for a re-survey" : null}
+    </span>
   );
 }
 

@@ -125,10 +125,13 @@ function BottomNavInner({ pathname }: { pathname: string | null }) {
   );
 }
 
-/** Something happened since they last looked at /me (a decision on a submission, a badge, points). */
+/**
+ * Something happened since they last looked at /me (a decision on a submission, a badge, points, or
+ * people sent to toilets they helped). `routed` may be missing from a Me cached before it existed.
+ */
 function hasUnseenActivity(me: Me | null | undefined) {
   const u = me?.unseen;
-  return !!u && u.resolvedSubmissions + u.badges + u.points > 0;
+  return !!u && u.resolvedSubmissions + u.badges + u.points + (u.routed ?? 0) > 0;
 }
 
 /** Mint, the good-news colour; ringed in the bar's surface so it reads on the icon. */

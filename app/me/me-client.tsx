@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Compass,
   Flame,
+  HandHeart,
   Link2,
   LogOut,
   Map as MapIcon,
@@ -58,9 +59,11 @@ import { PhotoPicker } from "@/components/photo-picker";
 import { holdChrome } from "@/components/route-transition";
 import { LineBadge } from "@/components/toilet-bits";
 import { Button, Card, Dialog, EmptyState, ErrorState, SlidingPill, Spinner, Tabs, buttonClass, cx, inputClass } from "@/components/ui";
+import { Switch } from "@/components/switch";
 import { TpBar } from "@/components/tp-bar";
 import { api, errorMessage, isApiError } from "@/lib/api/client";
 import type { ActivityItem, Badge, Me, Passport, PhotoRef, Role, SubmissionView, UpdateSubmissionBody } from "@/lib/api/types";
+import { track } from "@/lib/analytics";
 import { ME_KEY, hasRole, useRequireAuth, useSignOut } from "@/lib/auth";
 import { MRT_LINES, formatDate, lineColor, lineTextColor, plural } from "@/lib/format";
 import { getMotionPref, reducedMotion, setMotionPref, type MotionPref } from "@/lib/motion";
@@ -219,7 +222,7 @@ function Stat({ value, of, label, gold }: { value: number | undefined; of?: numb
 
 /* ─────────────── since your last visit ─────────────── */
 
-const NOTHING_UNSEEN: Me["unseen"] = { resolvedSubmissions: 0, badges: 0, points: 0 };
+const NOTHING_UNSEEN: Me["unseen"] = { resolvedSubmissions: 0, badges: 0, points: 0, routed: 0 };
 
 /**
  * What happened while they were away (Me.unseen), marked seen once it's on screen so the Me tab's dot
@@ -231,7 +234,9 @@ function SinceLastVisit({ me, onSeeActivity }: { me: Me; onSeeActivity: () => vo
   const [snap] = useState(() => ({ unseen: me.unseen, since: me.lastSeenActivityAt }));
   const marked = useRef(false);
   const { resolvedSubmissions, badges, points } = snap.unseen;
-  const any = resolvedSubmissions + badges + points > 0;
+  // Missing on a Me cached before the field existed.
+  const routed = snap.unseen.routed ?? 0;
+  const any = resolvedSubmissions + badges + points + routed > 0;
   useEffect(() => {
     if (!any || marked.current) return;
     marked.current = true;
@@ -272,6 +277,11 @@ function SinceLastVisit({ me, onSeeActivity }: { me: Me; onSeeActivity: () => vo
             </li>
           ) : null}
           {badges > 0 ? <li>{plural(badges, "new badge")}</li> : null}
+          {routed > 0 ? (
+            <li>
+              {routed === 1 ? "1 person was sent to a toilet you helped" : `${routed} people were sent to toilets you helped`}
+            </li>
+          ) : null}
         </ul>
         {fresh.length ? (
           <ul className="mt-2 flex flex-wrap gap-3">
@@ -463,6 +473,7 @@ function ProgressTab({ me }: { me: Me }) {
 
   return (
     <>
+      <Impact me={me} />
       {next && q.data ? (
         <section aria-labelledby="next-badge" className="flex flex-col gap-3">
           <h2 id="next-badge" className="text-2xl leading-tight">
@@ -478,9 +489,52 @@ function ProgressTab({ me }: { me: Me }) {
   );
 }
 
+/**
+ * What their contributions did (Me.impact, GROWTH.md 1.3): route starts this week to toilets they added,
+ * last verified or checked in at within 90 days. Counts only, never who. A dead "0 people" is never
+ * shown: with no toilets yet it's a nudge, and with toilets but a quiet week it says so in words.
+ */
+function Impact({ me }: { me: Me }) {
+  // Missing on a Me cached before the field existed.
+  const { toilets, routedWeek } = me.impact ?? { toilets: 0, routedWeek: 0 };
+  return (
+    <section aria-labelledby="impact" className="flex flex-col gap-3">
+      <h2 id="impact" className="flex items-center gap-2 text-2xl leading-tight">
+        <HandHeart className="size-6 shrink-0 text-primary" aria-hidden /> Your impact
+      </h2>
+      <div className="flex flex-col gap-1 rounded-3xl border border-border/70 bg-surface p-4 shadow-rest tabular-nums">
+        {toilets === 0 && routedWeek === 0 ? (
+          <>
+            <p className="font-extrabold">Nothing to count yet lah.</p>
+            <p className="text-sm text-muted">
+              Check in at a toilet, confirm one is still accurate or add a missing one. Then each week we&apos;ll show how many
+              people were sent to the toilets you helped.
+            </p>
+          </>
+        ) : (
+          <>
+            {routedWeek > 0 ? (
+              <p className="font-bold">
+                Your toilets helped <strong className="text-lg font-extrabold text-mint">{routedWeek}</strong>{" "}
+                {routedWeek === 1 ? "person" : "people"} this week.
+              </p>
+            ) : (
+              <p className="font-bold">Quiet week. Nobody was sent to your toilets in the last 7 days.</p>
+            )}
+            <p className="text-sm text-muted">
+              {plural(toilets, "toilet")} helped: ones you added, verified or checked in at in the last 90 days.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** Trusted reviewer: what it is, how far along they are, and what earns progress (backend TRUST_REASONS). */
 function TrustProgress({ me }: { me: Me }) {
   const { score, threshold, isTrusted } = me.trust;
+  const left = Math.max(0, threshold - score);
   return (
     <section aria-labelledby="trust" className="flex flex-col gap-3">
       <h2 id="trust" className="flex items-center gap-2 text-2xl leading-tight">
@@ -493,6 +547,12 @@ function TrustProgress({ me }: { me: Me }) {
           </p>
         ) : (
           <>
+            {/* The ladder says its prize up front (GROWTH.md 1.7), so the points have a point. */}
+            <p className="font-bold tabular-nums">
+              {left > 0
+                ? `${plural(left, "point")} to Trusted. Then your single vote approves a toilet or an edit, from anywhere.`
+                : `You have the ${threshold} points. Trusted means your single vote approves a toilet or an edit, from anywhere.`}
+            </p>
             <div className="flex items-center gap-3">
               <p className="shrink-0 text-sm text-muted tabular-nums">
                 <strong className="text-base font-extrabold text-fg">{Math.min(score, threshold)}</strong> of {threshold} points
@@ -502,10 +562,6 @@ function TrustProgress({ me }: { me: Me }) {
             <p className="text-sm">
               <strong className="font-extrabold">What counts:</strong> points other people back up. A toilet or edit you sent
               going live, someone confirming your status report, your review vote matching the outcome, and reviews with a photo.
-            </p>
-            <p className="text-sm">
-              <strong className="font-extrabold">What it unlocks:</strong> your approval alone confirms a new toilet or an edit,
-              from anywhere, instead of needing two people nearby.
             </p>
           </>
         )}
@@ -883,9 +939,12 @@ function AskNearby({ s }: { s: SubmissionView }) {
       s.kind === "NEW_TOILET"
         ? "Near this toilet? Check in on Shit Go Where to confirm it's there."
         : "Near this toilet? Help confirm this change on Shit Go Where.";
+    const shared = (method: "native" | "copy") =>
+      track("share", { what: "submission", method, kind: s.kind, ...(s.toilet ? { toilet_id: s.toilet.id } : {}) });
     if (navigator.share) {
       try {
         await navigator.share({ title: submissionTitle(s), text, url });
+        shared("native");
         return;
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
@@ -893,6 +952,7 @@ function AskNearby({ s }: { s: SubmissionView }) {
     }
     try {
       await navigator.clipboard.writeText(url);
+      shared("copy");
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -1121,6 +1181,9 @@ function SettingsTab({ me }: { me: Me }) {
         <li>
           <LeaderboardOptIn me={me} />
         </li>
+        <li>
+          <VerifierCredit me={me} />
+        </li>
         <li className={row}>
           <span id="theme-label" className="font-extrabold">
             Theme
@@ -1341,23 +1404,12 @@ function LeaderboardOptIn({ me }: { me: Me }) {
               : `Others see only @${me.handle} and your points. Never your name, email, photo or where you checked in.`}
           </span>
         </span>
-        <span className="relative inline-flex shrink-0">
-          <input
-            type="checkbox"
-            role="switch"
-            className="peer absolute inset-0 z-10 cursor-pointer opacity-0 disabled:cursor-not-allowed"
-            checked={me.leaderboardOptIn}
-            disabled={optIn.isPending || noHandle}
-            aria-describedby="optin-help"
-            onChange={(e) => optIn.mutate(e.target.checked)}
-          />
-          <span
-            aria-hidden
-            className="flex h-8 w-14 items-center rounded-full border-2 border-border-strong bg-surface-2 p-0.5 transition peer-checked:border-primary peer-checked:bg-primary peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50 [&>span]:transition peer-checked:[&>span]:translate-x-6 peer-checked:[&>span]:bg-primary-fg"
-          >
-            <span className="size-6 rounded-full bg-muted shadow-gloss" />
-          </span>
-        </span>
+        <Switch
+          checked={me.leaderboardOptIn}
+          disabled={optIn.isPending || noHandle}
+          describedBy="optin-help"
+          onChange={(v) => optIn.mutate(v)}
+        />
       </label>
       {optIn.isError ? (
         <p role="alert" className="text-sm text-danger">
@@ -1367,6 +1419,46 @@ function LeaderboardOptIn({ me }: { me: Me }) {
       <Link href="/leaderboard" className="inline-flex min-h-11 items-center self-start text-sm font-bold text-primary underline">
         See the leaderboard
       </Link>
+    </div>
+  );
+}
+
+/** Credit on toilet pages (ToiletDetail.verifiedBy): "Last verified 2 hours ago by @handle". On by default. */
+function VerifierCredit({ me }: { me: Me }) {
+  const qc = useQueryClient();
+  const credit = useMutation({
+    mutationFn: (v: boolean) => api.updateMe({ verifierCredit: v }),
+    onSuccess: (m) => {
+      qc.setQueryData(ME_KEY, m);
+      // Toilet pages already loaded carry the old credit line.
+      void qc.invalidateQueries({ queryKey: ["toilet"] });
+    },
+  });
+  const noHandle = !me.handle;
+
+  return (
+    <div className={row}>
+      <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4">
+        <span>
+          <span className="block font-extrabold">Show my handle on toilets I check</span>
+          <span id="credit-help" className="block text-sm text-muted">
+            {noHandle
+              ? "Pick a handle above first. Toilet pages only ever show handles."
+              : `When you confirm a toilet is still accurate, its page credits you as @${me.handle}. Never your name or email.`}
+          </span>
+        </span>
+        <Switch
+          checked={me.verifierCredit}
+          disabled={credit.isPending || noHandle}
+          describedBy="credit-help"
+          onChange={(v) => credit.mutate(v)}
+        />
+      </label>
+      {credit.isError ? (
+        <p role="alert" className="text-sm text-danger">
+          {errorMessage(credit.error)}
+        </p>
+      ) : null}
     </div>
   );
 }
