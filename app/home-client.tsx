@@ -7,7 +7,6 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { BottomSheet, SHEET_PEEK, SHEET_TOP } from "@/components/bottom-sheet";
 import { LocateFailed, LocationNotice, LocationSearch, nearestStationName } from "@/components/location-search";
 import { ToiletMap, type Bounds, type MapFocus, type MapView } from "@/components/map";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { FilterChipLabel, TierLegend, ToiletCard } from "@/components/toilet-bits";
 import { Button, Chip, Dialog, EmptyState, ErrorState, Skeleton, buttonClass, cx } from "@/components/ui";
 import { NetworkError, api, errorMessage } from "@/lib/api/client";
@@ -37,7 +36,7 @@ const AT_TOILET_M = 50;
 const inside = (b: Bounds, p: LatLng) => p.lat >= b.minLat && p.lat <= b.maxLat && p.lng >= b.minLng && p.lng <= b.maxLng;
 const toilets = (n: number) => `${n} toilet${n === 1 ? "" : "s"}`;
 
-/** Open (or not known shut) first, keeping the distance order within each group: a closed toilet never leads. */
+/** Open (or not known shut) first, keeping the distance order within each group: for the map-area list. */
 function openFirst(list: ToiletSummary[]): ToiletSummary[] {
   const shut = list.filter(isClosedNow);
   return shut.length ? [...list.filter((t) => !isClosedNow(t)), ...shut] : list;
@@ -145,7 +144,8 @@ export function HomeClient() {
       // A saved list was measured from wherever it was fetched: measure again from where you are now.
       const list = savedOf(nearby.data) ? remeasure(raw, user ?? placeFrom) : raw;
       // Measured from a searched or fallback place: metres only, no walk minutes, so nothing reads as "from you".
-      return openFirst(user ? list : list.map((t) => ({ ...t, walkSecondsEstimate: undefined })));
+      // Near you it stays in walk-time order, closed ones included: they say "Closed now" on the card.
+      return user ? list : list.map((t) => ({ ...t, walkSecondsEstimate: undefined }));
     }
     // Only what's on screen, so list and pins agree. Walk times stay from you, never from the map centre.
     return openFirst(
@@ -163,6 +163,8 @@ export function HomeClient() {
   const updating = filtering || (nearby.isPlaceholderData && nearby.isFetching);
   // The selected toilet sits in its own card above the list, so leave it out of the list.
   const listItems = useMemo(() => items.filter((t) => t.id !== selectedId), [items, selectedId]);
+  // "Walk there" goes on the nearest one you can actually use, so it never routes to a shut door.
+  const walkId = listItems.find((t) => t.status !== "PENDING" && !isClosedNow(t))?.id;
   const listRef = useRef<HTMLUListElement>(null);
   const itemKeys = useMemo(() => listItems.map((t) => t.id), [listItems]);
   useFlipList(listRef, itemKeys);
@@ -637,34 +639,23 @@ export function HomeClient() {
           <ul
             ref={listRef}
             className="flex flex-col gap-3"
-            aria-label={listArea ? "Toilets in this map area, nearest the centre first" : "Toilets sorted by distance"}
+            aria-label={listArea ? "Toilets in this map area, nearest the centre first" : "Toilets sorted by walking time"}
           >
             {listItems.map((t, i) => (
               <li key={t.id} data-flip-key={t.id} data-sheet-peek={i === 0 ? "" : undefined}>
-                {/* The peek's card (or the picked one above) gets "Walk there": one tap from the map to the route. */}
-                <ToiletCard t={t} onHover={setHoverId} walk={i === 0 && !selected} distanceFrom={distanceFrom} />
+                {/* The nearest usable card (or the picked one above) gets "Walk there": one tap from the map to the route. */}
+                <ToiletCard t={t} onHover={setHoverId} walk={t.id === walkId && !selected} distanceFrom={distanceFrom} />
               </li>
             ))}
           </ul>
         )}
-        <div className="mt-4 flex flex-col gap-2 text-xs text-muted">
+        <div className="mt-4 text-xs text-muted">
           <p>
             {hasImported ? "Some toilet data © OpenStreetMap contributors (ODbL). " : ""}
             <Link href="/about" className="font-semibold underline">
               How we rate toilets and where the data comes from
             </Link>
           </p>
-          {/* Reachable signed out: the theme switch and the planning-ahead lists. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Link
-              href="/areas"
-              className="inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold text-primary underline-offset-2 hover:underline"
-            >
-              Toilets by area
-              <ChevronRight className="size-4" aria-hidden />
-            </Link>
-            <ThemeToggle />
-          </div>
         </div>
       </BottomSheet>
     </div>

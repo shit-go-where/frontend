@@ -1154,7 +1154,7 @@ function SettingsTab({ me }: { me: Me }) {
   const qc = useQueryClient();
   const router = useRouter();
   const signOut = useSignOut();
-  // The theme is read live from <html data-theme>, so this and the map sheet's ThemeToggle never disagree.
+  // The theme is read live from <html data-theme>, so it always shows the theme the boot script applied.
   const theme = useThemePref();
   // Settings only renders after /me loads in the browser, so reading storage here is safe.
   const [motion, setMotion] = useState<MotionPref>(getMotionPref);
@@ -1191,7 +1191,7 @@ function SettingsTab({ me }: { me: Me }) {
           <span id="theme-label" className="font-extrabold">
             Theme
           </span>
-          {/* Device first, as on the ThemeToggle: following the phone is the default. */}
+          {/* Device first: following the phone is the default. */}
           <Segmented<ThemePref>
             label="Theme"
             value={theme}

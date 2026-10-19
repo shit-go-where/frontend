@@ -26,7 +26,7 @@ export function setThemePref(pref: ThemePref) {
   document.documentElement.dataset.theme = pref;
 }
 
-/** The pick as the boot script applied it, so every control showing it (ThemeToggle, /me) stays in step. */
+/** The pick as the boot script applied it, so the /me setting shows what is actually applied. */
 function pref(): ThemePref {
   const t = document.documentElement.dataset.theme;
   return t === "light" || t === "dark" ? t : "system";

@@ -7,7 +7,7 @@ test.describe("find", () => {
     const api = await mockApi(page);
     await page.goto("/");
 
-    const list = page.getByRole("list", { name: "Toilets sorted by distance" });
+    const list = page.getByRole("list", { name: "Toilets sorted by walking time" });
     await expect(list.getByTestId("toilet-card")).toHaveCount(TOILETS.length);
     await expect(page.getByRole("heading", { name: "3 toilets within 1 km" })).toBeVisible();
     await expect(list.getByText("Dhoby Ghaut")).toBeVisible();
