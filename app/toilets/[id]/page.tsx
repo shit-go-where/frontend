@@ -28,11 +28,11 @@ export async function generateMetadata({ params }: PageProps<"/toilets/[id]">): 
     openGraph: {
       title: `${title} · Shit Go Where`,
       description,
-      // A real photo when there is one, else this toilet's own card (opengraph-image.tsx). Set either
-      // way: a page's openGraph replaces the parent's whole, so leaving images out would drop them.
-      images: t.photos[0]?.url
-        ? [{ url: t.photos[0].url }]
-        : [{ url: `/toilets/${encodeURIComponent(t.id)}/opengraph-image`, width: 1200, height: 630, alt: title }],
+      // Always this toilet's own card (opengraph-image.tsx), even when it has photos: the card carries
+      // the tier, score and last-verified age that every appearance of a toilet must show (PRODUCT.md
+      // principle 2), and a toilet photo makes a poor chat preview. Set explicitly: a page's openGraph
+      // replaces the parent's whole, so leaving images out would drop them.
+      images: [{ url: `/toilets/${encodeURIComponent(t.id)}/opengraph-image`, width: 1200, height: 630, alt: title }],
     },
   };
 }

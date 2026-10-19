@@ -19,7 +19,96 @@ export const OG = {
   caramelInk: "#2a1508",
   gold: "#ffc46b",
   mint: "#5ee0bd",
+  /** Broken Red, for closed and under renovation. */
+  red: "#ff7a6b",
+  /** Wet-Floor Yellow, for pending review. */
+  yellow: "#ffd76b",
 } as const;
+
+/*
+ * The share card's verdict word, from the 0-10 cleanliness score (the same scale the toilet page
+ * shows as "8.5/10"). Framing only: the score itself is always printed beside it in plain numbers.
+ * Thresholds, picked against the surveyed scores (median about 8) and the review mapping
+ * (1-5 stars become 2-10, so 4 stars = 8 and 3 stars = 6):
+ *   8 and up   "Shiok!"   (4-5 star territory; about half the surveyed toilets)
+ *   6 to < 8   "Can lah"  (fine, nothing to write home about)
+ *   below 6    "Aiyo"     (bring your own tissue; under a tenth of the survey)
+ * No score, no verdict: we never guess.
+ */
+export function ogVerdict(score: number | null | undefined): string | null {
+  if (score === null || score === undefined || Number.isNaN(score)) return null;
+  if (score >= 8) return "Shiok!";
+  if (score >= 6) return "Can lah";
+  return "Aiyo";
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * "Last verified 3 days ago", at day resolution: chat apps keep a card for days, so "5 minutes ago"
+ * would soon be wrong. Same words as lastVerifiedText in components/toilet-bits.tsx, which is a client
+ * module and can't be imported here.
+ */
+export function ogVerifiedText(iso: string | null | undefined, now: number = Date.now()): string {
+  if (!iso) return "Never verified in person";
+  const days = Math.floor((now - new Date(iso).getTime()) / DAY_MS);
+  if (Number.isNaN(days)) return "Never verified in person";
+  const ago = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  const when =
+    days < 1
+      ? "today"
+      : days < 2
+        ? "yesterday"
+        : days < 14
+          ? ago(days, "day")
+          : days < 60
+            ? ago(Math.floor(days / 7), "week")
+            : days < 730
+              ? ago(Math.floor(days / 30), "month")
+              : ago(Math.floor(days / 365), "year");
+  return `Last verified ${when}`;
+}
+
+/** A plain fact chip (a feature), in fudge with the chocolate line, like the app's feature chips. */
+export function OgChip({ children }: { children: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        padding: "6px 22px",
+        borderRadius: 999,
+        background: OG.surface,
+        border: `3px solid ${OG.line}`,
+        color: OG.cream,
+        fontSize: 30,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** The verdict as a tilted candy-pink sticker with a cream die-cut rim, like the app's medals. */
+export function OgSticker({ children }: { children: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        padding: "6px 26px 10px",
+        borderRadius: 999,
+        background: OG.pink,
+        color: OG.pinkInk,
+        border: `5px solid ${OG.cream}`,
+        fontSize: 48,
+        letterSpacing: -1,
+        transform: "rotate(-6deg)",
+        boxShadow: "0 6px 0 rgba(0,0,0,0.45)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** The toilet-roll map pin, same paths as components/logo.tsx. */
 export function OgLogo({ size }: { size: number }) {
