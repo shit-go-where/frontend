@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Privacy notice",
@@ -65,10 +66,23 @@ export default function PrivacyPage() {
       </p>
 
       <h2>Contact</h2>
-      <p>
-        For access or correction requests, or questions about this notice, contact the Shit Go Where team through the project&apos;s
-        GitHub organisation.
-      </p>
+      {CONTACT_EMAIL ? (
+        <p>
+          For access or correction requests, or questions about this notice, email{" "}
+          <a href={`mailto:${CONTACT_EMAIL}?subject=Data%20request`} className="font-bold text-primary underline hover:decoration-[3px]">
+            {CONTACT_EMAIL}
+          </a>
+          . Tell us the email you signed in with so we can find your account.
+        </p>
+      ) : (
+        <p>
+          For access or correction requests, or questions about this notice, see{" "}
+          <Link href="/about#contact" className="font-bold text-primary underline hover:decoration-[3px]">
+            Contact
+          </Link>{" "}
+          on the About page.
+        </p>
+      )}
 
       <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">Last updated 19 October 2026.</p>
     </article>

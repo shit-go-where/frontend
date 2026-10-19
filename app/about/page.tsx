@@ -4,10 +4,12 @@ import { Logo } from "@/components/logo";
 import { PinGlyph, type PinVariant } from "@/components/pin";
 import { LineBadge } from "@/components/toilet-bits";
 import { MRT_LINES, TIER_LEGEND } from "@/lib/format";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "Why Shit Go Where exists, how to read the map, words you'll see in the app, and data licences.",
+  description:
+    "Why Shit Go Where exists, how to read the map, words you'll see in the app, data licences, and how to contact us.",
 };
 
 const TIER_PIN: Record<(typeof TIER_LEGEND)[number]["tier"], PinVariant> = {
@@ -168,10 +170,52 @@ export default function AboutPage() {
         . Every check-in keeps the map fresh.
       </p>
 
+      <h2 id="contact" className={`${h2} scroll-mt-6`}>
+        Contact
+      </h2>
+      <ul className="mt-4 flex list-disc flex-col gap-3 pl-5 marker:text-primary">
+        <li>
+          <strong className="font-extrabold">Toilet wrong, closed or gone?</strong> Open it and tap{" "}
+          <strong className="font-extrabold">Report it</strong>, or <strong className="font-extrabold">Suggest an edit</strong>{" "}
+          for a missing fact. Moderators see those fastest, and the fix shows up for everyone.
+        </li>
+        {CONTACT_EMAIL ? (
+          <>
+            <li>
+              <strong className="font-extrabold">Your data</strong>: for access, correction or deletion requests, email{" "}
+              <a href={`mailto:${CONTACT_EMAIL}?subject=Data%20request`} className={link}>
+                {CONTACT_EMAIL}
+              </a>
+              . See the{" "}
+              <Link href="/privacy" className={link}>
+                privacy notice
+              </Link>{" "}
+              for what we keep.
+            </li>
+            <li>
+              <strong className="font-extrabold">Anything else</strong>: partnerships, press, ideas or a toilet we should
+              know about, email{" "}
+              <a href={`mailto:${CONTACT_EMAIL}`} className={link}>
+                {CONTACT_EMAIL}
+              </a>
+              .
+            </li>
+          </>
+        ) : null}
+      </ul>
+
       <p className="mt-12 border-t border-border/70 pt-4 text-sm text-muted">
         <Link href="/privacy" className={link}>
           Privacy notice
         </Link>
+        {CONTACT_EMAIL ? (
+          <>
+            {" · "}
+            <a href={`mailto:${CONTACT_EMAIL}`} className={link}>
+              Contact
+            </a>
+          </>
+        ) : null}
       </p>
     </article>
   );
