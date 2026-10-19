@@ -296,7 +296,7 @@ function WalkCta({ best, label }: { best: ReturnType<typeof bestOption>; label: 
   if (!best) {
     return (
       <Link href="/go?urgent=1" className={buttonClass("primary", "lg", "mt-5 w-full py-2 text-center leading-tight sm:w-auto")}>
-        <Search className="size-5 shrink-0" aria-hidden /> Find the nearest open toilet
+        <Search className="size-5 shrink-0" aria-hidden /> Find an open toilet
       </Link>
     );
   }

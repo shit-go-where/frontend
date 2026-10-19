@@ -115,8 +115,11 @@ function BottomNavInner({ pathname }: { pathname: string | null }) {
       </svg>
       <div className="mx-auto flex h-[var(--nav-h)] max-w-lg items-stretch px-2">
         {left.map(item)}
-        {/* Never narrower than the disc: when space runs out (zoomed text, small phones) the tabs truncate instead. */}
-        <div className="flex min-w-[calc(var(--nav-disc)+0.75rem)] flex-[1.3] justify-center">
+        {/*
+          Wide enough to hold "I NEED TO GO" on one line inside its own column, so it never crowds Add and Ranks.
+          Never narrower than the disc: when space runs out (zoomed text, small phones) the tabs truncate instead.
+        */}
+        <div className="flex min-w-[calc(var(--nav-disc)+0.75rem)] flex-[1.9] justify-center">
           <NeedToGoButton compact transitionTypes={tabTypes(BOTTOM_ORDER, pathname, "/go")} />
         </div>
         {right.map(item)}
@@ -200,10 +203,10 @@ export function NeedToGoButton({
           <Mascot mood="worried" className="mascot-press -mt-0.5 size-[calc(var(--nav-disc)*0.77)]" />
         </span>
         {/*
-          One line at rest, borrowing a little of the neighbouring tabs' empty sides (their labels are short and centred).
+          One line at rest, kept inside its own column so the neighbouring tab labels keep clear air.
           When that isn't enough (zoomed or enlarged text) it shrinks towards 10px, then breaks into "I NEED / TO GO".
         */}
-        <span className="w-max max-w-[calc(100%+min(2rem,9vw))] text-center font-display text-[length:clamp(0.625rem,3.6vw,0.8125rem)] leading-[1.05] text-balance text-urgent">
+        <span className="w-max max-w-full text-center font-display text-[length:clamp(0.625rem,3.3vw,0.8125rem)] leading-[1.05] text-balance text-urgent">
           I NEED TO GO
         </span>
       </Link>

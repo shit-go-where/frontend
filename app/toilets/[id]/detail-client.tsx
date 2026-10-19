@@ -263,7 +263,7 @@ function Detail({ t }: { t: ToiletDetail }) {
             ) : closedForGood || closedNow ? (
               // Nobody standing in front of a shut door wants directions to it: lead with the way out.
               <Link href="/go?urgent=1" className={buttonClass("primary", "lg", "flex-1 py-2 text-center leading-tight")}>
-                <Search className="size-5 shrink-0" aria-hidden /> Find the nearest open toilet
+                <Search className="size-5 shrink-0" aria-hidden /> Find an open toilet
               </Link>
             ) : (
               <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("primary", "lg", "flex-1")}>
