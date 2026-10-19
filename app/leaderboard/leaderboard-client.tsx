@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronDown, Coins, Crown, History, LoaderCircle, MapPin, Sparkles, Trophy } from "lucide-react";
+import { CalendarDays, ChevronDown, Coins, Crown, History, LoaderCircle, MapPin, Sparkles, TrainFront, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { ViewTransition, addTransitionType, startTransition, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
@@ -14,6 +14,19 @@ import { ME_KEY, loginHref, useHydrated, useMe } from "@/lib/auth";
 import { EASE_OUT, reducedMotion } from "@/lib/motion";
 
 const OPT_IN_HREF = "/me#leaderboard-optin";
+
+/**
+ * The heroes board opens once this many people have joined (GROWTH.md 1.9, decision G6). Before that
+ * a near-empty podium makes the app look dead, so the page leads with the toilet rankings, which have
+ * real scores from day one, and the heroes tab counts people in instead.
+ */
+const HEROES_MIN = 25;
+
+/** People on the all-time board (joined, with points), capped at the API's top 100; undefined until known. */
+function useHeroesJoined(): number | undefined {
+  const q = useQuery({ queryKey: ["lb-users", "all"], queryFn: () => api.userLeaderboard("all") });
+  return q.data?.items.length;
+}
 
 type Tab = "people" | "toilets";
 type PersonRow = UserLeaderboard["items"][number];
@@ -75,7 +88,17 @@ export function LeaderboardClient() {
   useEffect(() => {
     void qc.prefetchQuery({ queryKey: ["lb-toilets", ""], queryFn: () => api.toiletLeaderboard(undefined) });
   }, [qc]);
+  // Until the heroes board opens, land on the toilets (unless they already picked a tab).
+  const joined = useHeroesJoined();
+  const touched = useRef(false);
+  useEffect(() => {
+    if (joined === undefined || joined >= HEROES_MIN || touched.current) return;
+    // The board size arriving decides the opening tab.
+    setPicked("toilets");
+    setTab("toilets");
+  }, [joined]);
   const pick = (next: Tab) => {
+    touched.current = true;
     if (next === picked) return;
     const dir = TABS.findIndex((t) => t.value === next) > TABS.findIndex((t) => t.value === picked) ? "lb-tab-right" : "lb-tab-left";
     setPicked(next);
@@ -405,7 +428,9 @@ function People() {
     placeholderData: keepPreviousData,
   });
   const board = useRerank(q.data, !q.isPlaceholderData);
-  const items = board?.items ?? [];
+  const joined = useHeroesJoined();
+  const open = joined === undefined || joined >= HEROES_MIN;
+  const items = open ? (board?.items ?? []) : [];
   const empty = !!board && !items.length;
   // Like the area heading: the board on screen decides the words, so they change with the re-rank.
   const [shownScope, setShownScope] = useState(scope);
@@ -434,6 +459,8 @@ function People() {
         <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />
       ) : !board ? (
         <PodiumSkeleton />
+      ) : !open ? (
+        <HeroesOpening joined={joined ?? 0} me={me} />
       ) : empty ? null : (
         // An empty board says so once, in the card below, not with three empty steps as well.
         <Podium
@@ -452,7 +479,7 @@ function People() {
 
       <YourStanding me={me} board={board} empty={empty} when={when} />
 
-      {empty ? <PeopleEmpty me={me} scope={shownScope} /> : null}
+      {empty && open ? <PeopleEmpty me={me} scope={shownScope} /> : null}
 
       {items.length > 3 ? (
         <ol className="flex flex-col gap-1.5" aria-label={shownScope === "week" ? "Everyone else this week" : "Everyone else, all time"}>
@@ -577,6 +604,37 @@ function YourStanding({ me, board, empty, when }: { me: Me | null | undefined; b
       ) : (
         <p className="text-sm font-semibold">Earn your first points to get on the board.</p>
       )}
+    </Card>
+  );
+}
+
+/** The heroes board before it opens: how many have joined, and how to be one of them. */
+function HeroesOpening({ joined, me }: { joined: number; me: Me | null | undefined }) {
+  const left = HEROES_MIN - joined;
+  return (
+    <Card className="flex flex-col gap-3">
+      <h3 className="flex items-center gap-2 text-xl leading-tight">
+        <Users className="size-5 text-accent" aria-hidden />
+        The board opens at {HEROES_MIN} heroes
+      </h3>
+      <TpBar
+        value={joined}
+        max={HEROES_MIN}
+        role="progressbar"
+        aria-label="Heroes who have joined"
+        aria-valuemin={0}
+        aria-valuemax={HEROES_MIN}
+        aria-valuenow={joined}
+      />
+      <p>
+        <strong className="font-extrabold tabular-nums">{joined}</strong> joined so far, <span className="tabular-nums">{left}</span> more
+        to go. Early ones get the Founding Contributor badge: the first 100 people to check in or add a toilet keep it for good.
+      </p>
+      {me === null ? (
+        <Link href={loginHref("/leaderboard")} className={buttonClass("primary", "md", "self-start")}>
+          Sign in to join
+        </Link>
+      ) : null}
     </Card>
   );
 }
@@ -797,6 +855,13 @@ function Toilets() {
           ) : null}
         </>
       )}
+      <Link
+        href="/stations#line-board"
+        className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-bold text-primary underline underline-offset-2 hover:decoration-[3px]"
+      >
+        <TrainFront className="size-4" aria-hidden />
+        Which MRT line has the cleanest toilets?
+      </Link>
       <Link href="/" className={buttonClass("secondary", "md", "mt-2 self-start")}>
         Back to map
       </Link>
