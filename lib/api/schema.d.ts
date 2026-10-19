@@ -340,6 +340,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/routing/started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["RoutingController_started"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/routing/recommend": {
         parameters: {
             query?: never;
@@ -628,6 +644,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_metricsRange"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/flags": {
         parameters: {
             query?: never;
@@ -804,6 +836,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/stations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StationsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stations/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StationsController_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leaderboard/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["StationsController_lines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -823,6 +903,7 @@ export interface components {
             role: "USER" | "TRUSTED" | "MODERATOR" | "ADMIN";
             trustScore: number;
             leaderboardOptIn: boolean;
+            verifierCredit: boolean;
             points: number;
             badges: {
                 id: string;
@@ -846,6 +927,11 @@ export interface components {
                 resolvedSubmissions: number;
                 badges: number;
                 points: number;
+                routed: number;
+            };
+            impact: {
+                toilets: number;
+                routedWeek: number;
             };
             lastSeenActivityAt: string | null;
         };
@@ -853,6 +939,7 @@ export interface components {
             handle?: string;
             displayName?: string;
             leaderboardOptIn?: boolean;
+            verifierCredit?: boolean;
         };
         ActivityPageDto_Output: {
             items: {
@@ -1133,6 +1220,9 @@ export interface components {
             reviews: components["schemas"]["Review_Output"][];
             photos: components["schemas"]["PhotoRef_Output"][];
             myReview: components["schemas"]["Review_Output"] | null;
+            verifiedBy: {
+                handle: string;
+            } | null;
             source: string;
             attribution: string | null;
         };
@@ -1143,6 +1233,13 @@ export interface components {
                 score: number;
             }[];
             areas: string[];
+        };
+        RouteStartedBodyDto: {
+            toiletId: string;
+        };
+        RouteStartedResponseDto_Output: {
+            /** @constant */
+            ok: true;
         };
         /** @enum {string} */
         Purpose: "PEE" | "POO" | "BABY" | "SHOWER" | "FRESHEN_UP" | "PERIOD";
@@ -1659,6 +1756,7 @@ export interface components {
         StatusKind: "ALL_GOOD" | "NO_PAPER" | "NO_SOAP" | "LONG_QUEUE" | "BEING_CLEANED" | "BROKEN" | "CLOSED_NOW";
         CreateStatusDto: {
             kind: components["schemas"]["StatusKind"];
+            afterRoute?: boolean;
         };
         StatusReportDto_Output: {
             id: string;
@@ -1698,6 +1796,29 @@ export interface components {
             /** @constant */
             ok: true;
             affected: number;
+        };
+        MetricsDay_Output: {
+            /** @description Singapore calendar day, YYYY-MM-DD */
+            day: string;
+            /** @description Distinct contributors (users + anonymous devices) in the 7 days ending `day` */
+            wac: number;
+            contributors: number;
+            checkIns: number;
+            statusReports: number;
+            reviews: number;
+            submissions: number;
+            votes: number;
+            /** @description % of active Verified + Community toilets verified within 90 days */
+            freshPct: number;
+            toiletsByTier: {
+                VERIFIED: number;
+                COMMUNITY: number;
+                IMPORTED: number;
+            };
+            pendingCount: number;
+        };
+        MetricsListDto_Output: {
+            items: components["schemas"]["MetricsDay_Output"][];
         };
         AdminFlagListDto_Output: {
             items: {
@@ -1834,6 +1955,64 @@ export interface components {
             } | null;
             venues: components["schemas"]["AreaVenue_Output"][];
             noToiletVenues: components["schemas"]["VenueLite_Output"][];
+        };
+        StationSummary_Output: {
+            slug: string;
+            name: string;
+            lines: components["schemas"]["StationLine_Output"][];
+            lat: number;
+            lng: number;
+            toiletStatus: components["schemas"]["VenueToiletStatus_Output"];
+            toiletCount: number;
+            verifiedCount: number;
+            bestScore: number | null;
+            lastVerifiedAt: string | null;
+            indexable: boolean;
+        };
+        StationLine_Output: {
+            code: string;
+            name: string;
+        };
+        StationListDto_Output: {
+            items: components["schemas"]["StationSummary_Output"][];
+        };
+        StationNearby_Output: {
+            toilet: components["schemas"]["ToiletSummary_Output"];
+            distanceM: number;
+        };
+        StationDetailDto_Output: {
+            slug: string;
+            name: string;
+            lines: components["schemas"]["StationLine_Output"][];
+            lat: number;
+            lng: number;
+            toiletStatus: components["schemas"]["VenueToiletStatus_Output"];
+            toiletCount: number;
+            verifiedCount: number;
+            bestScore: number | null;
+            lastVerifiedAt: string | null;
+            indexable: boolean;
+            note: string | null;
+            area: {
+                slug: string;
+                name: string;
+            } | null;
+            toilets: components["schemas"]["ToiletSummary_Output"][];
+            nearby: components["schemas"]["StationNearby_Output"][];
+        };
+        LineRow_Output: {
+            rank: number;
+            code: string;
+            name: string;
+            stations: number;
+            stationsWithToilets: number;
+            scoredStations: number;
+            avgScore: number | null;
+            freshPct: number | null;
+            checkInsWeek: number;
+        };
+        LineBoardDto_Output: {
+            items: components["schemas"]["LineRow_Output"][];
         };
     };
     responses: never;
@@ -2340,6 +2519,29 @@ export interface operations {
             };
         };
     };
+    RoutingController_started: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteStartedBodyDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteStartedResponseDto_Output"];
+                };
+            };
+        };
+    };
     RoutingController_recommend: {
         parameters: {
             query?: never;
@@ -2818,6 +3020,27 @@ export interface operations {
             };
         };
     };
+    AdminController_metricsRange: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsListDto_Output"];
+                };
+            };
+        };
+    };
     AdminController_flags: {
         parameters: {
             query?: {
@@ -3045,6 +3268,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AreaDetailDto_Output"];
+                };
+            };
+        };
+    };
+    StationsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationListDto_Output"];
+                };
+            };
+        };
+    };
+    StationsController_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationDetailDto_Output"];
+                };
+            };
+        };
+    };
+    StationsController_lines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LineBoardDto_Output"];
                 };
             };
         };

@@ -44,6 +44,9 @@ export type ContractChecks = [
   Assert<Fits<S["ModeratorSubmissionListDto_Output"]["items"][number], T.ModeratorSubmission>>,
   Assert<Fits<S["StatusReportDto_Output"], T.StatusReport>>,
   Assert<Fits<S["ActivitySeenDto_Output"], T.ActivitySeen>>,
+  Assert<Fits<S["StationListDto_Output"]["items"][number], T.StationSummary>>,
+  Assert<Fits<S["StationDetailDto_Output"], T.StationDetail>>,
+  Assert<Fits<S["LineBoardDto_Output"]["items"][number], T.LineRow>>,
   // Request bodies: what the UI sends must be accepted by the backend.
   Assert<Fits<T.RecommendBody, S["RecommendBodyDto"]>>,
   Assert<Fits<T.CreateSubmissionBody, S["CreateSubmissionDto"]>>,

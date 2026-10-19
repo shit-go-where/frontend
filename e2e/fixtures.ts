@@ -121,6 +121,7 @@ export const TOILETS: ToiletSummary[] = [
 export const TOILET_DETAIL: ToiletDetail = {
   ...TOILETS[0],
   venue: { ...dhobyGhaut, address: "11 Orchard Road", planningArea: "Museum" },
+  verifiedBy: null,
   accessNote: null,
   nearestExit: "A",
   near: null,
@@ -210,13 +211,15 @@ export const ME: Me = {
   role: "USER",
   trustScore: 12,
   leaderboardOptIn: true,
+  verifierCredit: true,
   points: 42,
   badges: [],
   needsHandle: false,
   handleChangeableAt: null,
   trust: { score: 12, threshold: 50, isTrusted: false },
   openSubmissions: { count: 0, limit: 10 },
-  unseen: { resolvedSubmissions: 0, badges: 0, points: 0 },
+  unseen: { resolvedSubmissions: 0, badges: 0, points: 0, routed: 0 },
+  impact: { toilets: 0, routedWeek: 0 },
   lastSeenActivityAt: null,
 };
 

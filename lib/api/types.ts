@@ -200,6 +200,8 @@ export interface ToiletDetail extends Omit<ToiletSummary, "venue"> {
   near: string | null;
   /** Pending toilets: the open submission behind it, for /review?id=. */
   openSubmissionId: string | null;
+  /** Who last tapped "still accurate" on site, by handle (GROWTH.md 1.7). Null if unknown or they opted out. */
+  verifiedBy: { handle: string } | null;
 }
 
 export interface StatusReport {
@@ -233,6 +235,8 @@ export interface Me {
   role: Role;
   trustScore: number;
   leaderboardOptIn: boolean;
+  /** Show "Last checked by @handle" on toilets this person verified. Default true. */
+  verifierCredit: boolean;
   points: number;
   badges: Badge[];
   needsHandle: boolean;
@@ -243,7 +247,18 @@ export interface Me {
   /** Open submissions from the last 14 days against the cap (10); older ones don't count. */
   openSubmissions: { count: number; limit: number };
   /** Since lastSeenActivityAt (else sign-up). resolvedSubmissions counts only APPROVED and REJECTED. */
-  unseen: { resolvedSubmissions: number; badges: number; points: number };
+  unseen: {
+    resolvedSubmissions: number;
+    badges: number;
+    points: number;
+    /** Routes other people started to toilets you helped, on Singapore days since your last visit. */
+    routed: number;
+  };
+  /**
+   * What your contributions did (GROWTH.md 1.3): toilets you added, last verified, or checked in at in
+   * the last 90 days, and routes started to them over the last 7 days.
+   */
+  impact: { toilets: number; routedWeek: number };
   lastSeenActivityAt: string | null;
 }
 
@@ -512,6 +527,53 @@ export interface AreaDetail extends AreaSummary {
   center: { lat: number; lng: number } | null;
   venues: AreaVenue[];
   noToiletVenues: VenueLite[];
+}
+
+export interface StationLine {
+  /** As stored: NSL, EWL, NEL, CCL, DTL, TEL, BPLRT, SKLRT, PGLRT. */
+  code: string;
+  name: string;
+}
+
+/** An MRT or LRT station (GROWTH.md 1.2). Counts are ACTIVE toilets in the station. */
+export interface StationSummary {
+  slug: string;
+  name: string;
+  lines: StationLine[];
+  lat: number;
+  lng: number;
+  /** NONE = no toilet in the station; USES_NEARBY = uses the one next door (see `note`). */
+  toiletStatus: VenueToiletStatus;
+  toiletCount: number;
+  verifiedCount: number;
+  bestScore: number | null;
+  lastVerifiedAt: string | null;
+  /** Worth a search result: has toilets, or a definite "no toilet here" answer. */
+  indexable: boolean;
+}
+
+export interface StationDetail extends StationSummary {
+  note: string | null;
+  area: { slug: string; name: string } | null;
+  /** In the station: open first, then closed / renovating. Never pending. */
+  toilets: ToiletSummary[];
+  /** Open toilets at other places within 400 m, nearest first, at most 5. */
+  nearby: { toilet: ToiletSummary; distanceM: number }[];
+}
+
+/** A row of the MRT line board (GROWTH.md 2.3). Interchanges count for every line they serve. */
+export interface LineRow {
+  rank: number;
+  code: string;
+  name: string;
+  stations: number;
+  stationsWithToilets: number;
+  scoredStations: number;
+  /** Mean of each station's best toilet score; null when no station on the line is scored. */
+  avgScore: number | null;
+  /** % of the line's Verified + Community toilets verified within 90 days. */
+  freshPct: number | null;
+  checkInsWeek: number;
 }
 
 export interface SitemapToilet {
