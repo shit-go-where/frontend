@@ -474,6 +474,8 @@ function ToiletCardInner({
       {card}
       <Link
         href={`/go?to=${encodeURIComponent(t.id)}`}
+        // Going deeper, like opening the toilet: the route arrives from the right, and its Back pops.
+        transitionTypes={["push"]}
         className="flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border text-xs font-extrabold text-primary transition hover:bg-surface-2 active:scale-95 @max-[18rem]:min-h-11 @max-[18rem]:w-full @max-[18rem]:flex-row @max-[18rem]:gap-1.5 @max-[18rem]:border-l-0 @max-[18rem]:border-t @max-[18rem]:text-sm"
         aria-label={`Walk to ${t.venue.name}`}
         data-testid="walk-there"

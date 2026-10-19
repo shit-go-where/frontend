@@ -272,7 +272,7 @@ function StationToilet({ t, primary, only }: { t: ToiletSummary; primary: boolea
       ) : null}
       <div className="mt-5 flex flex-wrap gap-2">
         {closed ? null : (
-          <Link href={walkHref(t.id)} className={buttonClass(primary ? "primary" : "secondary", "lg", "flex-1 sm:flex-none")}>
+          <Link href={walkHref(t.id)} transitionTypes={["push"]} className={buttonClass(primary ? "primary" : "secondary", "lg", "flex-1 sm:flex-none")}>
             <Footprints className="size-5" aria-hidden /> Walk there
             <span className="sr-only">: {title}</span>
           </Link>

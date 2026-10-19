@@ -28,7 +28,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ViewTransition, useEffect, useEffectEvent, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { LocationNotice, LocationSearch } from "@/components/location-search";
 import { ToiletMap } from "@/components/map";
-import { prepareRouteTransition } from "@/components/route-transition";
+import { historyBack, prepareRouteTransition } from "@/components/route-transition";
 import {
   FeatureChips,
   FilterChipLabel,
@@ -87,6 +87,12 @@ const routeMapName = (id: string) => `route-map-${id}`;
  * are named by hand, and the update finishes once the results view is in (settleBack, from GoClient).
  */
 let pendingBack: (() => void) | null = null;
+/**
+ * The results were on screen before this route, so Back returns to them and the map shrinks into
+ * its preview. A route opened from anywhere else (a map card, a toilet page) goes back with a plain
+ * `pop` instead: nothing on the page behind would finish the morph, so it would hang until its timeout.
+ */
+let resultsShown = false;
 function nameRouteMaps(id: string | null) {
   document.querySelectorAll<HTMLElement>("[data-route-map]").forEach((el) => {
     const on = id !== null && el.dataset.routeMap === id;
@@ -226,8 +232,16 @@ export function GoClient() {
   const stored = useStoredFilters();
   // The results view is in: let an animated Back from the route view finish its update.
   useLayoutEffect(() => {
-    if (!to) settleBack();
+    if (to) return;
+    resultsShown = true;
+    settleBack();
   }, [to]);
+  useEffect(
+    () => () => {
+      resultsShown = false;
+    },
+    [],
+  );
 
   // /go needs a location, so it asks for one (other pages never prompt). Urgent mode wants where you are
   // now, not the last station you passed: a cached fix has to be under 30 seconds old.
@@ -1006,7 +1020,18 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
     queryFn: ({ signal }) => api.toilet(toiletId, signal),
     enabled: !item,
   });
-  const t: ToiletSummary | null = item?.toilet ?? (toiletQ.data as ToiletSummary | undefined) ?? null;
+  // From a map card the toilet is already in a nearby list: start from it, so "Walk there" lands on the
+  // route screen itself rather than a skeleton that the map then replaces.
+  const qc = useQueryClient();
+  const listed = useMemo(() => {
+    if (item) return null;
+    for (const q of qc.getQueryCache().findAll({ queryKey: ["nearby"] })) {
+      const hit = (q.state.data as { items?: ToiletSummary[] } | undefined)?.items?.find((x) => x.id === toiletId);
+      if (hit) return hit;
+    }
+    return null;
+  }, [qc, item, toiletId]);
+  const t: ToiletSummary | null = item?.toilet ?? (toiletQ.data as ToiletSummary | undefined) ?? listed;
   const gps = loc.source === "gps";
   // The fallback place is never a route origin: no walk time, no route from it, not in the framing.
   const noFix = loc.source === "default";
@@ -1051,8 +1076,10 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
   const back = () => {
     const p = new URLSearchParams(sp);
     p.delete("to");
-    if (window.history.length > 1) animatedBack(toiletId, () => router.back());
-    else {
+    if (window.history.length > 1) {
+      if (resultsShown) animatedBack(toiletId, () => router.back());
+      else historyBack(() => router.back());
+    } else {
       // A replace is a React transition already, so it animates like any other view change.
       prepareRouteTransition();
       router.replace(`/go?${p.toString()}`);

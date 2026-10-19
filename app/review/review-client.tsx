@@ -250,7 +250,7 @@ function SubmissionCard({ s, me }: { s: SubmissionView; me: Me }) {
             <>
               {where ? (
                 s.kind !== "NEW_TOILET" && s.toilet ? (
-                  <Link href={walkHref(s, where)} className={buttonClass("primary", "lg", "w-full")}>
+                  <Link href={walkHref(s, where)} transitionTypes={["push"]} className={buttonClass("primary", "lg", "w-full")}>
                     <Footprints className="size-5" aria-hidden /> Walk there
                   </Link>
                 ) : (
