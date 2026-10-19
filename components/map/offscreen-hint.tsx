@@ -93,8 +93,11 @@ export function OffscreenHint({ focus, inset }: { focus: MapFocus; inset?: { top
       onClick={() => current?.getMap().easeTo({ center: [focus.lng, focus.lat], ...cameraMotion() })}
       aria-label={`Show ${focus.name} on the map${focus.distance ? `, ${focus.distance} away` : ""}`}
       className={cx(
-        "absolute left-0 top-0 z-10 flex min-h-11 max-w-[min(17rem,calc(100%-1.5rem))] items-center gap-2 rounded-full border-2 bg-surface py-1 pl-1 pr-3.5 text-left text-sm font-extrabold text-fg shadow-card",
+        // Phones: just the arrow and the distance, so it never hides the map. The sheet's peek already
+        // names the toilet. From md the panel sits beside the map and the pill has room for its name.
+        "absolute left-0 top-0 z-10 flex min-h-11 min-w-11 max-w-[min(17rem,calc(100%-1.5rem))] items-center gap-1.5 rounded-full border-2 bg-surface py-1 pl-1 text-left text-sm font-extrabold text-fg shadow-card md:gap-2 md:pr-3.5",
         "transition-[opacity,visibility] duration-150 data-[show=false]:invisible data-[show=false]:opacity-0 active:brightness-110",
+        focus.distance ? "pr-3" : "pr-1",
         focus.picked ? "border-primary" : "border-border",
       )}
     >
@@ -105,10 +108,10 @@ export function OffscreenHint({ focus, inset }: { focus: MapFocus; inset?: { top
       </span>
       <PinGlyph
         variant={focus.pending ? "pending" : tierPinVariant(focus.tier)}
-        className="-ml-0.5 size-6"
+        className="-ml-0.5 size-6 max-md:hidden"
       />
-      <span className="min-w-0 truncate">{focus.name}</span>
-      {focus.distance ? <span className="shrink-0 font-medium tabular-nums text-muted">{focus.distance}</span> : null}
+      <span className="min-w-0 truncate max-md:hidden">{focus.name}</span>
+      {focus.distance ? <span className="shrink-0 tabular-nums md:font-medium md:text-muted">{focus.distance}</span> : null}
     </button>
   );
 }
