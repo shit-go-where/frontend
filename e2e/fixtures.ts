@@ -60,6 +60,7 @@ function toilet(p: Partial<ToiletSummary> & Pick<ToiletSummary, "id" | "venue" |
     surveyTotal: null,
     rasStars: null,
     reviewCount: 0,
+    seenBy: 1,
     activeStatus: [],
     lastVerifiedAt: "2024-03-15T00:00:00.000Z",
     needsResurvey: false,
@@ -122,6 +123,8 @@ export const TOILET_DETAIL: ToiletDetail = {
   venue: { ...dhobyGhaut, address: "11 Orchard Road", planningArea: "Museum" },
   accessNote: null,
   nearestExit: "A",
+  near: null,
+  openSubmissionId: null,
   openingHours: null,
   featureDetails: (["BIDET", "ACCESSIBLE", "TOILET_PAPER"] as const).map((feature) => ({
     feature,
@@ -144,6 +147,9 @@ export const CHECK_IN: CheckInResult = {
   pointsAwarded: 5,
   newBadges: [],
   verifyPrompt: ["BIDET", "ACCESSIBLE", "TOILET_PAPER", "HAND_SOAP", "SITTING"],
+  confirmedPending: false,
+  wentLive: false,
+  bankedPoints: 0,
 };
 
 export const PINS: ToiletPin[] = [
@@ -188,6 +194,7 @@ export const RECOMMEND: RecommendResponse = {
             ],
           }
         : null,
+    unconfirmed: false,
   })),
   skippedVenues: [
     { name: "Bishan CCL", toiletStatus: "NONE", note: "use the NSL side", distanceM: 420 },
@@ -206,6 +213,11 @@ export const ME: Me = {
   points: 42,
   badges: [],
   needsHandle: false,
+  handleChangeableAt: null,
+  trust: { score: 12, threshold: 50, isTrusted: false },
+  openSubmissions: { count: 0, limit: 10 },
+  unseen: { resolvedSubmissions: 0, badges: 0, points: 0 },
+  lastSeenActivityAt: null,
 };
 
 export const NEARBY_VENUES: NearbyVenue[] = [
@@ -231,12 +243,23 @@ export function submissionView(payload: SubmissionView["payload"]): SubmissionVi
     toilet: null,
     venue: plazaSing,
     submittedBy: { handle: "ahbeng" },
+    onSite: false,
+    hasPhoto: true,
+    path: "nearby_quorum",
+    nearbyApprovals: 0,
+    needed: 2,
+    escalated: false,
+    submitterDistanceM: null,
+    reviewerNotes: [],
+    current: null,
     approvals: 0,
     rejections: 0,
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 60 * 86400_000).toISOString(),
     resolvedAt: null,
     resolution: null,
+    resolutionText: null,
+    resolutionNote: null,
     myVote: null,
     photos: [PHOTO],
     canVote: false,

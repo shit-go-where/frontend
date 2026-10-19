@@ -23,15 +23,18 @@ test.describe("find", () => {
     await expect(page.getByRole("region", { name: "Map of toilets" })).toBeVisible();
     await expect(page.getByTestId("need-to-go").filter({ visible: true })).toBeVisible();
 
-    // Filter chips feed the query.
-    await page.getByRole("button", { name: "Bidet", exact: true }).click();
+    // Filter chips (in the Filters dialog on phones) feed the query, and a filter that's on stays in view on the map.
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Bidet", exact: true }).click();
     await expect.poll(() => api.find("GET", "/toilets/nearby").some((c) => c.search.includes("features=BIDET"))).toBe(true);
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("group", { name: "Filters on" }).getByRole("button", { name: "Bidet" })).toBeVisible();
 
     // Imported toilets carry OSM attribution.
     await expect(page.getByText("© OpenStreetMap contributors (ODbL)")).toBeVisible();
   });
 
-  test("the list sheet stops below the search and filters", async ({ page }) => {
+  test("the list sheet stops below the search", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
     const sheet = page.getByRole("region", { name: "Nearby toilets" });
@@ -42,13 +45,36 @@ test.describe("find", () => {
     await handle.click();
     await expect(sheet.getByRole("button", { name: "Collapse list" })).toBeVisible();
 
-    const filters = page.getByRole("group", { name: "Filters" });
+    const search = page.getByRole("combobox", { name: /Search a place/ });
     await expect
       .poll(async () => {
-        const [s, f] = await Promise.all([sheet.boundingBox(), filters.boundingBox()]);
+        const [s, f] = await Promise.all([sheet.boundingBox(), search.boundingBox()]);
         return s && f ? Math.round(s.y - (f.y + f.height)) : -1;
       })
       .toBeGreaterThanOrEqual(0);
+  });
+
+  test("dragging down from the peek leaves just the count, and a tap brings the nearest back", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/");
+    const sheet = page.getByRole("region", { name: "Nearby toilets" });
+    const count = sheet.getByRole("heading", { name: "3 toilets within 1 km" });
+    await expect(sheet.getByTestId("toilet-card").first()).toBeVisible();
+
+    const box = (await count.boundingBox())!;
+    await page.mouse.move(box.x + 20, box.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 20, box.y + 200, { steps: 40 });
+    await page.mouse.up();
+
+    await expect(sheet.getByRole("button", { name: "Show nearest toilet" })).toBeVisible();
+    await expect(count).toBeVisible();
+    // The list is out of reach (inert) while only the count shows.
+    await expect(sheet.getByTestId("toilet-card").first().locator("xpath=ancestor::*[@inert]")).toHaveCount(1);
+
+    await count.click();
+    await expect(sheet.getByRole("button", { name: "Expand list" })).toBeVisible();
+    await expect(sheet.getByTestId("toilet-card").first()).toBeVisible();
   });
 });
 
@@ -63,7 +89,7 @@ test.describe("route", () => {
     const results = page.getByTestId("recommendation");
     await expect(results).toHaveCount(3);
     await expect(results.first()).toContainText("Dhoby Ghaut");
-    await expect(results.first()).toContainText("bidet");
+    await expect(results.first()).toContainText(/bidet/i);
     await expect(page.getByText("Bishan CCL has no toilet — use the NSL side")).toBeVisible();
 
     const rec = api.find("POST", "/routing/recommend");
@@ -75,7 +101,7 @@ test.describe("route", () => {
     await expect(page).toHaveURL(/\/go\?urgent=1&to=/);
     const takeMe = page.getByTestId("take-me");
     await expect(takeMe).toBeVisible();
-    await expect(takeMe.getByRole("link", { name: /I'm here, check in/ })).toHaveAttribute("href", /\?checkin=1$/);
+    await expect(takeMe.getByRole("link", { name: /I'm here, check in/ })).toHaveAttribute("href", /\?do=checkin$/);
     const gmaps = takeMe.getByRole("link", { name: "Step by step in Google Maps" });
     await expect(gmaps).toHaveAttribute("href", /travelmode=walking/);
     await expect(gmaps).toHaveAttribute("href", /destination=1\.2989%2C103\.8457/);
@@ -106,34 +132,32 @@ test.describe("submit", () => {
     });
     await page.goto("/add");
 
-    await expect(page.getByRole("heading", { name: /Step 1 of 6/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Step 1 of 4/ })).toBeVisible();
     const next = page.getByTestId("add-next");
     await expect(next).toBeEnabled();
     await next.click();
 
     // 2. venue
-    await expect(page.getByRole("heading", { name: /Step 2 of 6/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Step 2 of 4/ })).toBeVisible();
     await page.getByTestId("venue-option").filter({ hasText: "Plaza Singapura" }).click();
     await next.click();
 
-    // 3. details
+    // 3. details, with the optional photo
     await page.getByLabel("Label (optional)").fill("Level 4, near Food Republic");
     await page.getByLabel("Level (optional)").fill("L4");
     await page.getByLabel("Outside the fare gates").check();
-    await next.click();
-
-    // 4. features
-    await page.getByRole("radio", { name: "Bidet: Yes", exact: true }).check({ force: true });
-    await page.getByRole("radio", { name: "Squat: No", exact: true }).check({ force: true });
-    await next.click();
-
-    // 5. photo (required)
-    await expect(next).toBeDisabled();
     await page.getByTestId("photo-input").setInputFiles({ name: "toilet.png", mimeType: "image/png", buffer: PNG_BYTES });
     await expect(page.getByAltText("Your uploaded photo")).toBeVisible();
     await next.click();
 
-    // 6. submit → 409 → force
+    // 4. what's inside: the lead features, then one from under "Everything else"
+    await expect(page.getByRole("heading", { name: /Step 4 of 4/ })).toBeVisible();
+    await page.getByRole("radio", { name: "Bidet: Yes", exact: true }).check({ force: true });
+    await page.getByText("Everything else").click();
+    await page.getByRole("radio", { name: "Squat: No", exact: true }).check({ force: true });
+    await expect(page.getByText("· 1 answered")).toBeVisible();
+
+    // submit → 409 → force
     await page.getByTestId("add-submit").click();
     await expect(page.getByRole("heading", { name: "Is it one of these?" })).toBeVisible();
     await page.getByRole("button", { name: "No, it's a different toilet" }).click();
@@ -162,6 +186,44 @@ test.describe("submit", () => {
         photoIds: ["photo-1"],
       },
     });
+  });
+
+  test("a photo is optional, and a reload picks the draft up where it left off", async ({ page }) => {
+    const api = await mockApi(page, {
+      signedIn: true,
+      overrides: {
+        "POST /submissions": (req) => {
+          const body = req.postDataJSON() as { payload: unknown };
+          return { body: { id: "sub-2", kind: "NEW_TOILET", state: "PENDING", payload: body.payload } };
+        },
+      },
+    });
+    await page.goto("/add");
+    const next = page.getByTestId("add-next");
+    await next.click();
+    await page.getByTestId("venue-option").filter({ hasText: "Plaza Singapura" }).click();
+    await next.click();
+    await page.getByLabel("Level (optional)").fill("B1");
+
+    // The tab is thrown away (as phones do while the camera is open) and comes back.
+    await page.reload();
+    await expect(page.getByText("Picked up where you left off.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Step 3 of 4/ })).toBeVisible();
+    await expect(page.getByLabel("Level (optional)")).toHaveValue("B1");
+
+    // No photo: Next still works, and so does submitting.
+    await expect(next).toBeEnabled();
+    await next.click();
+    await page.getByTestId("add-submit").click();
+    await expect(page.getByTestId("add-success")).toBeVisible();
+    expect(api.find("POST", "/submissions")[0].body).toMatchObject({
+      payload: { venueId: "venue-plaza-sing", level: "B1", photoIds: [] },
+    });
+
+    // Submitted drafts are cleared, so the next add starts fresh.
+    await page.goto("/add");
+    await expect(page.getByRole("heading", { name: /Step 1 of 4/ })).toBeVisible();
+    await expect(page.getByText("Picked up where you left off.")).toHaveCount(0);
   });
 });
 
@@ -261,5 +323,51 @@ test.describe("what's inside", () => {
         note: "Moved after the renovation",
       },
     });
+  });
+});
+
+test.describe("contributing without the extra taps", () => {
+  const ID = TOILET_DETAIL.id;
+  const detailRoutes = {
+    [`GET /toilets/${ID}`]: () => ({ body: TOILET_DETAIL }),
+    [`GET /toilets/${ID}/status`]: () => ({ body: { items: [] } }),
+  };
+
+  test("standing at a toilet, the map offers a check-in", async ({ page, context }) => {
+    await context.setGeolocation({ latitude: TOILET_DETAIL.lat, longitude: TOILET_DETAIL.lng });
+    await mockApi(page);
+    await page.goto("/");
+    const pill = page.getByTestId("checkin-here").filter({ visible: true });
+    await expect(pill).toHaveAttribute("href", `/toilets/${ID}?do=checkin`);
+  });
+
+  test("standing at a toilet, its page says you can check in", async ({ page, context }) => {
+    await context.setGeolocation({ latitude: TOILET_DETAIL.lat, longitude: TOILET_DETAIL.lng });
+    await mockApi(page, { overrides: detailRoutes });
+    await page.goto(`/toilets/${ID}`);
+    await expect(page.getByRole("heading", { name: "You're here" })).toBeVisible();
+    await expect(page.getByText("close enough to check in")).toBeVisible();
+  });
+
+  test("signed out, a status report needs no account", async ({ page }) => {
+    await mockApi(page, { overrides: detailRoutes });
+    await page.goto(`/toilets/${ID}`);
+    await page.getByRole("button", { name: "Report", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "How is it right now?" })).toBeVisible();
+  });
+
+  test("signed out, Review goes to sign-in and comes back to the review", async ({ page }) => {
+    await mockApi(page, { overrides: detailRoutes });
+    await page.goto(`/toilets/${ID}`);
+    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await expect(page).toHaveURL(/\/login\?redirect=/);
+    expect(decodeURIComponent(new URL(page.url()).searchParams.get("redirect") ?? "")).toBe(`/toilets/${ID}?do=review`);
+  });
+
+  test("signed in with ?do=report, the report dialog opens once", async ({ page }) => {
+    await mockApi(page, { signedIn: true, overrides: detailRoutes });
+    await page.goto(`/toilets/${ID}?do=report`);
+    await expect(page.getByRole("dialog", { name: "How is it right now?" })).toBeVisible();
+    await expect(page).not.toHaveURL(/do=report/);
   });
 });
