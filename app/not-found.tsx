@@ -2,6 +2,7 @@ import { Map as MapIcon, Siren } from "lucide-react";
 import Link from "next/link";
 import { Mascot } from "@/components/mascot";
 import { buttonClass } from "@/components/styles";
+import { NotFoundOfflineNote } from "./not-found-offline";
 
 export default function NotFound() {
   return (
@@ -10,6 +11,7 @@ export default function NotFound() {
       <Mascot mood="lost" className="size-28" />
       <h1 className="mt-3 text-3xl leading-tight sm:text-4xl">Eh, this one cannot find leh</h1>
       <p className="max-w-sm text-muted">The page or toilet you&apos;re looking for doesn&apos;t exist, or was removed.</p>
+      <NotFoundOfflineNote />
       <div className="mt-5 flex w-full flex-col gap-3">
         <Link href="/go?urgent=1" className={buttonClass("urgent", "lg")}>
           <Siren className="size-5" aria-hidden /> I need to go now

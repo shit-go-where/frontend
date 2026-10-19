@@ -7,7 +7,12 @@ import type { NextConfig } from "next";
  */
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "");
 
+/** Different on every deploy, so app/sw.js/route.ts serves a new worker that re-precaches. */
+const SGW_BUILD_ID =
+  process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? Date.now().toString(36);
+
 const nextConfig: NextConfig = {
+  env: { SGW_BUILD_ID },
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

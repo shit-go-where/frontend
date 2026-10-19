@@ -2,7 +2,7 @@
 
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { isApiError, setUnauthorizedHandler } from "@/lib/api/client";
+import { isApiError, isNetworkError, setUnauthorizedHandler } from "@/lib/api/client";
 import { ME_KEY, loginHref } from "@/lib/auth";
 import { LocationProvider } from "@/lib/location";
 
@@ -12,12 +12,19 @@ function makeClient() {
       queries: {
         staleTime: 30_000,
         refetchOnWindowFocus: false,
+        // Always try the fetch, even when the browser says it's offline: the service worker
+        // answers from its saved copy, and navigator.onLine is often wrong underground.
+        networkMode: "offlineFirst",
         retry: (count, err) => {
           if (isApiError(err) && err.status < 500) return false;
+          // One quick retry for a dropped or slow request, none when we know we're offline
+          // (the worker had nothing saved): a fast "no signal" beats a long spinner.
+          if (isNetworkError(err)) return err.kind !== "offline" && count < 1;
           return count < 2;
         },
       },
-      mutations: { retry: false },
+      // Mutations fail fast with a clear message instead of silently pausing until online.
+      mutations: { retry: false, networkMode: "offlineFirst" },
     },
     queryCache: new QueryCache(),
     mutationCache: new MutationCache({
@@ -56,6 +63,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       return;
     }
     const register = () => {
+      // /sw.js is app/sw.js/route.ts: the worker with this deploy's version baked in.
       navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch(() => {
         /* offline support is best-effort */
       });
