@@ -55,3 +55,17 @@ export function opensText(hours: OpeningHours | null, now: Date = new Date()): s
   const day = (new Date(now.getTime() + SGT_OFFSET_MS).getUTCDay() + next.inDays) % 7;
   return `Opens ${DAY_SHORT[day]} ${at}`;
 }
+
+/** "Open 24 hours", "Daily 10:00–22:00", "Mon, Tue 08:00–20:00 (estimated)". */
+export function hoursText(h: OpeningHours | null): string | null {
+  if (!h) return null;
+  if (h.type === "always") return "Open 24 hours";
+  if (h.type === "osm") return h.value;
+  const s = h.periods
+    .map((p) => {
+      const days = p.days.length === 7 ? "Daily" : p.days.map((d) => DAY_SHORT[d] ?? d).join(", ");
+      return `${days} ${p.open}–${p.close}`;
+    })
+    .join("; ");
+  return h.inferred ? `${s} (estimated)` : s;
+}

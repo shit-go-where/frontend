@@ -7,8 +7,15 @@ import { Mascot } from "@/components/mascot";
 import { TriToggle, type Tri } from "@/components/tri-toggle";
 import { Button, Field, cx, inputClass } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
-import { FEATURES, type AreaType, type EditToiletPayload, type Feature, type ToiletDetail } from "@/lib/api/types";
-import { AREA_TYPE_LABELS, FEATURE_GROUPS, FEATURE_LABELS } from "@/lib/format";
+import {
+  FEATURES,
+  type AreaType,
+  type EditToiletPayload,
+  type Feature,
+  type HoursInput,
+  type ToiletDetail,
+} from "@/lib/api/types";
+import { AREA_TYPE_LABELS, CONTRIBUTOR_FEATURE_GROUPS, FEATURE_LABELS } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // "What's inside?": Yes / No / Not sure per feature, plus level and fare gates.
@@ -21,10 +28,23 @@ export type FactsOutcome = "verified" | "submitted" | "flagged";
 const GATED_VENUES: ReadonlySet<string> = new Set(["MRT_STATION", "BUS_INTERCHANGE"]);
 const GATE_CHOICES: AreaType[] = ["PAID_AREA", "UNPAID_AREA", "UNKNOWN"];
 
+type HoursChoice = "unknown" | "always" | "daily";
+const HOURS_CHOICES: { v: HoursChoice; label: string }[] = [
+  { v: "always", label: "Open 24 hours" },
+  { v: "daily", label: "Opens and closes" },
+  { v: "unknown", label: "Not sure" },
+];
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+
 interface Draft {
   features: Partial<Record<Feature, Tri>>;
   level: string;
   areaType: AreaType;
+  exit: string;
+  hours: HoursChoice;
+  opens: string;
+  closes: string;
+  access: string;
   note: string;
 }
 
@@ -34,9 +54,28 @@ function listedTri(t: ToiletDetail): Partial<Record<Feature, Tri>> {
   return out;
 }
 
-const draftOf = (t: ToiletDetail): Draft => ({ features: listedTri(t), level: t.level ?? "", areaType: t.areaType, note: "" });
+const draftOf = (t: ToiletDetail): Draft => ({
+  features: listedTri(t),
+  level: t.level ?? "",
+  areaType: t.areaType,
+  exit: t.nearestExit ?? "",
+  hours: "unknown",
+  opens: "",
+  closes: "",
+  access: t.accessNote ?? "",
+  note: "",
+});
 
-/** Only real answers that differ from the listing. "Not sure" never clears a recorded fact. */
+/** The hours picked, or nothing while "Not sure" or a time is still blank. Same hours every day. */
+function hoursOf(d: Draft): HoursInput | undefined {
+  if (d.hours === "always") return { type: "always" };
+  if (d.hours === "daily" && d.opens && d.closes) {
+    return { type: "weekly", periods: [{ days: EVERY_DAY, open: d.opens, close: d.closes }] };
+  }
+  return undefined;
+}
+
+/** Only real answers that differ from the listing. "Not sure" or a blank never clears a recorded fact. */
 function changesOf(t: ToiletDetail, d: Draft): EditToiletPayload["changes"] {
   const listed = listedTri(t);
   const features: Partial<Record<Feature, boolean>> = {};
@@ -45,21 +84,36 @@ function changesOf(t: ToiletDetail, d: Draft): EditToiletPayload["changes"] {
     if (v && v !== "unknown" && v !== listed[f]) features[f] = v === "yes";
   }
   const level = d.level.trim();
+  const exit = d.exit.trim();
+  const access = d.access.trim();
+  const hours = hoursOf(d);
   return {
     ...(Object.keys(features).length ? { features } : {}),
     ...(level && level !== (t.level ?? "") ? { level } : {}),
     ...(d.areaType !== "UNKNOWN" && d.areaType !== t.areaType ? { areaType: d.areaType } : {}),
+    ...(exit && exit !== (t.nearestExit ?? "") ? { nearestExit: exit } : {}),
+    ...(access && access !== (t.accessNote ?? "") ? { accessNote: access } : {}),
+    ...(hours && JSON.stringify(hours) !== JSON.stringify(t.openingHours) ? { openingHours: hours } : {}),
   };
 }
 
 const countChanges = (c: EditToiletPayload["changes"]) =>
-  Object.keys(c.features ?? {}).length + (c.level ? 1 : 0) + (c.areaType ? 1 : 0);
+  Object.keys(c.features ?? {}).length + Object.keys(c).filter((k) => k !== "features").length;
+
+const pillClass = (on: boolean) =>
+  cx(
+    "flex min-h-12 cursor-pointer items-center gap-3 rounded-full border-2 px-4 py-2 text-sm transition-colors",
+    on ? "border-primary bg-primary-soft font-extrabold" : "border-border/70 bg-surface font-bold shadow-rest hover:border-primary/60",
+  );
+const radioClass =
+  "size-5 shrink-0 appearance-none rounded-full border-2 border-muted bg-surface transition-[border-width,border-color] checked:border-[6px] checked:border-primary focus-visible:rounded-full";
 
 /**
  * The form's fields and its submit button, split so a Dialog can pin the button in its footer.
  * `coords` is where the visitor stands; the backend refuses edits without it or from farther
- * than 150 m. `checkedIn` adds the "All correct" path. `lead` features go first; the
- * rest fold away under "Everything else".
+ * than 150 m. `checkedIn` adds the "All correct" path and asks for where-facts (level, fare gates,
+ * exit, hours) only when the listing lacks them. `lead` features go first; the rest fold away
+ * under "Everything else".
  */
 export function useFactsForm({
   toilet,
@@ -119,10 +173,14 @@ export function useFactsForm({
   );
 
   const gated = GATED_VENUES.has(toilet.venue.type);
-  // After a check-in, only ask where it is when we don't know; the full form always offers it.
-  const showWhere = !checkedIn || !toilet.level || (gated && toilet.areaType === "UNKNOWN");
+  // After a check-in, only ask for what the listing doesn't know yet; the full form always offers it.
+  const ask = (missing: boolean) => !checkedIn || missing;
+  const showLevel = ask(!toilet.level);
+  const showGates = gated && ask(toilet.areaType === "UNKNOWN");
+  const showExit = toilet.venue.type === "MRT_STATION" && ask(!toilet.nearestExit);
+  const showHours = ask(!toilet.openingHours);
   const leadSet = new Set(lead ?? []);
-  const groups = FEATURE_GROUPS.map((g) => ({ ...g, features: g.features.filter((f) => !leadSet.has(f)) })).filter(
+  const groups = CONTRIBUTOR_FEATURE_GROUPS.map((g) => ({ ...g, features: g.features.filter((f) => !leadSet.has(f)) })).filter(
     (g) => g.features.length,
   );
   const groupList = groups.map((g) => (
@@ -132,6 +190,18 @@ export function useFactsForm({
     </div>
   ));
 
+  const accessField = (
+    <Field label="Access (optional)" htmlFor={`${ids}-access`} hint='E.g. "Customers only", "Ask the counter for the key"'>
+      <input
+        id={`${ids}-access`}
+        className={inputClass}
+        maxLength={300}
+        value={d.access}
+        onChange={(e) => setD((x) => ({ ...x, access: e.target.value }))}
+      />
+    </Field>
+  );
+
   const fields = (
     <div className="flex flex-col gap-5">
       <p className="text-sm font-medium text-muted">
@@ -140,43 +210,94 @@ export function useFactsForm({
 
       {lead?.length ? <ul className="flex flex-col gap-2">{lead.map(row)}</ul> : null}
 
-      {showWhere ? (
+      {showLevel || showExit || showGates || showHours ? (
         <div className="flex flex-col gap-4">
-          <Field label="Level" htmlFor={`${ids}-level`} hint="B1, L1, L3…">
-            <input
-              id={`${ids}-level`}
-              className={inputClass}
-              maxLength={20}
-              value={d.level}
-              onChange={(e) => setD((x) => ({ ...x, level: e.target.value }))}
-            />
-          </Field>
-          {gated ? (
+          {showLevel ? (
+            <Field label="Level" htmlFor={`${ids}-level`} hint="B1, L1, L3…">
+              <input
+                id={`${ids}-level`}
+                className={inputClass}
+                maxLength={20}
+                value={d.level}
+                onChange={(e) => setD((x) => ({ ...x, level: e.target.value }))}
+              />
+            </Field>
+          ) : null}
+          {showExit ? (
+            <Field label="Nearest exit" htmlFor={`${ids}-exit`} hint="Exit A, Exit 3…">
+              <input
+                id={`${ids}-exit`}
+                className={inputClass}
+                maxLength={40}
+                value={d.exit}
+                onChange={(e) => setD((x) => ({ ...x, exit: e.target.value }))}
+              />
+            </Field>
+          ) : null}
+          {showGates ? (
             <fieldset>
               <legend className="mb-2 font-bold">Fare gates</legend>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {GATE_CHOICES.map((a) => (
-                  <label
-                    key={a}
-                    className={cx(
-                      "flex min-h-12 cursor-pointer items-center gap-3 rounded-full border-2 px-4 py-2 text-sm transition-colors",
-                      d.areaType === a
-                        ? "border-primary bg-primary-soft font-extrabold"
-                        : "border-border/70 bg-surface font-bold shadow-rest hover:border-primary/60",
-                    )}
-                  >
+                  <label key={a} className={pillClass(d.areaType === a)}>
                     <input
                       type="radio"
                       name={`${ids}-area`}
                       value={a}
                       checked={d.areaType === a}
                       onChange={() => setD((x) => ({ ...x, areaType: a }))}
-                      className="size-5 shrink-0 appearance-none rounded-full border-2 border-muted bg-surface transition-[border-width,border-color] checked:border-[6px] checked:border-primary focus-visible:rounded-full"
+                      className={radioClass}
                     />
                     {AREA_TYPE_LABELS[a]}
                   </label>
                 ))}
               </div>
+            </fieldset>
+          ) : null}
+          {showHours ? (
+            <fieldset aria-describedby={`${ids}-hours-help`}>
+              <legend className="font-bold">Opening hours</legend>
+              <p id={`${ids}-hours-help`} className="mb-2 text-sm text-muted">
+                From a sign on the door, or the building&apos;s hours if it has none.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {HOURS_CHOICES.map((h) => (
+                  <label key={h.v} className={pillClass(d.hours === h.v)}>
+                    <input
+                      type="radio"
+                      name={`${ids}-hours`}
+                      value={h.v}
+                      checked={d.hours === h.v}
+                      onChange={() => setD((x) => ({ ...x, hours: h.v }))}
+                      className={radioClass}
+                    />
+                    {h.label}
+                  </label>
+                ))}
+              </div>
+              {d.hours === "daily" ? (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <Field label="Opens" htmlFor={`${ids}-opens`}>
+                    <input
+                      id={`${ids}-opens`}
+                      type="time"
+                      className={inputClass}
+                      value={d.opens}
+                      onChange={(e) => setD((x) => ({ ...x, opens: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Closes" htmlFor={`${ids}-closes`}>
+                    <input
+                      id={`${ids}-closes`}
+                      type="time"
+                      className={inputClass}
+                      value={d.closes}
+                      onChange={(e) => setD((x) => ({ ...x, closes: e.target.value }))}
+                    />
+                  </Field>
+                  <p className="col-span-2 -mt-1 text-sm text-muted">Same every day. Different on weekends? Say so below.</p>
+                </div>
+              ) : null}
             </fieldset>
           ) : null}
         </div>
@@ -188,10 +309,16 @@ export function useFactsForm({
             Everything else
             <ChevronDown className="size-5 transition-transform group-open:rotate-180" aria-hidden />
           </summary>
-          <div className="mt-3 flex flex-col gap-5">{groupList}</div>
+          <div className="mt-3 flex flex-col gap-5">
+            {groupList}
+            {accessField}
+          </div>
         </details>
       ) : (
-        groupList
+        <>
+          {groupList}
+          {accessField}
+        </>
       )}
 
       <Field

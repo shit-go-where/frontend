@@ -43,6 +43,12 @@ export const FEATURE_GROUPS: { title: string; features: Feature[] }[] = [
   { title: "Cost", features: ["FREE"] },
 ];
 
+/**
+ * What contributors are asked about: everything except the fieldwork rubric's fittings (auto tap,
+ * coat hook, signage…). Nobody filters on those, so asking only makes the forms longer.
+ */
+export const CONTRIBUTOR_FEATURE_GROUPS = FEATURE_GROUPS.filter((g) => g.title !== "Fittings");
+
 export const VENUE_TYPE_LABELS: Record<VenueType, string> = {
   MRT_STATION: "MRT station",
   BUS_INTERCHANGE: "Bus interchange",

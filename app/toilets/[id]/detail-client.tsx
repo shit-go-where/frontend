@@ -58,7 +58,7 @@ import { ErrorState, SectionIcon, Skeleton, Stars, buttonClass, cx } from "@/com
 import { FoldDetails } from "@/components/fold-details";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { api, errorMessage } from "@/lib/api/client";
-import type { Feature, FeatureDetail, OpeningHours, Survey, ToiletDetail } from "@/lib/api/types";
+import type { Feature, FeatureDetail, Survey, ToiletDetail } from "@/lib/api/types";
 import {
   BAD_STATUS,
   FEATURE_GROUPS,
@@ -76,7 +76,7 @@ import {
 import { FEATURE_HUE, HUE_CHIP, type Hue } from "@/lib/feature-hues";
 import { FILTERS } from "@/lib/filters";
 import { estimateWalkSeconds, haversineM, useLocation } from "@/lib/location";
-import { opensText } from "@/lib/opening-hours";
+import { hoursText, opensText } from "@/lib/opening-hours";
 import { isUnnamed } from "@/lib/unnamed-toilet";
 import { useHydrated, useMe } from "@/lib/auth";
 import { useStoredFilters } from "@/lib/use-filters";
@@ -266,7 +266,7 @@ function Detail({ t }: { t: ToiletDetail }) {
                 <Search className="size-5 shrink-0" aria-hidden /> Find the nearest open toilet
               </Link>
             ) : (
-              <Link href={`/go?to=${encodeURIComponent(t.id)}`} className={buttonClass("primary", "lg", "flex-1")}>
+              <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("primary", "lg", "flex-1")}>
                 <Footprints className="size-5" aria-hidden /> Walk there
               </Link>
             )}
@@ -274,7 +274,7 @@ function Detail({ t }: { t: ToiletDetail }) {
           </div>
           {closedNow ? (
             // Still worth the walk for someone who'll arrive after it opens.
-            <Link href={`/go?to=${encodeURIComponent(t.id)}`} className={buttonClass("secondary", "md", "mt-2 w-full")}>
+            <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("secondary", "md", "mt-2 w-full")}>
               <Footprints className="size-5" aria-hidden /> Walk there
               {opens ? (
                 <span className="font-medium text-muted" suppressHydrationWarning>
@@ -838,20 +838,6 @@ function joinAnd(items: string[]): string {
 
 function sentenceCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-function hoursText(h: OpeningHours | null): string | null {
-  if (!h) return null;
-  if (h.type === "always") return "Open 24 hours";
-  if (h.type === "osm") return h.value;
-  const s = h.periods
-    .map((p) => {
-      const days = p.days.length === 7 ? "Daily" : p.days.map((d) => DAYS[d] ?? d).join(", ");
-      return `${days} ${p.open}–${p.close}`;
-    })
-    .join("; ");
-  return h.inferred ? `${s} (estimated)` : s;
 }
 
 const SOURCE_LABELS: Record<string, string> = {

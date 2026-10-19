@@ -12,6 +12,7 @@ import type {
 } from "@/lib/api/types";
 import { AREA_TYPE_LABELS, FEATURE_LABELS, VENUE_TYPE_LABELS, formatDate, timeAgo } from "@/lib/format";
 import type { LatLng } from "@/lib/location";
+import { hoursText } from "@/lib/opening-hours";
 import { cx } from "@/components/ui";
 
 // ---------------------------------------------------------------------------
@@ -159,6 +160,22 @@ function EditView({ s }: { s: SubmissionView }) {
       before: cur ? areaLabel(cur.areaType) : undefined,
       after: AREA_TYPE_LABELS[c.areaType],
       same: cur?.areaType === c.areaType,
+    });
+  if (c.nearestExit !== undefined)
+    rows.push({
+      key: "nearestExit",
+      label: "Exit",
+      before: cur ? text(cur.nearestExit) : undefined,
+      after: c.nearestExit,
+      same: cur?.nearestExit === c.nearestExit,
+    });
+  if (c.openingHours !== undefined)
+    rows.push({
+      key: "openingHours",
+      label: "Hours",
+      before: cur ? (hoursText(cur.openingHours ?? null) ?? NOT_RECORDED) : undefined,
+      after: hoursText(c.openingHours) ?? "",
+      same: !!cur && JSON.stringify(cur.openingHours) === JSON.stringify(c.openingHours),
     });
   if (c.accessNote !== undefined)
     rows.push({

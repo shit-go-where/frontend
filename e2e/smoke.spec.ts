@@ -251,13 +251,19 @@ test.describe("what's inside", () => {
     await expect(dialog.getByRole("radio", { name: "Bidet: Yes", exact: true })).toBeChecked();
     await expect(dialog.getByRole("radio", { name: "Hand soap: Not sure", exact: true })).toBeChecked();
     await expect(dialog.getByLabel("Level")).toHaveCount(0);
+    await expect(dialog.getByLabel("Nearest exit")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "All correct" })).toBeVisible();
 
     await pick(dialog, "Bidet: No");
     await pick(dialog, "Hand soap: Yes");
     // Not sure on a recorded feature is not a change.
     await pick(dialog, "Accessible: Not sure");
-    await dialog.getByRole("button", { name: "Send 2 changes for review" }).click();
+    // Hours aren't known yet, so they're asked; a half-filled time isn't a change.
+    await dialog.getByText("Opens and closes", { exact: true }).click();
+    await dialog.getByLabel("Opens", { exact: true }).fill("07:00");
+    await expect(dialog.getByRole("button", { name: "Send 2 changes for review" })).toBeVisible();
+    await dialog.getByLabel("Closes", { exact: true }).fill("23:00");
+    await dialog.getByRole("button", { name: "Send 3 changes for review" }).click();
     await expect(dialog.getByRole("heading", { name: "Sent for review" })).toBeVisible();
 
     expect(api.find("POST", "/toilets/" + ID + "/verify")).toHaveLength(0);
@@ -267,7 +273,12 @@ test.describe("what's inside", () => {
       toiletId: ID,
       lat: 1.2993,
       lng: 103.8455,
-      payload: { changes: { features: { BIDET: false, HAND_SOAP: true } } },
+      payload: {
+        changes: {
+          features: { BIDET: false, HAND_SOAP: true },
+          openingHours: { type: "weekly", periods: [{ days: [0, 1, 2, 3, 4, 5, 6], open: "07:00", close: "23:00" }] },
+        },
+      },
     });
   });
 

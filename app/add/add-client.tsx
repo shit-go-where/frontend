@@ -38,7 +38,7 @@ import {
   type VenueType,
 } from "@/lib/api/types";
 import { useRequireAuth } from "@/lib/auth";
-import { AREA_TYPE_LABELS, FEATURE_GROUPS, FEATURE_LABELS, VENUE_TYPE_LABELS, formatDistance } from "@/lib/format";
+import { AREA_TYPE_LABELS, CONTRIBUTOR_FEATURE_GROUPS, FEATURE_LABELS, VENUE_TYPE_LABELS, formatDistance } from "@/lib/format";
 import { haversineM, useLocation, type LatLng } from "@/lib/location";
 
 const STEPS = ["Pin", "Place", "Details", "Inside"] as const;
@@ -49,7 +49,7 @@ const STEP_TITLES = ["Where is it?", "Which place is it in?", "Help people find 
 /** Asked up front: what people filter on in a hurry. The rest folds under "Everything else". */
 const LEAD_FEATURES: Feature[] = ["ACCESSIBLE", "BIDET", "TOILET_PAPER", "SITTING", "BABY_CHANGE", "FREE"];
 const LEAD_SET: ReadonlySet<Feature> = new Set(LEAD_FEATURES);
-const MORE_GROUPS = FEATURE_GROUPS.map((g) => ({ ...g, features: g.features.filter((f) => !LEAD_SET.has(f)) })).filter(
+const MORE_GROUPS = CONTRIBUTOR_FEATURE_GROUPS.map((g) => ({ ...g, features: g.features.filter((f) => !LEAD_SET.has(f)) })).filter(
   (g) => g.features.length,
 );
 

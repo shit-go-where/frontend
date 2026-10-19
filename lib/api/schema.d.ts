@@ -1305,6 +1305,18 @@ export interface components {
                 lng: number;
             }[];
         };
+        HoursInput: {
+            /** @constant */
+            type: "always";
+        } | {
+            /** @constant */
+            type: "weekly";
+            periods: {
+                days: number[];
+                open: string;
+                close: string | "24:00";
+            }[];
+        };
         CreateSubmissionDto: {
             /** @constant */
             kind: "NEW_TOILET";
@@ -1342,7 +1354,9 @@ export interface components {
                     level?: string;
                     /** @enum {string} */
                     areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    nearestExit?: string;
                     accessNote?: string;
+                    openingHours?: components["schemas"]["HoursInput"];
                     features?: {
                         [key: string]: boolean;
                     };
@@ -1367,6 +1381,18 @@ export interface components {
             lat?: number;
             lng?: number;
             force?: boolean;
+        };
+        HoursInput_Output: {
+            /** @constant */
+            type: "always";
+        } | {
+            /** @constant */
+            type: "weekly";
+            periods: {
+                days: number[];
+                open: string;
+                close: string | "24:00";
+            }[];
         };
         SubmissionViewDto_Output: {
             id: string;
@@ -1400,7 +1426,9 @@ export interface components {
                     level?: string;
                     /** @enum {string} */
                     areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    nearestExit?: string;
                     accessNote?: string;
+                    openingHours?: components["schemas"]["HoursInput_Output"];
                     features?: {
                         [key: string]: boolean;
                     };
@@ -1434,7 +1462,9 @@ export interface components {
                 level?: string | null;
                 /** @enum {string} */
                 areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                nearestExit?: string | null;
                 accessNote?: string | null;
+                openingHours?: components["schemas"]["OpeningHours_Output"] | null;
                 features?: {
                     [key: string]: boolean | null;
                 };
@@ -1511,7 +1541,9 @@ export interface components {
                         level?: string;
                         /** @enum {string} */
                         areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                        nearestExit?: string;
                         accessNote?: string;
+                        openingHours?: components["schemas"]["HoursInput_Output"];
                         features?: {
                             [key: string]: boolean;
                         };
@@ -1545,7 +1577,9 @@ export interface components {
                     level?: string | null;
                     /** @enum {string} */
                     areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    nearestExit?: string | null;
                     accessNote?: string | null;
+                    openingHours?: components["schemas"]["OpeningHours_Output"] | null;
                     features?: {
                         [key: string]: boolean | null;
                     };
@@ -1640,7 +1674,9 @@ export interface components {
                         level?: string;
                         /** @enum {string} */
                         areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                        nearestExit?: string;
                         accessNote?: string;
+                        openingHours?: components["schemas"]["HoursInput_Output"];
                         features?: {
                             [key: string]: boolean;
                         };
@@ -1674,7 +1710,9 @@ export interface components {
                     level?: string | null;
                     /** @enum {string} */
                     areaType?: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+                    nearestExit?: string | null;
                     accessNote?: string | null;
+                    openingHours?: components["schemas"]["OpeningHours_Output"] | null;
                     features?: {
                         [key: string]: boolean | null;
                     };

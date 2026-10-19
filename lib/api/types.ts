@@ -88,6 +88,11 @@ export type OpeningHours =
     }
   | { type: "osm"; value: string };
 
+/** Hours a visitor can send in an edit: never estimated, never the raw OSM form. */
+export type HoursInput =
+  | { type: "always" }
+  | { type: "weekly"; periods: { days: number[]; open: string; close: string }[] };
+
 export interface PhotoRef {
   id: string;
   url: string;
@@ -309,7 +314,9 @@ export interface EditToiletPayload {
     label?: string;
     level?: string;
     areaType?: AreaType;
+    nearestExit?: string;
     accessNote?: string;
+    openingHours?: HoursInput;
     features?: Partial<Record<Feature, boolean>>;
   };
   photoIds?: string[];
@@ -350,7 +357,10 @@ export interface SubmissionView {
     label?: string | null;
     level?: string | null;
     areaType?: AreaType;
+    nearestExit?: string | null;
     accessNote?: string | null;
+    /** The hours people see now: the toilet's own, else its place's. */
+    openingHours?: OpeningHours | null;
     features?: Partial<Record<Feature, boolean | null>>;
   } | null;
   approvals: number;
