@@ -25,6 +25,7 @@ import { STATUS_KINDS, type CheckInResult, type PhotoRef, type Review, type Stat
 import { BAD_STATUS, STATUS_LABELS, formatDate, timeAgo } from "@/lib/format";
 import { INTENT_PARAM, loginWithIntent, useGuard, useMe, useResumeIntent } from "@/lib/auth";
 import { getCurrentPosition } from "@/lib/location";
+import { track } from "@/lib/analytics";
 import { FactsThanks, useFactsForm, type FactsOutcome } from "./facts-form";
 
 // ---------------------------------------------------------------------------
@@ -271,9 +272,12 @@ export function ShareButton({ toilet, className }: { toilet: ToiletDetail; class
   async function share() {
     const url = `${window.location.origin}/toilets/${toilet.id}`;
     const title = `${toilet.venue.name}${toilet.label ? ` (${toilet.label})` : ""}`;
+    const shared = (method: "native" | "copy" | "prompt") =>
+      track("share", { what: "toilet", method, toilet_id: toilet.id, toilet_tier: toilet.tier });
     if (navigator.share) {
       try {
         await navigator.share({ title, text: `Toilet at ${title} on Shit Go Where`, url });
+        shared("native");
         return;
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
@@ -281,10 +285,12 @@ export function ShareButton({ toilet, className }: { toilet: ToiletDetail; class
     }
     try {
       await navigator.clipboard.writeText(url);
+      shared("copy");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       window.prompt("Copy this link", url);
+      shared("prompt");
     }
   }
   return (

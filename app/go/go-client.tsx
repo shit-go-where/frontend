@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ViewTransition, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { ViewTransition, useEffect, useEffectEvent, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { LocationNotice, LocationSearch } from "@/components/location-search";
 import { ToiletMap } from "@/components/map";
 import { prepareRouteTransition } from "@/components/route-transition";
@@ -62,6 +62,7 @@ import {
 import { haversineM, roundCoord, useFixAge, useLocation, useWatchPosition } from "@/lib/location";
 import { rankOffline, useOnline } from "@/lib/offline";
 import { PURPOSE_OPTIONS, parsePurpose, type PurposeOption } from "@/lib/purposes";
+import { markArrived, startRoute } from "@/lib/route-session";
 import { HUE_TEXT, type Hue } from "@/lib/feature-hues";
 
 /** Each mission wears the hue of the features it hunts for (sitting for number two, soap for freshening up). */
@@ -1028,6 +1029,25 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
   const hereM = t && gps ? haversineM(loc.coords, t) : null;
   const arrived = hereM !== null && hereM <= ARRIVED_M;
 
+  // The walk has started once we know the toilet and where they are (or that we can't tell):
+  // count it and remember it for the "How was it?" card (lib/route-session.ts dedupes repeats).
+  const routeReady = !!t && loc.settled;
+  const onRouteReady = useEffectEvent(() => {
+    if (!t) return;
+    const straight = noFix ? null : haversineM(loc.coords, t);
+    startRoute({
+      toiletId: t.id,
+      name: t.venue.name,
+      tier: t.tier,
+      urgent,
+      purpose: parsePurpose(sp.get("for"))?.key ?? null,
+      distanceM: item?.walkDistanceM || walk.data?.distanceM || straight,
+    });
+  });
+  useEffect(() => {
+    if (routeReady) onRouteReady();
+  }, [routeReady, toiletId]);
+
   const back = () => {
     const p = new URLSearchParams(sp);
     p.delete("to");
@@ -1154,6 +1174,7 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
               href={`/toilets/${t.id}?do=checkin`}
               transitionTypes={["push"]}
               className={buttonClass("primary", "lg", "rise-in mt-4 w-full")}
+              onClick={() => markArrived(t.id)}
               data-testid="arrived-checkin"
             >
               <MapPinCheck className="size-5" aria-hidden /> Arrived? Check in
@@ -1175,6 +1196,7 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
                 href={`/toilets/${t.id}?do=checkin`}
                 transitionTypes={["push"]}
                 className={buttonClass("secondary", "lg", "flex-1")}
+                onClick={() => markArrived(t.id)}
               >
                 <MapPinCheck className="size-5" aria-hidden /> I&apos;m here, check in
               </Link>

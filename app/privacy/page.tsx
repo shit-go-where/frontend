@@ -39,7 +39,33 @@ export default function PrivacyPage() {
           <strong>Check-ins keep only the distance</strong> between you and the toilet and which toilet it was. Your coordinates
           are used once to verify you are within 150 m and are then discarded.
         </li>
-        <li>A session cookie (<code>sgw_session</code>) so you stay signed in. We don&apos;t use advertising or tracking cookies.</li>
+        <li>A session cookie (<code>sgw_session</code>) so you stay signed in. We don&apos;t use advertising cookies.</li>
+      </ul>
+
+      <h2>Usage analytics</h2>
+      <p>
+        To learn which parts of the app help people and where they give up, we use{" "}
+        <a href="https://posthog.com" className="font-bold text-primary underline hover:decoration-[3px]">
+          PostHog
+        </a>
+        , hosted in the European Union. It records which pages you open and a few actions: starting a walk to a toilet, arriving,
+        sharing, checking in, reporting, reviewing, adding and voting, and signing in. It also records how you found us when a link
+        says so (for example &ldquo;from Reddit&rdquo;).
+      </p>
+      <ul>
+        <li>
+          Events are tied to a random ID kept in your browser&apos;s storage, or to your account ID once you sign in. Never your email,
+          name, coordinates or IP-based location, and we strip location from page addresses before anything is sent.
+        </li>
+        <li>No session recordings, no heatmaps and no advertising use.</li>
+        <li>
+          If your browser sends Do Not Track or Global Privacy Control, analytics doesn&apos;t load at all. Clearing your site data
+          resets the random ID.
+        </li>
+        <li>
+          Separately, when someone starts walking to a toilet we add one to that toilet&apos;s count for the day. Only the count is
+          kept, not who it was, so we can tell contributors how many people their toilets helped.
+        </li>
       </ul>
 
       <h2>Photos</h2>
@@ -51,8 +77,18 @@ export default function PrivacyPage() {
       <h2>Who sees what</h2>
       <ul>
         <li>Other users see your handle on reviews and, only if you opt in, on the leaderboard.</li>
+        <li>
+          When you confirm a toilet is still accurate, its page says it was last checked by your handle. You can turn this off on{" "}
+          <Link href="/me" className="font-bold text-primary underline hover:decoration-[3px]">
+            Me
+          </Link>
+          .
+        </li>
         <li>We never show your email or real name publicly.</li>
-        <li>Data is stored with our hosting providers in or near Singapore (Vercel, Neon Postgres, Cloudflare R2).</li>
+        <li>
+          Data is stored with our hosting providers in or near Singapore (Vercel, Neon Postgres, Cloudflare R2). Usage analytics are
+          the one exception: they go to PostHog in the European Union, under its data processing terms.
+        </li>
       </ul>
 
       <h2>Deleting your account</h2>
@@ -84,7 +120,7 @@ export default function PrivacyPage() {
         </p>
       )}
 
-      <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">Last updated 19 October 2026.</p>
+      <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">Last updated 20 October 2026.</p>
     </article>
   );
 }

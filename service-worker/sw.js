@@ -31,7 +31,7 @@
  * - RSC payloads and other same-origin GETs: network-first.
  * - API, PAGES and DATA caches are trimmed to the 100 most recently stored entries.
  * - Never cached: non-GET requests, /api/auth, /api/me, /api/admin, /api/submissions,
- *   /api/media, cross-origin requests.
+ *   /api/media, /ingest (analytics), cross-origin requests.
  */
 const BUILD = "__SGW_BUILD__";
 const VERSION = `sgw-${BUILD}`;
@@ -52,7 +52,15 @@ const MAX_ENTRIES = 100;
 
 const SAVED_API = [/^\/api\/toilets\/nearby$/, /^\/api\/toilets\/in-bounds$/];
 const NETWORK_FIRST_API = [/^\/api\/toilets\/[^/]+$/, /^\/api\/toilets\/[^/]+\/(reviews|status)$/, /^\/api\/venues\//, /^\/api\/badges$/, /^\/api\/leaderboard\//];
-const NEVER = [/^\/api\/auth\//, /^\/api\/me(\/|$)/, /^\/api\/admin\//, /^\/api\/submissions/, /^\/api\/media\//];
+const NEVER = [
+  /^\/api\/auth\//,
+  /^\/api\/me(\/|$)/,
+  /^\/api\/admin\//,
+  /^\/api\/submissions/,
+  /^\/api\/media\//,
+  // Analytics proxy (PostHog, next.config.ts): straight to the network, never stored.
+  /^\/ingest(\/|$)/,
+];
 
 /** Stored on saved API answers: "lat,lng,epochMs" of the place and time they were fetched for. */
 const FETCHED = "X-SGW-Fetched";

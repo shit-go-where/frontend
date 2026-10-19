@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
 import { api } from "./api/client";
+import { identifyUser, resetUser } from "./analytics";
 import type { Me, Role } from "./api/types";
 
 export const ME_KEY = ["me"] as const;
@@ -124,6 +125,20 @@ export function useResumeIntent(intent: string, run: () => void) {
   }, [wanted, me]);
 }
 
+/**
+ * Keeps analytics identity in step with who is signed in: the user id only (no email, name or other
+ * traits), and back to a fresh anonymous id once a signed-in browser is signed out. Mounted once.
+ */
+export function useAnalyticsIdentity() {
+  const { data: me, isSuccess } = useMe();
+  const id = me?.id ?? null;
+  useEffect(() => {
+    if (!isSuccess) return;
+    if (id) identifyUser(id);
+    else resetUser();
+  }, [isSuccess, id]);
+}
+
 export function useSignOut() {
   const qc = useQueryClient();
   const router = useRouter();
@@ -131,6 +146,7 @@ export function useSignOut() {
     try {
       await api.logout();
     } finally {
+      resetUser({ force: true });
       qc.setQueryData(ME_KEY, null);
       await qc.invalidateQueries();
       router.push("/");

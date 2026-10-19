@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { BottomNav, SiteHeader } from "@/components/nav";
 import { PersistentHome } from "@/components/persistent-home";
+import { RoutePrompt } from "@/components/route-prompt";
 import { RouteTransition } from "@/components/route-transition";
 import { MOTION_BOOT_SCRIPT } from "@/lib/motion";
 import { SITE_URL } from "@/lib/site";
@@ -63,6 +64,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </Suspense>
             {children}
           </main>
+          {/* The post-route "How was it?" card. After <main> so it never jumps the tab order. */}
+          <Suspense fallback={null}>
+            <RoutePrompt />
+          </Suspense>
         </Providers>
       </body>
     </html>

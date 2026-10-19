@@ -23,11 +23,24 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // PostHog's ingestion API takes trailing-slash paths (/e/, /flags/); Next would 308 each one.
+  // Side effect: a typed "/about/" is served as is instead of redirecting to "/about".
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       {
         source: "/api/:path*",
         destination: `${API_ORIGIN}/:path*`,
+      },
+      // Product analytics (lib/analytics.ts) through our own origin, so ad blockers don't drop it.
+      // PostHog Cloud EU. The service worker never caches /ingest.
+      {
+        source: "/ingest/static/:path*",
+        destination: "https://eu-assets.i.posthog.com/static/:path*",
+      },
+      {
+        source: "/ingest/:path*",
+        destination: "https://eu.i.posthog.com/:path*",
       },
     ];
   },

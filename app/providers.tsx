@@ -3,7 +3,8 @@
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { isApiError, isNetworkError, setUnauthorizedHandler } from "@/lib/api/client";
-import { ME_KEY, loginHref } from "@/lib/auth";
+import { captureSourceFromUrl, initAnalytics } from "@/lib/analytics";
+import { ME_KEY, loginHref, useAnalyticsIdentity } from "@/lib/auth";
 import { LocationProvider } from "@/lib/location";
 
 function makeClient() {
@@ -74,8 +75,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
+      <AnalyticsBoot />
       <LocationProvider>{children}</LocationProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * Notes the first-touch source from this URL (?utm_source= or ?src=), starts PostHog once the page
+ * is idle (a no-op without NEXT_PUBLIC_POSTHOG_KEY) and keeps its identity in step with /me.
+ */
+function AnalyticsBoot() {
+  useEffect(() => {
+    captureSourceFromUrl();
+    initAnalytics();
+  }, []);
+  useAnalyticsIdentity();
+  return null;
 }
 

@@ -46,6 +46,7 @@ import type {
   WalkRoute,
 } from "./types";
 import { parseSavedHeader, type SavedFrom } from "../offline";
+import { distinctId, firstTouchSource } from "../analytics";
 
 export const API_BASE = "/api";
 
@@ -207,6 +208,11 @@ export async function requestWithMeta<T>(path: string, opts: RequestOptions = {}
   const { method = "GET", query, body, signal: callerSignal, silent401, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  // Lets the API's own analytics events (check-ins, reports …) join this browser's funnel (lib/analytics.ts).
+  const source = firstTouchSource()?.source;
+  if (source) headers["x-sgw-source"] = source;
+  const did = distinctId();
+  if (did) headers["x-sgw-distinct-id"] = did;
 
   const t = timeoutSignal(callerSignal, timeoutMs);
   let res: Response;
@@ -322,8 +328,12 @@ export const api = {
   postReview: (id: string, body: { cleanliness: number; comment?: string; photoIds?: string[] }) =>
     request<Review>(`/toilets/${encodeURIComponent(id)}/reviews`, { method: "POST", body }),
   statusReports: (id: string) => request<List<StatusReport>>(`/toilets/${encodeURIComponent(id)}/status`),
-  reportStatus: (id: string, kind: StatusKind) =>
-    request<StatusReport>(`/toilets/${encodeURIComponent(id)}/status`, { method: "POST", body: { kind } }),
+  /** `afterRoute` marks a report from the post-route "How was it?" card (analytics only). */
+  reportStatus: (id: string, kind: StatusKind, opts?: { afterRoute?: boolean }) =>
+    request<StatusReport>(`/toilets/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: opts?.afterRoute ? { kind, afterRoute: true } : { kind },
+    }),
   confirmStatus: (statusId: string) =>
     request<StatusReport>(`/status/${encodeURIComponent(statusId)}/confirm`, { method: "POST" }),
   flagToilet: (id: string, reason: string) =>
@@ -340,6 +350,9 @@ export const api = {
     request<List<VenueLite>>("/venues/search", { query: p, signal }),
 
   // Routing & geo
+  /** Someone started walking to this toilet: a per-day count, no person. Fire and forget. */
+  routingStarted: (toiletId: string) =>
+    request<{ ok: true }>("/routing/started", { method: "POST", body: { toiletId }, silent401: true, timeoutMs: 5_000 }),
   recommend: (body: RecommendBody, signal?: AbortSignal) =>
     request<RecommendResponse>("/routing/recommend", { method: "POST", body, signal, timeoutMs: RECOMMEND_TIMEOUT_MS }),
   walk: (p: { fromLat: number; fromLng: number; toLat: number; toLng: number }) =>
@@ -358,7 +371,7 @@ export const api = {
   devLogin: (body: { email: string; displayName?: string }) =>
     request<Me>("/auth/dev-login", { method: "POST", body }),
   logout: () => request<void>("/auth/logout", { method: "POST", silent401: true }),
-  updateMe: (body: { handle?: string; displayName?: string; leaderboardOptIn?: boolean }) =>
+  updateMe: (body: { handle?: string; displayName?: string; leaderboardOptIn?: boolean; verifierCredit?: boolean }) =>
     request<Me>("/me", { method: "PATCH", body }),
   deleteMe: () => request<void>("/me", { method: "DELETE" }),
   activity: (cursor?: string | null) => request<Page<ActivityItem>>("/me/activity", { query: { cursor } }),
