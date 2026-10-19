@@ -68,6 +68,41 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
+      <h2 id="telegram" className="scroll-mt-20">
+        Telegram bot
+      </h2>
+      <p>
+        Our Telegram bot finds toilets and takes check-ins and status reports, like the app. You don&apos;t need an account to use it.
+        Messages to the bot pass through Telegram, under Telegram&apos;s own privacy policy.
+      </p>
+      <ul>
+        <li>
+          <strong>What we keep for each chat:</strong> the Telegram chat ID, whether it is a private chat or a group, the filters you
+          saved, when the chat was started and last used, and, if you connect it on{" "}
+          <Link href="/me" className="font-bold text-primary underline hover:decoration-[3px]">
+            Me
+          </Link>
+          , the ID of your Shit Go Where account.
+        </li>
+        <li>
+          <strong>What we don&apos;t keep:</strong> names, usernames, phone numbers, the text of your messages or your coordinates. A
+          location you send is used for that one search, and to check you are within 150 m when you check in, then discarded. As in
+          the app, a check-in stores only the distance.
+        </li>
+        <li>
+          Check-ins and reports from a chat that isn&apos;t connected to an account are saved under a scrambled ID made from the chat
+          ID with our server key. It can&apos;t be turned back into the chat ID without that key.
+        </li>
+        <li>
+          In groups the bot runs with Telegram&apos;s privacy mode on: it only receives commands sent to it and replies to its own
+          messages, never the group&apos;s conversation.
+        </li>
+        <li>
+          Send <code>/stop</code> to the bot to delete the chat&apos;s record (its filters and any account link). <code>/unlink</code>{" "}
+          or the Unlink button on Me disconnects your account. Deleting your account also removes the link.
+        </li>
+      </ul>
+
       <h2>Photos</h2>
       <p>
         Photos are shrunk in your browser before upload, which also removes embedded location (EXIF) data. Photos are hidden until a
