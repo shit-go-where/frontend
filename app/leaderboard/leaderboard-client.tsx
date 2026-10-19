@@ -134,12 +134,13 @@ function LeaderTabs({ value, onChange, id }: { value: Tab; onChange: (t: Tab) =>
             onClick={() => onChange(t.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
-              "relative flex min-h-14 items-center justify-center gap-2 rounded-3xl px-3 font-extrabold transition-[color,transform] duration-200 active:scale-[0.97]",
+              // Phones stack the icon over the label, so "Cleanest thrones" never breaks across two lines.
+              "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-3xl px-2 text-sm font-extrabold transition-[color,transform] duration-200 active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-base",
               on ? "text-primary-fg" : "text-muted hover:text-fg",
             )}
           >
             <Icon className={cx("size-5 shrink-0 transition-colors duration-200", !on && "text-accent")} aria-hidden />
-            <span className="leading-tight">{t.label}</span>
+            <span className="whitespace-nowrap leading-tight">{t.label}</span>
           </button>
         );
       })}
@@ -174,7 +175,8 @@ function Segmented<T extends string>({
         role="group"
         aria-labelledby={labelId}
         aria-busy={busy || undefined}
-        className="grid min-h-12 grid-cols-2 gap-1 rounded-full border-2 border-border-strong bg-surface-2 p-1 shadow-rest"
+        // The tabs' own language (a fudge track, the picked one in glossy pink), one size down so the tabs still lead.
+        className="grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1"
       >
         {options.map((o) => {
           const on = o.value === value;
@@ -185,14 +187,13 @@ function Segmented<T extends string>({
               aria-pressed={on}
               onClick={() => onChange(o.value)}
               className={cx(
-                "flex min-h-10 items-center justify-center gap-1.5 rounded-full px-4 font-extrabold transition duration-150 active:scale-[0.97]",
-                // Candy Pink is selection; a soft fill and ring keeps it quieter than the solid pink tabs above.
-                on ? "bg-primary-soft text-fg shadow-rest ring-2 ring-primary" : "text-muted hover:text-fg",
+                "flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-extrabold transition duration-150 active:scale-[0.97]",
+                on ? "bg-primary text-primary-fg shadow-gloss" : "text-muted hover:text-fg",
               )}
             >
               {o.label}
               {/* Only while the picked board is on its way in. */}
-              {on && busy ? <LoaderCircle className="size-4 animate-spin text-primary" aria-hidden /> : null}
+              {on && busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
             </button>
           );
         })}
@@ -453,7 +454,8 @@ function People() {
         <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />
       ) : !board ? (
         <PodiumSkeleton />
-      ) : (
+      ) : empty ? null : (
+        // An empty board says so once, in the card below, not with three empty steps as well.
         <Podium
           items={items}
           label={shownScope === "week" ? "Top three this week" : "Top three of all time"}
@@ -633,7 +635,11 @@ function PeopleEmpty({ me, scope }: { me: Me | null | undefined; scope: "week" |
 
 /** Values from the API's points ledger (backend/src/gamification/points.service.ts). */
 const POINT_RULES: { label: string; points: string }[] = [
-  { label: "A toilet you added is approved", points: "+20" },
+  { label: "A toilet you added is confirmed by people nearby or a moderator", points: "+20" },
+  { label: "An edit or closure you sent is approved", points: "+20" },
+  // An on-site toilet with a photo goes live at once: 5 now and 15 when the next person checks in, so it still totals 20.
+  { label: "Someone else checks in at a toilet you added that went live straight away", points: "+15" },
+  { label: "Add a toilet on site with a photo (it goes live straight away)", points: "+5" },
   { label: "Post a review", points: "+5" },
   { label: "Add a photo to your review", points: "+5" },
   { label: "First check-in at a toilet", points: "+3" },

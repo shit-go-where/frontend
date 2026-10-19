@@ -17,15 +17,22 @@ export function PhotoPicker({
   max = 3,
   label = "Add a photo",
   required,
+  onBusyChange,
 }: {
   value: PhotoRef[];
   onChange: (photos: PhotoRef[]) => void;
   max?: number;
   label?: string;
   required?: boolean;
+  /** Told when an upload starts and ends, so a form can hold its submit until the photo lands. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const id = useId();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const setBusy = (b: boolean) => {
+    setBusyState(b);
+    onBusyChange?.(b);
+  };
   const [error, setError] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, string>>({});
 

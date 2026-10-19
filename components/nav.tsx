@@ -4,6 +4,7 @@ import { ClipboardCheck, Map as MapIcon, Plus, Shield, Trophy, User } from "luci
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import type { Me } from "@/lib/api/types";
 import { hasRole, loginHref, useMe } from "@/lib/auth";
 import { Logo } from "./logo";
 import { Mascot } from "./mascot";
@@ -56,13 +57,16 @@ function usePendingTab(pathname: string | null) {
 
 function BottomNavInner({ pathname }: { pathname: string | null }) {
   const { activeFor, onNavigate } = usePendingTab(pathname);
+  const { data: me } = useMe();
   // Known signed out: go straight to sign-in instead of loading a page that only redirects there.
-  const signedOut = useMe().data === null;
+  const signedOut = me === null;
+  const unseen = hasUnseenActivity(me);
   const left = ITEMS.slice(0, 2);
   const right = ITEMS.slice(2);
   const item = (it: (typeof ITEMS)[number]) => {
     const active = activeFor(it.href);
     const Icon = it.icon;
+    const dot = it.href === "/me" && unseen;
     return (
       <Link
         key={it.href}
@@ -72,12 +76,20 @@ function BottomNavInner({ pathname }: { pathname: string | null }) {
         aria-current={isActive(pathname, it.href) ? "page" : undefined}
         className={cx(
           // min-w-0 and a truncating label, so very large text shrinks the tabs instead of widening the page.
-          "group/tab flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-extrabold transition-colors duration-150",
+          "group/tab flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5 pb-2 text-xs font-extrabold transition-colors duration-150",
           active ? "text-primary" : "text-muted hover:text-fg",
         )}
       >
-        <Icon className="size-6 shrink-0 transition-transform duration-100 group-active/tab:scale-90" aria-hidden />
+        {dot ? (
+          <span className="relative shrink-0">
+            <Icon className="size-6 shrink-0 transition-transform duration-100 group-active/tab:scale-90" aria-hidden />
+            <UnseenDot />
+          </span>
+        ) : (
+          <Icon className="size-6 shrink-0 transition-transform duration-100 group-active/tab:scale-90" aria-hidden />
+        )}
         <span className="max-w-full truncate">{it.label}</span>
+        {dot ? <span className="sr-only"> (new activity)</span> : null}
       </Link>
     );
   };
@@ -86,15 +98,42 @@ function BottomNavInner({ pathname }: { pathname: string | null }) {
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-40 rounded-t-[28px] border-t border-border bg-surface safe-bottom shadow-card vt-tab-bar md:hidden"
     >
-      <div className="mx-auto flex max-w-lg items-end px-2">
+      {/*
+        The bar's own bump, cradling the seated disc: one continuous edge, so nothing behind shows beside it.
+        It rises --nav-crown and ends flat on the bar's top line, covering that line where it runs under.
+        Below the pulse (z -1) and above the bar's fill.
+      */}
+      <svg
+        aria-hidden
+        viewBox="0 0 128 17"
+        preserveAspectRatio="none"
+        // 128px around the 60px disc, and in step with it when the disc shrinks or grows (--nav-disc).
+        className="nav-bump pointer-events-none absolute left-1/2 -z-[2] h-[calc(var(--nav-crown)+1px)] w-[calc(var(--nav-disc)*2.13)] -translate-x-1/2 top-[calc(var(--nav-crown)*-1)]"
+      >
+        <path d="M0 17C22 17 30 0.5 64 0.5S106 17 128 17Z" className="fill-surface" />
+        <path d="M0 16.5C22 16.5 30 0.5 64 0.5S106 16.5 128 16.5" className="fill-none stroke-border" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="mx-auto flex h-[var(--nav-h)] max-w-lg items-stretch px-2">
         {left.map(item)}
-        <div className="flex min-w-0 flex-[1.4] justify-center">
+        {/* Never narrower than the disc: when space runs out (zoomed text, small phones) the tabs truncate instead. */}
+        <div className="flex min-w-[calc(var(--nav-disc)+0.75rem)] flex-[1.3] justify-center">
           <NeedToGoButton compact transitionTypes={tabTypes(BOTTOM_ORDER, pathname, "/go")} />
         </div>
         {right.map(item)}
       </div>
     </nav>
   );
+}
+
+/** Something happened since they last looked at /me (a decision on a submission, a badge, points). */
+function hasUnseenActivity(me: Me | null | undefined) {
+  const u = me?.unseen;
+  return !!u && u.resolvedSubmissions + u.badges + u.points > 0;
+}
+
+/** Mint, the good-news colour; ringed in the bar's surface so it reads on the icon. */
+function UnseenDot() {
+  return <span aria-hidden className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-mint ring-2 ring-surface" />;
 }
 
 function PathBottomNav() {
@@ -144,15 +183,26 @@ export function NeedToGoButton({
         href="/go?urgent=1"
         prefetch
         transitionTypes={transitionTypes}
-        className={cx("group -mt-10 flex w-full max-w-[9.5rem] flex-col items-center gap-1 pb-1.5", className)}
+        // Seated: the disc's ring sits inside the bar's bump, so it rises only --nav-crown above the bar.
+        // The focus ring goes on the disc, not the column.
+        className={cx(
+          "group -mt-[calc(var(--nav-crown)-0.3125rem)] flex w-full max-w-[9.5rem] flex-col items-center gap-1 pb-2 focus-visible:outline-none",
+          className,
+        )}
         data-testid="need-to-go"
         {...plopOnRelease}
       >
-        {/* The pulse spreads 16px past the 76px disc, so it starts at 76 / 108 of its size. */}
-        <span className="urgent-pulse flex size-[76px] items-center justify-center rounded-full bg-urgent shadow-gloss ring-[5px] ring-surface [--pulse-from:0.7] [--pulse-spread:16px]">
-          <Mascot mood="worried" className="mascot-press -mt-1 size-[58px]" />
+        {/* The pulse spreads 10px past the disc (60px at rest), so it starts at about 60 / 80 of its size. */}
+        <span className="urgent-pulse flex size-[var(--nav-disc)] shrink-0 items-center justify-center rounded-full bg-urgent shadow-gloss ring-[5px] ring-surface [--pulse-from:0.75] [--pulse-spread:10px] group-focus-visible:outline-3 group-focus-visible:outline-offset-[7px] group-focus-visible:outline-ring group-focus-visible:outline-solid">
+          <Mascot mood="worried" className="mascot-press -mt-0.5 size-[calc(var(--nav-disc)*0.77)]" />
         </span>
-        <span className="font-display text-[13px] leading-none whitespace-nowrap text-urgent">I NEED TO GO</span>
+        {/*
+          One line at rest, borrowing a little of the neighbouring tabs' empty sides (their labels are short and centred).
+          When that isn't enough (zoomed or enlarged text) it shrinks towards 10px, then breaks into "I NEED / TO GO".
+        */}
+        <span className="w-max max-w-[calc(100%+min(2rem,9vw))] text-center font-display text-[length:clamp(0.625rem,3.6vw,0.8125rem)] leading-[1.05] text-balance text-urgent">
+          I NEED TO GO
+        </span>
       </Link>
     );
   }
@@ -192,7 +242,8 @@ function HeaderInner({ pathname, urgent = false }: { pathname: string | null; ur
   // Known signed out: go straight to sign-in instead of loading a page that only redirects there.
   const target = (href: string, auth: boolean) => (auth && signedOut ? loginHref(href) : href);
   return (
-    <header className="sticky top-0 z-40 hidden border-b border-border bg-surface vt-site-header md:block">
+    // Sticks under the status-bar band (zero outside the installed app); the body already pads for side notches.
+    <header className="sticky top-[env(safe-area-inset-top)] z-40 hidden border-b border-border bg-surface vt-site-header md:block">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4">
         <Link
           href="/"
@@ -235,8 +286,12 @@ function HeaderInner({ pathname, urgent = false }: { pathname: string | null; ur
           onClick={onNavigate("/me")}
           className="flex min-h-11 items-center gap-2 rounded-full border-2 border-border px-4 text-sm font-extrabold hover:border-primary"
         >
-          <User className="size-4" aria-hidden />
+          <span className="relative">
+            <User className="size-4" aria-hidden />
+            {hasUnseenActivity(me) ? <UnseenDot /> : null}
+          </span>
           {me ? (me.handle ?? me.displayName) : "Sign in"}
+          {hasUnseenActivity(me) ? <span className="sr-only"> (new activity)</span> : null}
         </Link>
       </div>
     </header>
@@ -262,7 +317,8 @@ export function MobileTopBar({ title, back = "/" }: { title: string; back?: stri
   const pill =
     "tap inline-flex items-center justify-center gap-1.5 rounded-full px-3 text-sm font-extrabold text-muted hover:bg-surface-2 hover:text-fg active:scale-[0.96]";
   return (
-    <div className="sticky top-0 z-30 box-content flex h-14 items-center gap-2 border-b border-border bg-surface px-2 pt-[env(safe-area-inset-top)] md:hidden">
+    // The body pads for the status bar once, so this only sticks under that band instead of padding for it again.
+    <div className="sticky top-[env(safe-area-inset-top)] z-30 flex h-14 items-center gap-2 border-b border-border bg-surface px-2 md:hidden">
       <Link href={back} className="tap flex items-center justify-center rounded-full" aria-label="Back to map">
         <Logo className="size-8" />
       </Link>

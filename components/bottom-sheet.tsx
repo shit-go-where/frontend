@@ -4,9 +4,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DUR, EASE_SHEET, reducedMotion } from "@/lib/motion";
 import { cx } from "./ui";
 
-const SNAPS = [0.36, 0.58, 0.88] as const;
-/** The peek must show the header and one whole card above the raised I-need-to-go button. */
-const PEEK_MIN_PX = 330;
+/**
+ * Low to high: the count strip, the peek, the middle and the top. The strip and the peek are measured from their
+ * content; the other two are shares of the viewport.
+ */
+const SNAPS = [0, 0, 0.58, 0.88] as const;
+/** Just the grabber and the count: the map gets nearly the whole screen. Only a drag down from the peek reaches it. */
+export const SHEET_STRIP = 0;
+/** Where the sheet rests when the page opens: the count and the nearest (or picked) toilet. */
+export const SHEET_PEEK = 1;
+export const SHEET_TOP = SNAPS.length - 1;
+/** Until the peek has been measured: about a one-line header and one compact card. */
+const PEEK_FALLBACK_PX = 210;
+/** Room under the peek's card (and the strip's count) for the tab bar's bump, which rises into the sheet's bottom edge. */
+const PEEK_CLEARANCE_PX = 12;
 /** Breathing room between the sheet's top edge and whatever it must stay below. */
 const TOP_GAP_PX = 8;
 /** The settle: a quick start that glides to rest, like a native sheet. The map pans on the same curve. */
@@ -16,6 +27,9 @@ const FLICK_PROJECT_MS = 240;
 const DRAG_SLOP_PX = 6;
 
 const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+
+/** The grabber steps up a snap at a time, and from the top wraps to the peek rather than the strip. */
+const nextSnap = (i: number) => (i >= SHEET_TOP ? SHEET_PEEK : i + 1);
 
 interface Drag {
   y0: number;
@@ -29,7 +43,15 @@ interface Drag {
   active: boolean;
   id: number;
   onHandle: boolean;
+  /** Started on the list rather than the header. */
+  fromList: boolean;
+  /** The list was scrolled to its top when the finger went down. */
+  listAtTop: boolean;
 }
+
+/** The lowest snaps never cover more than these shares of the screen, however large the text makes the card. */
+const STRIP_MAX = 0.3;
+const PEEK_MAX = 0.45;
 
 /**
  * Draggable bottom sheet on phones; a fixed side panel from `md` up.
@@ -60,10 +82,14 @@ export function BottomSheet({
   /** The list is about to change: veil what's visible. A small overlay, so the long list itself never re-rasters. */
   busy?: boolean;
 }) {
-  const [snap, setSnap] = useState(0);
+  const [snap, setSnap] = useState<number>(SHEET_PEEK);
   const [vh, setVh] = useState(800);
+  const [peekPx, setPeekPx] = useState(PEEK_FALLBACK_PX);
+  const [stripPx, setStripPx] = useState(PEEK_FALLBACK_PX / 2);
   const ref = useRef<HTMLElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const raf = useRef(0);
   const settleCleanup = useRef<(() => void) | null>(null);
@@ -91,10 +117,38 @@ export function BottomSheet({
     };
   }, []);
 
+  /*
+   * The peek shows the header's resting rows and the content's first `[data-sheet-peek]` element (the nearest or
+   * picked toilet), clear of the raised button. A `[data-sheet-reveal]` block in the header only opens above the
+   * peek, so it never counts; that keeps the peek steady while the block folds in and out.
+   */
+  useEffect(() => {
+    const head = headRef.current;
+    const content = contentRef.current;
+    if (!head || !content) return;
+    const measure = () => {
+      if (!head.offsetHeight) return; // hidden on another tab
+      const reveal = head.querySelector<HTMLElement>("[data-sheet-reveal]");
+      const peek = content.querySelector<HTMLElement>("[data-sheet-peek]");
+      const below = peek ? peek.getBoundingClientRect().bottom - content.getBoundingClientRect().top : 0;
+      const resting = head.offsetHeight - (reveal?.offsetHeight ?? 0);
+      setStripPx(Math.round(resting + PEEK_CLEARANCE_PX));
+      setPeekPx(Math.round(resting + below + PEEK_CLEARANCE_PX));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(head);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
+
   const maxPx = topInset ? bottomEdge - topInset - TOP_GAP_PX : Infinity;
   const snapHeight = useCallback(
-    (i: number) => Math.round(Math.min(i === 0 ? Math.max(SNAPS[0] * vh, PEEK_MIN_PX) : SNAPS[i] * vh, maxPx)),
-    [vh, maxPx],
+    (i: number) =>
+      Math.round(
+        Math.min(i === SHEET_STRIP ? Math.min(stripPx, STRIP_MAX * vh) : i === SHEET_PEEK ? Math.min(peekPx, PEEK_MAX * vh) : SNAPS[i] * vh, maxPx),
+      ),
+    [vh, maxPx, peekPx, stripPx],
   );
   const nearestSnap = useCallback(
     (h: number) => SNAPS.reduce<number>((best, _f, i) => (Math.abs(snapHeight(i) - h) < Math.abs(snapHeight(best) - h) ? i : best), 0),
@@ -186,12 +240,55 @@ export function BottomSheet({
     [],
   );
 
+  /*
+   * Who owns a vertical swipe on the list. Below the top snap the sheet does (`touch-action: pan-x` on the list,
+   * and this for browsers that still start a scroll); at the top snap the list scrolls, except a pull down from its
+   * very top, which collapses the sheet. Pointer events then drive the drag, as on the header. Native listeners,
+   * because React's touch listeners are passive and can't stop the scroll.
+   */
+  const snapRef = useRef(snap);
+  useEffect(() => {
+    snapRef.current = snap;
+  }, [snap]);
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    let x0 = 0;
+    let y0 = 0;
+    let atTop = false;
+    let owner: "sheet" | "list" | null = null;
+    const start = (e: TouchEvent) => {
+      x0 = e.touches[0].clientX;
+      y0 = e.touches[0].clientY;
+      atTop = list.scrollTop <= 0;
+      owner = null;
+    };
+    const move = (e: TouchEvent) => {
+      if (!isPhone() || e.touches.length > 1) return;
+      if (!owner) {
+        const dx = e.touches[0].clientX - x0;
+        const dy = e.touches[0].clientY - y0;
+        if (!dy || Math.abs(dx) > Math.abs(dy)) return; // undecided, or a sideways swipe (chip rows) the browser keeps
+        owner = snapRef.current < SHEET_TOP || (atTop && dy > 0) ? "sheet" : "list";
+      }
+      if (owner === "sheet" && e.cancelable) e.preventDefault();
+    };
+    list.addEventListener("touchstart", start, { passive: true });
+    list.addEventListener("touchmove", move, { passive: false });
+    return () => {
+      list.removeEventListener("touchstart", start);
+      list.removeEventListener("touchmove", move);
+    };
+  }, []);
+
   const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
+    (e: React.PointerEvent, fromList = false) => {
       suppressClick.current = false;
       if (!isPhone() || (e.pointerType === "mouse" && e.button !== 0)) return;
       const h = visualHeight();
       drag.current = {
+        fromList,
+        listAtTop: (listRef.current?.scrollTop ?? 0) <= 0,
         y0: e.clientY,
         h0: h,
         h,
@@ -215,6 +312,11 @@ export function BottomSheet({
       const dy = d.y0 - e.clientY;
       if (!d.active) {
         if (Math.abs(dy) < DRAG_SLOP_PX) return;
+        // At the top snap the list scrolls as usual; only a pull down from its very top moves the sheet.
+        if (d.fromList && snap === SHEET_TOP && !(d.listAtTop && dy < 0)) {
+          drag.current = null;
+          return;
+        }
         // Becomes a drag: catch the sheet wherever it is, even mid-settle.
         d.active = true;
         settleCleanup.current?.();
@@ -243,7 +345,7 @@ export function BottomSheet({
         });
       }
     },
-    [snapHeight, visualHeight],
+    [snap, snapHeight, visualHeight],
   );
 
   const endDrag = useCallback(
@@ -252,8 +354,8 @@ export function BottomSheet({
       drag.current = null;
       if (!d) return;
       if (!d.active) {
-        // A tap on the grabber cycles up, wrapping to the smallest.
-        if (!cancelled && d.onHandle) settleTo((snap + 1) % SNAPS.length);
+        // A tap on the grabber cycles up and wraps to the peek; at the strip, a tap anywhere on it brings the peek back.
+        if (!cancelled && (d.onHandle || snap === SHEET_STRIP)) settleTo(nextSnap(snap));
         return;
       }
       suppressClick.current = true;
@@ -266,6 +368,14 @@ export function BottomSheet({
     [nearestSnap, settleTo, snap],
   );
 
+  /** The click that ends a drag lands on whatever was under the finger; it must not open it. */
+  const swallowDragClick = (e: React.MouseEvent) => {
+    if (!suppressClick.current) return;
+    suppressClick.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
     <section
       ref={ref}
@@ -273,17 +383,19 @@ export function BottomSheet({
       style={{ "--sheet-h": `${snapPx}px` } as React.CSSProperties}
       className={cx(
         "fixed inset-x-0 z-20 flex flex-col rounded-t-[28px] border-t border-border bg-bg shadow-card",
-        "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] h-[var(--sheet-h)]",
+        "bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom))] h-[var(--sheet-h)]",
         // A skirt down behind the bottom nav, so no strip of map shows under the nav's rounded top.
         "after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-bg md:after:hidden",
-        "md:bottom-0 md:left-0 md:right-auto md:top-16 md:h-auto md:w-[420px] md:rounded-none md:border-r md:border-t-0 md:shadow-none",
+        "md:bottom-0 md:left-0 md:right-auto md:h-auto md:w-[420px] md:rounded-none md:border-r md:border-t-0 md:shadow-none",
+        // The installed app on a tablet: under the status-bar band and header. A landscape phone: clear of the notch.
+        "md:top-[calc(4rem+env(safe-area-inset-top))] md:pl-[env(safe-area-inset-left)]",
       )}
     >
       {floating ? (
         <div
           className={cx(
             "absolute bottom-full right-4 mb-4 transition-[opacity,visibility] duration-200 md:hidden",
-            snap === SNAPS.length - 1 && "invisible opacity-0",
+            snap === SHEET_TOP && "invisible opacity-0",
           )}
         >
           {floating}
@@ -291,29 +403,26 @@ export function BottomSheet({
       ) : null}
       {/* Grabber and header both drag the sheet on phones; taps on their links still work. */}
       <div
+        ref={headRef}
         className="shrink-0 max-md:cursor-grab max-md:touch-none max-md:select-none"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={(e) => endDrag(e, false)}
         onPointerCancel={(e) => endDrag(e, true)}
-        onClickCapture={(e) => {
-          if (!suppressClick.current) return;
-          suppressClick.current = false;
-          e.preventDefault();
-          e.stopPropagation();
-        }}
+        onClickCapture={swallowDragClick}
       >
         <div className="flex flex-col items-center pt-2 md:hidden">
           <button
             type="button"
             data-sheet-handle
-            className="flex h-6 w-24 items-center justify-center"
-            aria-label={snap === SNAPS.length - 1 ? "Collapse list" : "Expand list"}
-            aria-expanded={snap > 0}
+            // A 44px target that still looks like a slim bar; the negative margin keeps the sheet's header where it was.
+            className="-my-2.5 flex h-11 w-24 items-center justify-center"
+            aria-label={snap === SHEET_TOP ? "Collapse list" : snap === SHEET_STRIP ? "Show nearest toilet" : "Expand list"}
+            aria-expanded={snap > SHEET_PEEK}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                settleTo((snap + 1) % SNAPS.length);
+                settleTo(nextSnap(snap));
               }
             }}
           >
@@ -322,9 +431,30 @@ export function BottomSheet({
         </div>
         <div className="px-4 pb-2 md:pt-4">{header}</div>
       </div>
-      <div className="relative min-h-0 flex-1" aria-busy={busy}>
-        <div ref={listRef} className="h-full overflow-y-auto overscroll-contain px-4 pb-14 md:pb-4">
-          {children}
+      {/*
+        Below the top snap a vertical drag on the list moves the sheet (sideways swipes still scroll chip rows); at the
+        top snap the list scrolls and a pull down from its top collapses the sheet. A tap is a tap: only a move past
+        the slop becomes a drag, and only a drag swallows the click.
+      */}
+      <div
+        className="relative min-h-0 flex-1"
+        aria-busy={busy}
+        onPointerDown={(e) => onPointerDown(e, true)}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endDrag(e, false)}
+        onPointerCancel={(e) => endDrag(e, true)}
+        onClickCapture={swallowDragClick}
+      >
+        <div
+          ref={listRef}
+          className={cx(
+            "h-full overflow-y-auto overscroll-contain px-4 pb-14 transition-opacity duration-200 md:pb-4",
+            snap === SHEET_STRIP && "max-md:opacity-0",
+            snap < SHEET_TOP && "max-md:touch-pan-x",
+          )}
+          inert={snap === SHEET_STRIP && isPhone()}
+        >
+          <div ref={contentRef}>{children}</div>
         </div>
         <div
           className={cx(

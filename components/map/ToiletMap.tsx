@@ -46,7 +46,19 @@ function basemap(dark: boolean): StyleSpecification {
         attribution: ONEMAP_ATTRIBUTION,
       },
     },
-    layers: [{ id: "onemap", type: "raster", source: "onemap" }],
+    layers: [
+      {
+        id: "onemap",
+        type: "raster",
+        source: "onemap",
+        // Turned down, not recoloured: MRT lines, parks and water keep their hues, but OneMap's own labels and
+        // icons step back so the toilet pins lead. Night is only lightly capped (0.9, was 0.7) so streets still
+        // read in Singapore sun; the pins' rims and shadows keep them ahead.
+        paint: dark
+          ? { "raster-saturation": -0.25, "raster-brightness-max": 0.9, "raster-contrast": -0.05 }
+          : { "raster-saturation": -0.3, "raster-brightness-min": 0.06, "raster-contrast": -0.1 },
+      },
+    ],
   };
 }
 
@@ -129,6 +141,8 @@ export interface ToiletMapProps {
   recenterKey?: number | string;
   zoom?: number;
   user?: LatLng | null;
+  /** How far off the user's fix may be, in metres: drawn as a ring around the dot. */
+  accuracy?: number | null;
   /** Load pins for the visible area from /toilets/in-bounds. */
   showPins?: boolean;
   features?: Feature[];
@@ -160,6 +174,8 @@ export interface ToiletMapProps {
   dimPins?: boolean;
   /** False for small preview maps: no panning, zooming or controls. */
   interactive?: boolean;
+  /** Start the map credit folded to its "i" (the phone home map, where the expanded line runs into the locate button). */
+  foldCredit?: boolean;
   className?: string;
   label?: string;
 }
@@ -179,11 +195,35 @@ export interface MapView {
 
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4;
 
+/** Below this the ring hides under the dot anyway; above it, it would cover the whole map. */
+const ACCURACY_RING_MIN_M = 15;
+const ACCURACY_RING_MAX_M = 3000;
+/** "You are here" is sky blue by map convention, the one off-palette colour (DESIGN.md Map Markers). */
+const USER_BLUE = "#0284c7";
+
+/** A circle of `radiusM` metres around `c`, as a GeoJSON polygon (flat-earth, fine at city scale). */
+function circlePolygon(c: LatLng, radiusM: number) {
+  const steps = 48;
+  const dLat = radiusM / 111_320;
+  const dLng = radiusM / (111_320 * Math.cos((c.lat * Math.PI) / 180));
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * 2 * Math.PI;
+    ring.push([c.lng + dLng * Math.cos(a), c.lat + dLat * Math.sin(a)]);
+  }
+  return {
+    type: "Feature" as const,
+    properties: {},
+    geometry: { type: "Polygon" as const, coordinates: [ring] },
+  };
+}
+
 export default function ToiletMap({
   center,
   recenterKey,
   zoom = 16,
   user,
+  accuracy,
   showPins = true,
   features = [],
   openNow,
@@ -202,6 +242,7 @@ export default function ToiletMap({
   viewPadding,
   dimPins = false,
   interactive = true,
+  foldCredit = false,
   className,
   label = "Map of toilets",
 }: ToiletMapProps) {
@@ -306,6 +347,15 @@ export default function ToiletMap({
           }
         : null,
     [route],
+  );
+
+  // The accuracy ring, as a real circle on the ground so it scales with the zoom. Too small to see is left off.
+  const accuracyRing = useMemo(
+    () =>
+      user && accuracy && accuracy >= ACCURACY_RING_MIN_M
+        ? circlePolygon(user, Math.min(accuracy, ACCURACY_RING_MAX_M))
+        : null,
+    [user, accuracy],
   );
 
   // Read through a ref so the debounced and onLoad calls always reach the page's latest handler.
@@ -458,6 +508,12 @@ export default function ToiletMap({
 
   const issueColor = dark ? PIN_COLORS.dark.danger : PIN_COLORS.light.danger;
 
+  // Read through a ref, like darkRef: `phone` can settle after the first render, before the map loads.
+  const foldCreditRef = useRef(foldCredit);
+  useEffect(() => {
+    foldCreditRef.current = foldCredit;
+  }, [foldCredit]);
+
   return (
     <div
       ref={boxRef}
@@ -486,6 +542,13 @@ export default function ToiletMap({
         onClick={showPins ? onClick : undefined}
         onLoad={(e) => {
           const m = e.target;
+          // MapLibre opens the compact credit until the first interaction, which never comes on a picture-only
+          // map, so on a route preview it would sit across the route. Start it folded to its "i" there.
+          if (!interactive || foldCreditRef.current) {
+            const attrib = m.getContainer().querySelector(".maplibregl-ctrl-attrib");
+            attrib?.classList.remove("maplibregl-compact-show");
+            attrib?.removeAttribute("open");
+          }
           if (viewPadding) m.setPadding({ top: viewPadding.top, bottom: viewPadding.bottom, left: 0, right: 0 });
           addPinImages(m, darkRef.current);
           m.on("styleimagemissing", (ev: { id: string }) => {
@@ -503,6 +566,24 @@ export default function ToiletMap({
       >
         <AttributionControl compact position="bottom-left" customAttribution={hasImported ? OSM_ATTRIBUTION : undefined} />
         {interactive ? <NavigationControl position="top-right" showCompass={false} /> : null}
+
+        {accuracyRing ? (
+          <Source id="user-accuracy" type="geojson" data={accuracyRing}>
+            {/* Under the pins, so a wide ring never hides a toilet. */}
+            <Layer
+              id="user-accuracy-fill"
+              type="fill"
+              beforeId={showPins ? "toilet-points" : undefined}
+              paint={{ "fill-color": USER_BLUE, "fill-opacity": dark ? 0.16 : 0.12 }}
+            />
+            <Layer
+              id="user-accuracy-line"
+              type="line"
+              beforeId={showPins ? "toilet-points" : undefined}
+              paint={{ "line-color": USER_BLUE, "line-width": 1.5, "line-opacity": 0.6 }}
+            />
+          </Source>
+        ) : null}
 
         {showPins ? (
           <Source id="toilets" type="geojson" data={geojson} cluster clusterRadius={44} clusterMaxZoom={16}>

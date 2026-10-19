@@ -26,12 +26,15 @@ function read(): Set<FilterKey> {
  */
 export function useStoredFilters() {
   const [active, setActive] = useState<Set<FilterKey>>(() => new Set());
+  /** False until the saved set has loaded, so a request that sends filters can wait instead of going twice. */
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     // Storage is client-only; load after hydration.
     current ??= read();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setActive(current);
+    setReady(true);
     listeners.add(setActive);
     return () => {
       listeners.delete(setActive);
@@ -58,5 +61,5 @@ export function useStoredFilters() {
     [active, set],
   );
 
-  return { active, toggle, set, clear: () => set(new Set()) };
+  return { active, ready, toggle, set, clear: () => set(new Set()) };
 }

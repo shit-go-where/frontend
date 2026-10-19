@@ -1,4 +1,4 @@
-import type { AreaType, Feature, Region, StatusKind, ToiletTier, VenueToiletStatus, VenueType } from "./api/types";
+import type { AreaType, Feature, Region, StatusKind, ToiletStatus, ToiletTier, VenueToiletStatus, VenueType } from "./api/types";
 
 export const FEATURE_LABELS: Record<Feature, string> = {
   TOILET_PAPER: "Toilet paper",
@@ -121,7 +121,24 @@ export const STATUS_LABELS: Record<StatusKind, string> = {
   CLOSED_NOW: "Closed now",
 };
 
-export const BAD_STATUS: StatusKind[] = ["NO_PAPER", "NO_SOAP", "BROKEN", "CLOSED_NOW", "LONG_QUEUE"];
+/**
+ * Known to be shut right now: outside its hours, closed or under renovation, or reported closed by someone
+ * there. Such a toilet never leads a list.
+ */
+export function isClosedNow(t: {
+  openNow: boolean | null;
+  status: ToiletStatus;
+  activeStatus?: { kind: StatusKind }[];
+}): boolean {
+  return (
+    t.openNow === false ||
+    t.status === "CLOSED" ||
+    t.status === "RENOVATION" ||
+    !!t.activeStatus?.some((s) => s.kind === "CLOSED_NOW")
+  );
+}
+
+export const BAD_STATUS: StatusKind[] =["NO_PAPER", "NO_SOAP", "BROKEN", "CLOSED_NOW", "LONG_QUEUE"];
 
 export const TIER_LABELS: Record<ToiletTier, string> = {
   VERIFIED: "Verified",
@@ -217,20 +234,36 @@ export function timeAgo(iso: string | null | undefined, now: number = Date.now()
   return "just now";
 }
 
+/** How long ago a saved (offline) copy was fetched, short: "4 min", "2 h", "3 days". */
+export function savedAge(at: number, now: number = Date.now()): string {
+  const min = Math.max(1, Math.round((now - at) / 60_000));
+  if (min < 60) return `${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 48) return `${h} h`;
+  return plural(Math.round(h / 24), "day");
+}
+
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" });
+  // Pinned to Singapore time: the server renders in UTC, and a date near midnight would otherwise differ
+  // between the server's HTML and the browser's, which breaks hydration (React #418).
+  return d.toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Singapore" });
 }
 
 export function toiletTitle(t: { label: string | null; venue: { name: string } }): string {
   return t.label ? `${t.venue.name} · ${t.label}` : t.venue.name;
 }
 
+/** A cleanliness score as a number, written the same everywhere: "9", "8.5". */
+export function scoreNumber(score: number): string {
+  return score.toFixed(1).replace(/\.0$/, "");
+}
+
 export function cleanlinessText(score: number | null | undefined): string {
   if (score === null || score === undefined) return "No score yet";
-  return `Clean ${score.toFixed(1).replace(/\.0$/, "")}/10`;
+  return `Clean ${scoreNumber(score)}/10`;
 }
 
 /**
@@ -247,9 +280,15 @@ export function featureReasons(reasons: string[]): string[] {
   );
 }
 
+/**
+ * Walking directions in Google Maps. Pass `from` only for a searched place: with no origin Google Maps
+ * starts from the phone's own live position (better than a fix we took a minute ago) and, with
+ * `dir_action=navigate`, goes straight into turn-by-turn.
+ */
 export function googleMapsWalkingUrl(from: { lat: number; lng: number } | null, to: { lat: number; lng: number }) {
   const p = new URLSearchParams({ api: "1", destination: `${to.lat},${to.lng}`, travelmode: "walking" });
   if (from) p.set("origin", `${from.lat},${from.lng}`);
+  else p.set("dir_action", "navigate");
   return `https://www.google.com/maps/dir/?${p.toString()}`;
 }
 
@@ -257,4 +296,35 @@ export function googleMapsWalkingUrl(from: { lat: number; lng: number } | null, 
 export function safeRedirect(path: string | null | undefined, fallback = "/"): string {
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
   return path;
+}
+
+/** Short forms OneMap writes in capitals that stay capitals once a name is tidied. */
+const KEEP_CAPS = new Set(["MRT", "LRT", "HDB", "NTUC", "CC", "SAFRA", "YMCA", "NUS", "NTU", "SMU", "SUTD", "ITE", "JTC", "CPF", "ICA", "SGH", "KK", "UOB", "OCBC", "DBS", "POSB", "SPH", "TPY", "AMK", "BLK", "ST"]);
+
+/** OneMap's ALL-CAPS names in plain title case ("ORCHARD MRT STATION (TE14)" → "Orchard MRT Station (TE14)"). */
+export function tidyPlaceName(s: string): string {
+  if (/[a-z]/.test(s)) return s;
+  return s
+    .toLowerCase()
+    .replace(/[a-z0-9'’]+/g, (w) => {
+      const up = w.toUpperCase();
+      if (KEEP_CAPS.has(up) || /\d/.test(w)) return up;
+      return w[0].toUpperCase() + w.slice(1);
+    });
+}
+
+/**
+ * OneMap addresses repeat the building name and end in "SINGAPORE 248654". Keep the street and the postcode:
+ * "20 Orchard Boulevard · 248654".
+ */
+export function tidyPlaceAddress(address: string, name: string): string {
+  let a = address;
+  if (name && a.toUpperCase().includes(name.toUpperCase())) {
+    const i = a.toUpperCase().indexOf(name.toUpperCase());
+    a = a.slice(0, i) + a.slice(i + name.length);
+  }
+  const post = a.match(/SINGAPORE\s+(\d{6})\s*$/i);
+  if (post) a = a.slice(0, post.index);
+  a = tidyPlaceName(a.replace(/\s+/g, " ").trim());
+  return [a, post?.[1]].filter(Boolean).join(" · ");
 }

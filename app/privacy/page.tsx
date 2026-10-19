@@ -21,6 +21,13 @@ export default function PrivacyPage() {
         to search nearby and is sent to our server only as part of that search. We don&apos;t keep a history of where you searched.
       </p>
 
+      <h2>Checking in or reporting without an account</h2>
+      <p>
+        If you check in or report a toilet&apos;s status without signing in, we set a cookie (<code>sgw_anon</code>) holding a
+        random device ID (no name, email or location) for up to a year, so we can limit abuse and give you the points when you sign
+        in; we store only your distance from the toilet, never your location, and the cookie is removed once you sign in.
+      </p>
+
       <h2>What we store when you sign in</h2>
       <ul>
         <li>From Google: your email address, name and profile picture URL.</li>
@@ -63,7 +70,7 @@ export default function PrivacyPage() {
         GitHub organisation.
       </p>
 
-      <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">Last updated 18 October 2026.</p>
+      <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">Last updated 19 October 2026.</p>
     </article>
   );
 }

@@ -247,6 +247,34 @@ export function Dialog({
   }, [open]);
   // Close when the route is hidden by <Activity> so it doesn't reappear open.
   useEffect(() => () => ref.current?.close(), []);
+  /*
+   * iOS Safari lays the keyboard over the page instead of shrinking it (Android does, with the viewport's
+   * interactive-widget=resizes-content), so a bottom-docked sheet would hide its footer action under the keys.
+   * While open, track what the keyboard covers (--kb) and the height still visible (--vvh) from visualViewport,
+   * and the sheet sits on top of the keyboard and fits above it.
+   */
+  useEffect(() => {
+    const d = ref.current;
+    const vv = window.visualViewport;
+    if (!open || !d || !vv) return;
+    const update = () => {
+      // Pinch zoom also shrinks the visual viewport; that isn't a keyboard.
+      const kb = vv.scale > 1.01 ? 0 : Math.max(0, Math.round(document.documentElement.clientHeight - vv.height - vv.offsetTop));
+      d.style.setProperty("--kb", `${kb}px`);
+      d.style.setProperty("--vvh", `${Math.round(vv.height)}px`);
+      d.toggleAttribute("data-kb", kb > 0);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      d.style.removeProperty("--kb");
+      d.style.removeProperty("--vvh");
+      d.removeAttribute("data-kb");
+    };
+  }, [open]);
 
   return (
     <dialog
@@ -257,10 +285,12 @@ export function Dialog({
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
-      className="dialog-sheet m-auto mb-0 w-full max-w-lg rounded-t-[28px] border-t border-border bg-surface p-0 text-fg shadow-card backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px] sm:mb-auto sm:rounded-[28px] sm:border"
+      // Docked on the keyboard's top edge while it's up (--kb); centred tablets dock there too rather than hide under it.
+      className="dialog-sheet m-auto mb-[var(--kb,0px)] w-full max-w-lg rounded-t-[28px] border-t border-border bg-surface p-0 text-fg shadow-card backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px] sm:mb-auto sm:rounded-[28px] sm:border sm:data-kb:mb-[var(--kb)]"
     >
       {shown ? (
-        <div className="flex max-h-[85dvh] flex-col">
+        // Never taller than the part of the screen the keyboard leaves, so the footer action stays in view.
+        <div className="flex max-h-[min(85dvh,calc(var(--vvh,100dvh)-1rem))] flex-col">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
             <h2 id={titleId} className="text-xl">
               {title}

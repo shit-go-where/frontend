@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    orientation: "portrait",
+    // No orientation lock (WCAG 1.3.4): a phone on a mount or a tablet in landscape gets the desktop layout.
     background_color: "#1e120b",
     theme_color: "#1e120b",
     categories: ["navigation", "travel", "utilities"],

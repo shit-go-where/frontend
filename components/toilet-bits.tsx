@@ -15,6 +15,7 @@ import {
   Footprints,
   Globe,
   Milk,
+  Navigation,
   Scroll,
   ShowerHead,
   SoapDispenserDroplet,
@@ -46,20 +47,45 @@ import { openFromCard } from "@/lib/toilet-handoff";
 import { PinGlyph, tierPinVariant } from "./pin";
 import { Dialog, cx } from "./ui";
 
-export function TierBadge({ tier, pending, className }: { tier: ToiletTier; pending?: boolean; className?: string }) {
+export function TierBadge({
+  tier,
+  pending,
+  unconfirmed,
+  age,
+  seenBy,
+  className,
+}: {
+  tier: ToiletTier;
+  pending?: boolean;
+  /**
+   * Calm results list pending toilets (trust model v2), so there the dashed badge says what that means for
+   * the walker, "Unconfirmed", instead of "Pending review". Urgent results never show them.
+   */
+  unconfirmed?: boolean;
+  /** Short freshness ("3 wk", "not checked") carried inside the badge, so a compact row says tier and age at once. */
+  age?: string;
+  /** Different people who've confirmed a Community toilet; said on the badge from two up. */
+  seenBy?: number;
+  className?: string;
+}) {
   if (pending) {
     return (
       <span
         className={cx(
-          "inline-flex items-center gap-1 rounded-full border-2 border-dashed border-warn px-2 py-0.5 text-xs font-extrabold text-warn",
+          "inline-flex items-center gap-1 whitespace-nowrap rounded-full border-2 border-dashed border-warn px-2 py-0.5 text-xs font-extrabold text-warn",
           className,
         )}
       >
-        Pending review
-        <span className="sr-only">: waiting for community review, not used for directions</span>
+        {unconfirmed ? "Unconfirmed" : "Pending review"}
+        <span className="sr-only">
+          {unconfirmed
+            ? ": added recently and not yet confirmed by a second person"
+            : ": waiting for community review, not used for directions"}
+        </span>
       </span>
     );
   }
+  const seen = tier === "COMMUNITY" && seenBy !== undefined && seenBy >= 2 ? seenBy : null;
   const styles: Record<ToiletTier, string> = {
     VERIFIED: "bg-tier text-tier-fg border-2 border-tier",
     COMMUNITY: "bg-transparent text-tier border-2 border-tier",
@@ -67,12 +93,34 @@ export function TierBadge({ tier, pending, className }: { tier: ToiletTier; pend
   };
   const Icon = tier === "VERIFIED" ? BadgeCheck : tier === "COMMUNITY" ? Users : Globe;
   return (
-    <span className={cx("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-extrabold", styles[tier], className)}>
-      <Icon className="size-3.5" aria-hidden />
+    <span
+      className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-extrabold", styles[tier], className)}
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden />
       {TIER_LABELS[tier]}
       <span className="sr-only">: {TIER_HELP[tier].toLowerCase()}</span>
+      {seen !== null ? <span className="font-bold">· seen by {seen}</span> : null}
+      {age ? (
+        <span className="font-bold" aria-hidden>
+          · {age}
+        </span>
+      ) : null}
     </span>
   );
+}
+
+const DAY_MS = 86_400_000;
+
+/** The age a compact tier badge carries: "today", "4 d", "3 wk", "5 mo", "2 yr", or "not checked". */
+export function shortAge(iso: string | null | undefined, now: number = Date.now()): string {
+  if (!iso) return "not checked";
+  const days = Math.floor((now - new Date(iso).getTime()) / DAY_MS);
+  if (Number.isNaN(days)) return "";
+  if (days < 1) return "today";
+  if (days < 7) return `${days} d`;
+  if (days < 35) return `${Math.floor(days / 7)} wk`;
+  if (days < 365) return `${Math.floor(days / 30)} mo`;
+  return `${Math.floor(days / 365)} yr`;
 }
 
 /** MRT line code on its official colour, with text that clears 4.5:1. */
@@ -207,8 +255,24 @@ export function FilterChipLabel({ k, label, active }: { k: FilterKey; label: str
 const HIGHLIGHT: Feature[] = ["BIDET", "ACCESSIBLE", "FREE", "SITTING", "BABY_CHANGE", "TOILET_PAPER", "HAND_SOAP"];
 
 /** Card feature chips stay fudge; the group hue rides on the icon only, so tier and walk time lead the card. */
-export function FeatureChips({ features, max = 4, plain }: { features: Feature[]; max?: number; plain?: boolean }) {
-  const shown = HIGHLIGHT.filter((f) => features.includes(f)).slice(0, max);
+export function FeatureChips({
+  features,
+  max = 4,
+  plain,
+  more,
+  first = [],
+}: {
+  features: Feature[];
+  max?: number;
+  plain?: boolean;
+  /** Count what didn't fit as a trailing "+n", so a compact card keeps its chips to one line without hiding that there's more. */
+  more?: boolean;
+  /** Shown ahead of the usual highlights when the toilet has them (what was asked for), even outside that set. */
+  first?: Feature[];
+}) {
+  const known = [...new Set([...first, ...HIGHLIGHT])].filter((f) => features.includes(f));
+  const shown = known.slice(0, max);
+  const extra = more ? known.length - shown.length : 0;
   if (!shown.length) return null;
   if (plain) {
     // Dense lists (area pages): the hue icon and the word, no pill, so a row stays one line of facts.
@@ -239,6 +303,12 @@ export function FeatureChips({ features, max = 4, plain }: { features: Feature[]
           </li>
         );
       })}
+      {extra > 0 ? (
+        <li className="inline-flex items-center px-1 text-xs font-bold text-muted">
+          +{extra}
+          <span className="sr-only"> more</span>
+        </li>
+      ) : null}
     </ul>
   );
 }
@@ -270,25 +340,63 @@ export function StatusChips({ statuses }: { statuses: ActiveStatus[] }) {
 
 export function OpenNow({ openNow }: { openNow: boolean | null }) {
   if (openNow === null) return <span className="text-xs text-muted">Hours unknown</span>;
+  if (!openNow) return <ClosedPill>Closed now</ClosedPill>;
   return (
-    <span className={cx("inline-flex items-center gap-1 text-xs font-semibold", openNow ? "text-mint" : "text-danger")}>
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-mint">
       <Clock className="size-3.5" aria-hidden />
-      {openNow ? "Open now" : "Closed now"}
+      Open now
     </span>
   );
 }
 
+/** "Closed now" and friends: a Broken Red pill, since a closed toilet is the one fact that changes the plan. */
+export function ClosedPill({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-danger-soft px-2.5 py-0.5 text-xs font-extrabold text-danger",
+        className,
+      )}
+    >
+      <Clock className="size-3.5" aria-hidden />
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Three rows: name, one fact line (tier with its age, level, then score and hours only when known), chips.
+ * Unknowns stay off the card; the detail page says what isn't known yet.
+ */
 function ToiletCardInner({
   t,
   selected,
   onHover,
+  walk,
+  distanceFrom,
 }: {
   t: ToiletSummary;
   selected?: boolean;
   onHover?: (id: string | null) => void;
+  /**
+   * Adds a "Walk there" side button (the route screen, one tap from the map). The card itself still opens
+   * the detail page; the button sits beside it, as on the urgent alternates, since a link can't hold a link.
+   */
+  walk?: boolean;
+  /** Where the metres are measured from when it isn't the person (a searched or fallback place). */
+  distanceFrom?: string;
 }) {
   const mins = walkMinutes(t.walkSecondsEstimate);
-  return (
+  const pending = t.status === "PENDING";
+  // Room for one line of chips: live reports first (they're news), then features.
+  const featureRoom = Math.max(1, 2 - t.activeStatus.length);
+  // Pending toilets are never used for directions.
+  const side = walk && !pending;
+  const shell = cx(
+    "rounded-3xl border bg-surface shadow-rest",
+    selected ? "border-primary ring-2 ring-primary" : "border-border/70",
+  );
+  const card = (
     <Link
       href={`/toilets/${t.id}`}
       // Going deeper: the detail page arrives from the right (and shows this name while it loads).
@@ -299,41 +407,82 @@ function ToiletCardInner({
       onFocus={() => onHover?.(t.id)}
       onBlur={() => onHover?.(null)}
       className={cx(
-        "group flex items-start gap-3 rounded-3xl border bg-surface p-3 shadow-rest transition hover:brightness-110 active:scale-[0.98]",
-        selected ? "border-primary ring-2 ring-primary" : "border-border/70",
+        "group flex items-start gap-3 p-3 transition hover:brightness-110 active:scale-[0.98]",
+        side ? "min-w-0 flex-1 bg-surface" : shell,
       )}
       data-testid="toilet-card"
     >
-      <div className="flex w-14 shrink-0 flex-col items-center rounded-2xl bg-mint py-2 text-center text-mint-fg shadow-gloss">
-        <Footprints className="size-4" aria-hidden />
-        <span className="font-display text-2xl leading-none">{mins ?? "–"}</span>
-        <span className="text-[11px] font-extrabold">min</span>
-      </div>
+      {/* No walk block without walk minutes (no GPS fix): a dash in mint would still read as "near you". */}
+      {mins !== null ? (
+        <div className="flex w-14 shrink-0 flex-col items-center rounded-2xl bg-mint py-1.5 text-center text-mint-fg shadow-gloss">
+          <Footprints className="size-3.5" aria-hidden />
+          <span className="font-display text-2xl leading-none">{mins}</span>
+          <span className="text-[11px] font-extrabold leading-tight">min</span>
+        </div>
+      ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-extrabold leading-snug">
+          <h3 className="line-clamp-2 font-extrabold leading-snug">
             {t.venue.name}
-            {t.label ? <span className="block text-sm font-medium text-muted">{t.label}</span> : null}
+            {t.label ? <span className="text-sm font-medium text-muted"> · {t.label}</span> : null}
           </h3>
           <ChevronRight className="mt-0.5 size-5 shrink-0 text-muted group-hover:text-primary" aria-hidden />
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <TierBadge tier={t.tier} pending={t.status === "PENDING"} />
-          {t.distanceM !== undefined ? <span className="text-muted tabular-nums">{formatDistance(t.distanceM)}</span> : null}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
+          {/* Shut leads the facts: it's the one that changes the plan. */}
+          {t.status === "CLOSED" ? <ClosedPill>Closed</ClosedPill> : null}
+          {t.status === "RENOVATION" ? <ClosedPill>Under renovation</ClosedPill> : null}
+          {t.openNow === false && t.status !== "CLOSED" && t.status !== "RENOVATION" ? <OpenNow openNow={false} /> : null}
+          <TierBadge
+            tier={t.tier}
+            pending={pending}
+            age={pending ? undefined : shortAge(t.lastVerifiedAt)}
+            seenBy={t.seenBy}
+          />
+          <span className="sr-only">{lastVerifiedText(t)}.</span>
+          {/* Metres only when there are no walk minutes to show (no GPS fix). */}
+          {mins === null && t.distanceM !== undefined ? (
+            <span className="text-muted tabular-nums">
+              {formatDistance(t.distanceM)}
+              {distanceFrom ? ` from ${distanceFrom}` : null}
+            </span>
+          ) : null}
           {t.level ? <span className="text-muted">Level {t.level}</span> : null}
-          <span className="inline-flex items-center gap-1">
-            <Sparkles className="size-3.5 text-accent" aria-hidden />
-            {cleanlinessText(t.scoreCleanliness)}
-          </span>
-          <OpenNow openNow={t.openNow} />
+          {t.scoreCleanliness !== null && t.scoreCleanliness !== undefined ? (
+            <span className="inline-flex items-center gap-1 font-semibold">
+              <Sparkles className="size-3.5 text-accent" aria-hidden />
+              {cleanlinessText(t.scoreCleanliness)}
+            </span>
+          ) : null}
+          {t.openNow ? <OpenNow openNow /> : null}
+          {t.needsResurvey ? <span className="text-xs font-bold text-warn">Re-survey due</span> : null}
         </div>
-        <div className="mt-2 flex flex-col gap-1.5">
-          <FeatureChips features={t.features} />
-          <StatusChips statuses={t.activeStatus} />
-        </div>
-        <p className="mt-1.5 text-xs text-muted">{lastVerifiedText(t)}</p>
+        {t.activeStatus.length || t.features.length ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <StatusChips statuses={t.activeStatus} />
+            <FeatureChips features={t.features} max={featureRoom} more />
+          </div>
+        ) : null}
       </div>
     </Link>
+  );
+  if (!side) return card;
+  return (
+    // A narrow card (a small phone with large text) stacks Walk under the card instead of squeezing the name.
+    <div className={cx("@container overflow-hidden", shell)}>
+      <div className="flex items-stretch @max-[18rem]:flex-col">
+      {card}
+      <Link
+        href={`/go?to=${encodeURIComponent(t.id)}`}
+        className="flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border text-xs font-extrabold text-primary transition hover:bg-surface-2 active:scale-95 @max-[18rem]:min-h-11 @max-[18rem]:w-full @max-[18rem]:flex-row @max-[18rem]:gap-1.5 @max-[18rem]:border-l-0 @max-[18rem]:border-t @max-[18rem]:text-sm"
+        aria-label={`Walk to ${t.venue.name}`}
+        data-testid="walk-there"
+      >
+        <Navigation className="size-5" aria-hidden />
+        <span aria-hidden>Walk</span>
+      </Link>
+      </div>
+    </div>
   );
 }
 

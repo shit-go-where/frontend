@@ -51,6 +51,12 @@
   --poo-ink: #24150d;
   /* Sticker rim cream: the mascot's die-cut rim and earned badge medals (both themes). */
   --rim: #fff8ef;
+  /*
+   * The band under the iPhone status bar in the installed app (both themes). The app asks for
+   * "black-translucent", whose clock and icons are always white, so the band stays Chocolate Ground
+   * even in caramel light; a light status bar can't be chosen per theme once the app is installed.
+   */
+  --status-bar: #1e120b;
   --accent: #ffc46b;
   --accent-fg: #2b1d00;
   /* Podium medals beside Sparkle Gold: a cool silver and a dusty copper, kept clear of caramel tier. */
@@ -205,12 +211,83 @@ html {
   scrollbar-color: var(--border) transparent;
 }
 
+/* Range sliders (the "Nearest or cleanest?" dial): a fudge groove with a toffee edge and a glossy pink knob,
+   never the browser's grey track. */
+.range-candy {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.range-candy::-webkit-slider-runnable-track {
+  height: 0.75rem;
+  border-radius: 9999px;
+  background: var(--surface-2);
+  border: 2px solid var(--border-strong);
+}
+.range-candy::-moz-range-track {
+  height: 0.75rem;
+  border-radius: 9999px;
+  background: var(--surface-2);
+  border: 2px solid var(--border-strong);
+}
+.range-candy::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: calc((0.75rem - 4px - 1.75rem) / 2);
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  border: 3px solid var(--surface);
+  box-shadow: var(--gloss), 0 2px 6px rgb(0 0 0 / 0.35);
+}
+.range-candy::-moz-range-thumb {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  border: 3px solid var(--surface);
+  box-shadow: var(--gloss), 0 2px 6px rgb(0 0 0 / 0.35);
+}
+.range-candy:focus-visible {
+  outline: none;
+}
+.range-candy:focus-visible::-webkit-slider-thumb {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+.range-candy:focus-visible::-moz-range-thumb {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
   overflow-x: hidden;
   caret-color: var(--primary);
+  /*
+   * Safe areas, once for every page: the installed iPhone app draws under the status bar
+   * (viewport-fit=cover), and a landscape notch sits at a side. Zero in a normal browser tab.
+   * Fixed full-screen pages (the home map, the route screen) pad their own overlays instead.
+   */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/*
+ * A solid band under the status bar (layout.tsx), so the white clock never sits on caramel or on a
+ * card scrolling past. Its height is the inset, so it's nothing outside the installed iPhone app.
+ */
+.status-scrim {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 50;
+  height: env(safe-area-inset-top);
+  background: var(--status-bar);
+  pointer-events: none;
 }
 
 ::selection {
@@ -261,11 +338,44 @@ h3 {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/*
+ * The phone tab bar, measured once. --nav-h is the bar above the safe area; --nav-crown is how far its
+ * bump (cradling the seated I NEED TO GO disc) rises above that. Anything that docks to the bar or must
+ * clear it (the map sheet, page padding, the add wizard's action bar, the route panel) reads these.
+ */
+:root {
+  --nav-h: 4.75rem;
+  --nav-crown: 0.875rem;
+  /*
+   * The seated disc: 60px on any ordinary phone, shrinking with the viewport when it is narrow or
+   * zoomed (never under a 44px thumb target) and growing with enlarged text. The bump follows it.
+   */
+  --nav-disc: clamp(2.75rem, 16.5vw, 3.75rem);
+}
+
+/* The bar's bump carries the bar's float shadow up with it (an SVG shape, so a filter, not a box-shadow). */
+.nav-bump {
+  filter: drop-shadow(0 -4px 10px rgb(0 0 0 / 0.35));
+}
+:root[data-scheme="light"] .nav-bump {
+  filter: drop-shadow(0 -3px 8px rgb(74 38 14 / 0.14));
+}
+
 .no-scrollbar {
   scrollbar-width: none;
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* The home map lifts its credit above the bottom sheet on phones (home-client sets the variable). */
+/* Doubled class so it outranks MapLibre's own `.maplibregl-ctrl-bottom-left { bottom: 0 }`. */
+.maplibregl-ctrl-bottom-left.maplibregl-ctrl-bottom-left {
+  bottom: var(--map-ctrl-bottom, 0);
+  transition: bottom var(--dur-sheet, 380ms) var(--ease-sheet, ease-out);
+  @variant motion-reduce {
+    transition: none;
+  }
 }
 
 /* MapLibre controls follow the theme. */
@@ -711,15 +821,21 @@ h3 {
 :root[data-route-vt] .vt-tab-bar {
   view-transition-name: tab-bar;
 }
+:root[data-route-vt] .status-scrim {
+  view-transition-name: status-scrim;
+}
 ::view-transition-group(site-header),
 ::view-transition-group(tab-bar),
+::view-transition-group(status-scrim),
 ::view-transition-new(site-header),
-::view-transition-new(tab-bar) {
+::view-transition-new(tab-bar),
+::view-transition-new(status-scrim) {
   animation: none;
 }
 /* Above anything that grows during a route change (the route map below), as on the live page. */
 ::view-transition-group(site-header),
-::view-transition-group(tab-bar) {
+::view-transition-group(tab-bar),
+::view-transition-group(status-scrim) {
   z-index: 2;
 }
 
@@ -755,7 +871,8 @@ h3 {
   }
 }
 ::view-transition-old(site-header),
-::view-transition-old(tab-bar) {
+::view-transition-old(tab-bar),
+::view-transition-old(status-scrim) {
   display: none;
 }
 
