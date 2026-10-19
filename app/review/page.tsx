@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { Spinner } from "@/components/ui";
 import { ReviewClient } from "./review-client";
 
 export const metadata: Metadata = {
@@ -7,5 +9,10 @@ export const metadata: Metadata = {
 };
 
 export default function ReviewPage() {
-  return <ReviewClient />;
+  // ReviewClient reads `?id=` (a submission to show first), which needs a Suspense boundary to prerender.
+  return (
+    <Suspense fallback={<Spinner label="Loading submissions" />}>
+      <ReviewClient />
+    </Suspense>
+  );
 }

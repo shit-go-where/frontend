@@ -16,12 +16,19 @@ import {
   Coins,
   Droplet,
   Droplets,
+  ExternalLink,
   FlipHorizontal2,
   Footprints,
   Frame,
+  Info,
   GlassWater,
   HandHeart,
+  LoaderCircle,
+  LocateFixed,
+  LocateOff,
+  Lock,
   MapPin,
+  MapPinCheck,
   Mars,
   MessageSquareHeart,
   MessageSquareMore,
@@ -30,6 +37,7 @@ import {
   PersonStanding,
   Route,
   Scroll,
+  Search,
   Shirt,
   ShowerHead,
   Signpost,
@@ -48,12 +56,29 @@ import { arriving } from "@/lib/toilet-handoff";
 import { BackButton } from "@/components/back-button";
 import { ErrorState, SectionIcon, Skeleton, Stars, buttonClass, cx } from "@/components/ui";
 import { FoldDetails } from "@/components/fold-details";
+import { PhotoViewer } from "@/components/photo-viewer";
 import { api, errorMessage } from "@/lib/api/client";
 import type { Feature, FeatureDetail, OpeningHours, Survey, ToiletDetail } from "@/lib/api/types";
-import { BAD_STATUS, FEATURE_GROUPS, FEATURE_LABELS, TIER_LABELS, VENUE_TYPE_LABELS, areaSlug, formatDate, formatDistance, walkMinutes } from "@/lib/format";
+import {
+  BAD_STATUS,
+  FEATURE_GROUPS,
+  FEATURE_LABELS,
+  TIER_LABELS,
+  VENUE_TYPE_LABELS,
+  areaSlug,
+  formatDate,
+  formatDistance,
+  googleMapsWalkingUrl,
+  scoreNumber,
+  shortAddress,
+  walkMinutes,
+} from "@/lib/format";
 import { FEATURE_HUE, HUE_CHIP, type Hue } from "@/lib/feature-hues";
 import { FILTERS } from "@/lib/filters";
 import { estimateWalkSeconds, haversineM, useLocation } from "@/lib/location";
+import { opensText } from "@/lib/opening-hours";
+import { isUnnamed } from "@/lib/unnamed-toilet";
+import { useHydrated, useMe } from "@/lib/auth";
 import { useStoredFilters } from "@/lib/use-filters";
 import {
   CheckInButton,
@@ -181,6 +206,21 @@ function Detail({ t }: { t: ToiletDetail }) {
   const pending = t.status === "PENDING";
   const pinRef = useRef<HTMLDivElement>(null);
   const fits = useFitsWindow(pinRef);
+  // Close enough to check in (the API's 150 m), so say so where the tiles are. GPS fixes only.
+  const loc = useLocation();
+  const hereM = loc.source === "gps" ? haversineM(loc.coords, t) : null;
+  // Pending toilets take check-ins too: a signed-in check-in there is how a new toilet gets confirmed.
+  const canCheckIn = t.status === "ACTIVE" || pending;
+  const nearEnough = canCheckIn && hereM !== null && hereM <= 150;
+  const { data: me, isSuccess: meKnown } = useMe();
+  const hydrated = useHydrated();
+  const signedOut = hydrated && meKnown && !me;
+  const closedForGood = t.status === "CLOSED" || t.status === "RENOVATION";
+  // Shut for now, by its hours or by someone on the spot, but it will open again.
+  const closedNow = t.status === "ACTIVE" && (t.openNow === false || t.activeStatus.some((s) => s.kind === "CLOSED_NOW"));
+  // Only the hours can say when it opens; a "Closed now" report alone gives no time.
+  const opens = closedNow && t.openNow === false ? opensText(t.openingHours) : null;
+  const [photoAt, setPhotoAt] = useState<number | null>(null);
 
   return (
     <article className="mx-auto w-full max-w-3xl px-4 pb-10 pt-2 md:max-w-7xl" data-testid="toilet-detail">
@@ -201,9 +241,29 @@ function Detail({ t }: { t: ToiletDetail }) {
           <Verdict t={t} />
 
           <div className="mt-4 flex gap-2">
-            {pending ? (
-              <Link href="/review" className={buttonClass("primary", "lg", "flex-1")}>
+            {pending && nearEnough ? (
+              // Standing at it: a check-in is the confirmation. The link only adds ?do=checkin, which the
+              // Check in tile below picks up, so there is one check-in dialog on the page.
+              <Link
+                href={`/toilets/${encodeURIComponent(t.id)}?do=checkin`}
+                replace
+                scroll={false}
+                className={buttonClass("primary", "lg", "flex-1")}
+              >
+                <MapPinCheck className="size-5" aria-hidden /> Check in to confirm it
+              </Link>
+            ) : pending ? (
+              // The toilet page doesn't say which submission is open, so this opens the nearby queue.
+              <Link
+                href={t.openSubmissionId ? `/review?id=${encodeURIComponent(t.openSubmissionId)}` : "/review"}
+                className={buttonClass("primary", "lg", "flex-1")}
+              >
                 <Vote className="size-5" aria-hidden /> Help review it
+              </Link>
+            ) : closedForGood || closedNow ? (
+              // Nobody standing in front of a shut door wants directions to it: lead with the way out.
+              <Link href="/go?urgent=1" className={buttonClass("primary", "lg", "flex-1 py-2 text-center leading-tight")}>
+                <Search className="size-5 shrink-0" aria-hidden /> Find the nearest open toilet
               </Link>
             ) : (
               <Link href={`/go?to=${encodeURIComponent(t.id)}`} className={buttonClass("primary", "lg", "flex-1")}>
@@ -212,34 +272,88 @@ function Detail({ t }: { t: ToiletDetail }) {
             )}
             <ShareButton toilet={t} />
           </div>
+          {closedNow ? (
+            // Still worth the walk for someone who'll arrive after it opens.
+            <Link href={`/go?to=${encodeURIComponent(t.id)}`} className={buttonClass("secondary", "md", "mt-2 w-full")}>
+              <Footprints className="size-5" aria-hidden /> Walk there
+              {opens ? (
+                <span className="font-medium text-muted" suppressHydrationWarning>
+                  · {opens}
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
+          {pending ? (
+            // Pending toilets aren't routed here, but someone far away still needs to find it.
+            <a
+              href={googleMapsWalkingUrl(null, t)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonClass("secondary", "md", "mt-2 w-full")}
+            >
+              <ExternalLink className="size-5" aria-hidden /> Directions in Google Maps
+            </a>
+          ) : null}
 
           {t.photos.length ? (
             <ul aria-label="Photos" className="no-scrollbar -mx-4 mt-4 flex snap-x gap-2 overflow-x-auto px-4">
-              {t.photos.map((p) => (
+              {t.photos.map((p, i) => (
                 <li key={p.id} className="shrink-0 snap-start">
-                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="block rounded-3xl">
+                  <button
+                    type="button"
+                    onClick={() => setPhotoAt(i)}
+                    aria-haspopup="dialog"
+                    aria-label={`Open photo ${i + 1} of ${t.photos.length}`}
+                    className="block rounded-3xl transition active:scale-[0.98]"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={p.thumbUrl ?? p.url}
-                      alt={`Photo of the toilet at ${t.venue.name}`}
+                      alt=""
                       loading="lazy"
                       className="h-32 w-44 rounded-3xl border border-border/70 bg-surface-2 object-cover shadow-rest"
                     />
-                  </a>
+                  </button>
                 </li>
               ))}
             </ul>
           ) : null}
+          <PhotoViewer
+            photos={t.photos}
+            index={photoAt}
+            onIndex={setPhotoAt}
+            onClose={() => setPhotoAt(null)}
+            alt={(i) => `Photo ${i + 1} of the toilet at ${t.venue.name}`}
+          />
 
           <section aria-labelledby="been-here" className="mt-8">
             <h2 id="been-here" className="text-xl leading-tight">
-              Been here?
+              {nearEnough ? "You're here" : "Been here?"}
             </h2>
+            {nearEnough ? (
+              <p className="mt-1 font-bold text-mint">
+                {hereM < 15 ? "You're right at it" : `You're ${formatDistance(hereM)} away`}, close enough to check in.
+              </p>
+            ) : null}
             <div className="mt-3 flex gap-2">
-              <CheckInButton toilet={t} />
+              {/* Closed toilets don't take check-ins. */}
+              {canCheckIn ? <CheckInButton toilet={t} /> : null}
               <ReportButton toilet={t} />
               <ReviewButton toilet={t} />
             </div>
+            {signedOut && t.status === "ACTIVE" ? (
+              <p className="mt-2 text-sm font-medium text-muted">
+                Check-ins and reports work without signing in.{" "}
+                <Link
+                  href={`/login?redirect=${encodeURIComponent(`/toilets/${t.id}`)}`}
+                  className="font-bold text-primary underline decoration-primary/50 underline-offset-4 hover:decoration-primary"
+                >
+                  Sign in to earn points.
+                </Link>
+              </p>
+            ) : null}
+            {/* The gaps sit with the other ways to help, not in the verdict, so "Walk there" stays in the first screen. */}
+            <MissingFacts t={t} />
           </section>
         </div>
 
@@ -264,9 +378,20 @@ function Detail({ t }: { t: ToiletDetail }) {
 /** One quiet row under the name: what kind of place, which lines, which area. */
 function VenueLine({ t }: { t: ToiletDetail }) {
   const type = t.venue.type !== "OTHER" ? VENUE_TYPE_LABELS[t.venue.type] : null;
-  if (!type && !t.venue.lines.length && !t.venue.planningArea) return null;
+  // "Public toilet" alone says nothing, and a pending toilet has no directions here: both say where they are.
+  const near =
+    isUnnamed(t) || t.status === "PENDING"
+      ? (t.near ?? (t.status === "PENDING" && t.venue.address ? shortAddress(t.venue.address) : null))
+      : null;
+  if (!near && !type && !t.venue.lines.length && !t.venue.planningArea) return null;
   return (
     <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm font-bold text-muted">
+      {near ? (
+        <span className="inline-flex items-center gap-1.5 text-fg">
+          <Signpost className="size-4 text-muted" aria-hidden />
+          {near}
+        </span>
+      ) : null}
       {type ? (
         <span className="inline-flex items-center gap-1.5">
           <Building2 className="size-4" aria-hidden />
@@ -308,24 +433,45 @@ function Verdict({ t }: { t: ToiletDetail }) {
   // Only from a real GPS fix: never a walk from the fallback place (DESIGN.md).
   const distanceM = loc.source === "gps" ? haversineM(loc.coords, t) : null;
   const mins = distanceM !== null ? walkMinutes(estimateWalkSeconds(distanceM)) : null;
+  // Without a fix the tile asks for one; a refusal or a failed fix is said in a line under the row.
+  const locateNote =
+    mins === null && loc.status === "denied"
+      ? "Location is off for this site. Turn it on in your browser settings."
+      : mins === null && loc.status === "unavailable"
+        ? "Couldn't get a fix. Try again outside or near a window."
+        : null;
 
   const musts = useMemo(() => mustHaves(t, active), [t, active]);
   // Open-data must-haves get the full sentence, not just the chip suffix (DESIGN.md "Do say so").
   const unverified = musts.filter((m) => m.state === "yes" && m.openData && (m.required || m.feature === "ACCESSIBLE")).map((m) => m.feature);
   const where = whereParts(t);
-  const missing = missingFacts(t);
+  const paid = t.featureDetails.some((d) => d.feature === "FREE" && !d.present);
 
   return (
     <section aria-label="At a glance" className="mt-4 rounded-[28px] border border-border/70 bg-surface p-4 shadow-rest">
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill t={t} />
+        {/* Cost decides as much as hours do, so it sits beside them rather than in the chips below. */}
+        {paid ? (
+          <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-sm font-extrabold">
+            <Coins className="size-4 text-accent" aria-hidden />
+            Paid
+          </span>
+        ) : null}
         <StatusChips statuses={t.activeStatus} />
       </div>
 
-      {t.venue.note ? <p className="mt-3 rounded-2xl bg-surface-2 px-3 py-2 text-sm font-bold">{t.venue.note}</p> : null}
+      {/* A quiet line, not a panel: it's context, and the walk and score below are what decide. */}
+      {t.venue.note ? (
+        <p className="mt-2.5 flex items-start gap-1.5 text-sm font-medium text-muted">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {t.venue.note}
+        </p>
+      ) : null}
       {pending ? (
         <p className="mt-3 rounded-2xl border-2 border-dashed border-warn px-3 py-2 text-sm font-medium">
-          Added by the community and waiting for review. Not used for directions yet.
+          Added by the community and not confirmed yet, so it isn&apos;t used for directions. It goes live when someone else
+          checks in there, or a moderator confirms it.
         </p>
       ) : null}
       {t.needsResurvey ? (
@@ -335,36 +481,40 @@ function Verdict({ t }: { t: ToiletDetail }) {
         </p>
       ) : null}
 
-      {mins === null && t.scoreCleanliness === null ? (
-        // Nothing to put in big type: say so in a line rather than an empty box.
-        <p className="mt-3 text-sm font-bold">
-          <span className="text-muted">Cleanliness:</span> no score yet
-        </p>
-      ) : (
-        <div className="mt-4 flex items-stretch gap-2">
-          {mins !== null ? (
-            <div className="flex w-24 shrink-0 flex-col items-center justify-center rounded-2xl bg-mint px-2 py-2.5 text-center text-mint-fg shadow-gloss">
-              <Footprints className="size-4" aria-hidden />
-              <span className="mt-0.5 font-display text-4xl leading-none">{mins}</span>
-              <span className="mt-1 text-xs font-extrabold">min walk</span>
-              <span className="text-[11px] font-bold tabular-nums">{formatDistance(distanceM)}</span>
-            </div>
-          ) : null}
-          <div className="flex min-w-0 flex-1 flex-col justify-center rounded-2xl bg-surface-2 px-4 py-2.5">
-            <p className="text-sm font-bold text-muted">Cleanliness</p>
-            {t.scoreCleanliness !== null ? (
-              <p className="mt-0.5 font-display text-4xl leading-none">
-                {t.scoreCleanliness.toFixed(1)}
-                <span className="ml-0.5 text-lg text-muted">/10</span>
-              </p>
-            ) : (
-              <p className="mt-1 font-bold">No score yet</p>
-            )}
+      <div className="mt-3 flex items-stretch gap-2">
+        {mins !== null ? (
+          <div className="flex w-24 shrink-0 flex-col items-center justify-center rounded-2xl bg-mint px-2 py-2.5 text-center text-mint-fg shadow-gloss">
+            <Footprints className="size-4" aria-hidden />
+            <span className="mt-0.5 font-display text-4xl leading-none">{mins}</span>
+            <span className="mt-1 text-xs font-extrabold">min walk</span>
+            <span className="text-[11px] font-bold tabular-nums">{formatDistance(distanceM)}</span>
           </div>
+        ) : (
+          // The page no longer asks for location by itself, so the walk tile asks instead of going missing.
+          <WalkTimeButton status={loc.status} onLocate={() => void loc.locate()} />
+        )}
+        <div className="flex min-w-0 flex-1 flex-col justify-center rounded-2xl bg-surface-2 px-4 py-2.5">
+          <p className="text-sm font-bold text-muted">Cleanliness</p>
+          {t.scoreCleanliness !== null ? (
+            <p className="mt-0.5 font-display text-4xl leading-none">
+              {scoreNumber(t.scoreCleanliness)}
+              <span className="ml-0.5 text-lg text-muted">/10</span>
+            </p>
+          ) : (
+            <p className="mt-1 font-bold">No score yet</p>
+          )}
         </div>
-      )}
+      </div>
+      <p role="status" className={cx("text-sm font-medium text-muted", locateNote && "mt-2 flex items-start gap-1.5")}>
+        {locateNote ? (
+          <>
+            <LocateOff className="mt-0.5 size-4 shrink-0" aria-hidden />
+            {locateNote}
+          </>
+        ) : null}
+      </p>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="inline-flex items-center">
           <TierBadge tier={t.tier} pending={pending} />
           <button
@@ -387,6 +537,13 @@ function Verdict({ t }: { t: ToiletDetail }) {
           <span>{where.join(" · ")}</span>
         </p>
       ) : null}
+      {/* Who gets in ("Customers only") decides as much as where it is, so it isn't left to the Address fold. */}
+      {t.accessNote ? (
+        <p className="mt-2 flex items-start gap-2 font-bold text-warn">
+          <Lock className="mt-1 size-4 shrink-0" aria-hidden />
+          <span>{t.accessNote}</span>
+        </p>
+      ) : null}
 
       {musts.length ? (
         <ul aria-label="Must-haves" className="mt-3 flex flex-wrap gap-1.5">
@@ -400,14 +557,18 @@ function Verdict({ t }: { t: ToiletDetail }) {
           <UnverifiedClaim t={t} required={unverified} />
         </div>
       ) : null}
-
-      {missing.length ? (
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 border-t border-border/70 pt-1 text-sm">
-          <p className="font-medium text-muted">{sentenceCase(joinAnd(missing))} not known yet.</p>
-          <SuggestEditButton toilet={t} />
-        </div>
-      ) : null}
     </section>
+  );
+}
+
+function MissingFacts({ t }: { t: ToiletDetail }) {
+  const missing = missingFacts(t);
+  if (!missing.length) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 text-sm">
+      <p className="font-medium text-muted">{sentenceCase(joinAnd(missing))} not known yet.</p>
+      <SuggestEditButton toilet={t} />
+    </div>
   );
 }
 
@@ -429,11 +590,39 @@ function StatusPill({ t }: { t: ToiletDetail }) {
       </span>
     );
   }
+  // "Closed now" alone leaves the question everyone asks next. Clock-dependent, hence the hydration hush.
+  const opens = t.openNow ? null : opensText(t.openingHours);
   return (
     <span className={cx(base, t.openNow ? "bg-mint-soft text-mint" : "bg-danger-soft text-danger")}>
       <Clock className="size-4" aria-hidden />
       {t.openNow ? "Open now" : "Closed now"}
+      {opens ? (
+        <span className="font-bold" suppressHydrationWarning>
+          · {opens}
+        </span>
+      ) : null}
     </span>
+  );
+}
+
+/**
+ * Stands in for the walk tile when there's no GPS fix. Walk time is never worked out from a
+ * fallback or searched place, so the only way to it is the person's own location, asked for here.
+ */
+function WalkTimeButton({ status, onLocate }: { status: ReturnType<typeof useLocation>["status"]; onLocate: () => void }) {
+  const locating = status === "locating";
+  const Icon = locating ? LoaderCircle : status === "denied" ? LocateOff : LocateFixed;
+  return (
+    <button
+      type="button"
+      onClick={onLocate}
+      disabled={locating}
+      aria-busy={locating || undefined}
+      className="flex w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl bg-mint-soft px-2 py-2.5 text-center text-mint transition hover:brightness-110 active:translate-y-px disabled:cursor-wait"
+    >
+      <Icon className={cx("size-5", locating && "animate-spin")} aria-hidden />
+      <span className="text-xs font-extrabold leading-tight">{locating ? "Finding you…" : "Show walk time"}</span>
+    </button>
   );
 }
 
@@ -480,6 +669,8 @@ function mustHaves(t: ToiletDetail, saved: ReadonlySet<string>): MustHave[] {
     if (!saved.has(f.key) || f.key === "OPEN_NOW" || f.key === "UNPAID_AREA") continue;
     const feature = f.key as Feature;
     const d = byF.get(feature);
+    // Not free already shows as the "Paid" chip beside the status.
+    if (feature === "FREE" && d && !d.present) continue;
     out.push({ feature, state: d ? (d.present ? "yes" : "no") : "unknown", openData: !!d && isOpenData(d), required: true });
   }
   for (const feature of FILL_ORDER) {
@@ -712,7 +903,6 @@ function Features({ details }: { details: FeatureDetail[] }) {
     items: g.features.filter((f) => byFeature.get(f)?.present),
   })).filter((g) => g.items.length);
   const hasNot = all.filter((f) => byFeature.get(f)?.present === false);
-  const unknown = all.filter((f) => !byFeature.has(f));
 
   if (details.length === 0) {
     return (
@@ -756,24 +946,15 @@ function Features({ details }: { details: FeatureDetail[] }) {
         <p className="font-medium text-muted">No features recorded as present yet.</p>
       )}
 
-      {hasNot.length || unknown.length ? (
-        <div className="flex flex-col gap-1.5 text-sm font-medium">
-          {hasNot.length ? (
-            <p className="flex items-start gap-2">
-              <X className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
-              <span>
-                <span className="font-extrabold">No </span>
-                {namesList(hasNot)}
-              </span>
-            </p>
-          ) : null}
-          {unknown.length ? (
-            <p className="flex items-start gap-2 text-muted">
-              <CircleHelp className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>Not recorded yet: {namesList(unknown)}</span>
-            </p>
-          ) : null}
-        </div>
+      {/* What isn't recorded is left to the full list below (and the "n/30 known" count), not spelled out twice. */}
+      {hasNot.length ? (
+        <p className="flex items-start gap-2 text-sm font-medium">
+          <X className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+          <span>
+            <span className="font-extrabold">No </span>
+            {namesList(hasNot)}
+          </span>
+        </p>
       ) : null}
 
       {/* A plain row, not a box: it opens inside the fold, so a second panel would nest a card in a card. */}
@@ -782,7 +963,7 @@ function Features({ details }: { details: FeatureDetail[] }) {
         summaryClassName="-mx-2 inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2 [&::-webkit-details-marker]:hidden"
         summary={
           <>
-            <span className="group-data-expanded:hidden">Show all {all.length} features and sources</span>
+            <span className="group-data-expanded:hidden">All {all.length} features, with sources</span>
             <span className="hidden group-data-expanded:inline">Hide the full list</span>
             <ChevronDown className="size-5 transition-transform duration-200 group-data-expanded:rotate-180" aria-hidden />
           </>

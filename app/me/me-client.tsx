@@ -10,14 +10,18 @@ import {
   ClipboardCheck,
   Compass,
   Flame,
+  Link2,
   LogOut,
   Map as MapIcon,
   MapPinPlus,
   Moon,
   NotebookPen,
+  PencilLine,
   Repeat,
+  Share2,
   ShieldCheck,
   Shield,
+  Sprout,
   Stamp,
   Toilet,
   TrainFront,
@@ -38,18 +42,29 @@ import {
   useRef,
   useState,
 } from "react";
-import { SubmissionCard } from "@/app/review/review-client";
+import {
+  KIND_LABELS,
+  PayloadView,
+  PhotoStrip,
+  ReviewerNotes,
+  StateBadge,
+  expiryText,
+  submissionTitle,
+  submitterSentence,
+} from "@/app/review/submission-bits";
 import { FoldDetails } from "@/components/fold-details";
+import { Mascot } from "@/components/mascot";
+import { PhotoPicker } from "@/components/photo-picker";
 import { holdChrome } from "@/components/route-transition";
 import { LineBadge } from "@/components/toilet-bits";
 import { Button, Card, Dialog, EmptyState, ErrorState, SlidingPill, Spinner, Tabs, buttonClass, cx, inputClass } from "@/components/ui";
 import { TpBar } from "@/components/tp-bar";
 import { api, errorMessage, isApiError } from "@/lib/api/client";
-import type { ActivityItem, Badge, Me, Passport, Role } from "@/lib/api/types";
+import type { ActivityItem, Badge, Me, Passport, PhotoRef, Role, SubmissionView, UpdateSubmissionBody } from "@/lib/api/types";
 import { ME_KEY, hasRole, useRequireAuth, useSignOut } from "@/lib/auth";
-import { MRT_LINES, formatDate, lineColor, lineTextColor } from "@/lib/format";
+import { MRT_LINES, formatDate, lineColor, lineTextColor, plural } from "@/lib/format";
 import { getMotionPref, reducedMotion, setMotionPref, type MotionPref } from "@/lib/motion";
-import { getThemePref, setThemePref, type ThemePref } from "@/lib/theme";
+import { setThemePref, useThemePref, type ThemePref } from "@/lib/theme";
 
 const ROLE_LABELS: Record<Role, string> = { USER: "Member", TRUSTED: "Trusted", MODERATOR: "Moderator", ADMIN: "Admin" };
 
@@ -130,6 +145,7 @@ export function MeClient() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 pb-8 pt-4">
       {me.needsHandle ? <HandleSetup me={me} /> : null}
       <Profile me={me} />
+      <SinceLastVisit me={me} onSeeActivity={() => pick("activity")} />
       <div ref={tabsRef} className="scroll-mt-4 md:scroll-mt-20">
         <Tabs tabs={TABS} value={picked} onChange={pick} label="Your profile" idBase="me" />
       </div>
@@ -198,6 +214,77 @@ function Stat({ value, of, label, gold }: { value: number | undefined; of?: numb
       </dd>
       <dt className="order-2 text-xs font-bold text-muted">{label}</dt>
     </div>
+  );
+}
+
+/* ─────────────── since your last visit ─────────────── */
+
+const NOTHING_UNSEEN: Me["unseen"] = { resolvedSubmissions: 0, badges: 0, points: 0 };
+
+/**
+ * What happened while they were away (Me.unseen), marked seen once it's on screen so the Me tab's dot
+ * clears. The counts are kept from the first render, so the banner stays for this visit after the
+ * API resets them; it's gone next time.
+ */
+function SinceLastVisit({ me, onSeeActivity }: { me: Me; onSeeActivity: () => void }) {
+  const qc = useQueryClient();
+  const [snap] = useState(() => ({ unseen: me.unseen, since: me.lastSeenActivityAt }));
+  const marked = useRef(false);
+  const { resolvedSubmissions, badges, points } = snap.unseen;
+  const any = resolvedSubmissions + badges + points > 0;
+  useEffect(() => {
+    if (!any || marked.current) return;
+    marked.current = true;
+    api
+      .markActivitySeen()
+      .then((r) =>
+        qc.setQueryData<Me | null>(ME_KEY, (m) => (m ? { ...m, unseen: NOTHING_UNSEEN, lastSeenActivityAt: r.seenAt } : m)),
+      )
+      .catch(() => {
+        // Not marked, so the dot and this banner simply come back next visit.
+        marked.current = false;
+      });
+  }, [any, qc]);
+  if (!any) return null;
+  const since = snap.since ? new Date(snap.since).getTime() : 0;
+  const fresh = me.badges.filter((b) => b.awardedAt && new Date(b.awardedAt).getTime() > since);
+
+  return (
+    <section aria-labelledby="since-last" className="flex items-start gap-3 rounded-3xl bg-mint-soft p-4 shadow-rest">
+      {/* A badge earned while away is a celebration, so the mascot may come out for it. */}
+      {badges > 0 ? <Mascot mood="celebrating" className="celebrate-in size-14 shrink-0" /> : null}
+      <div className="min-w-0 flex-1">
+        <h2 id="since-last" className="text-xl leading-tight">
+          Since your last visit
+        </h2>
+        <ul className="mt-1 flex flex-col text-sm font-bold tabular-nums">
+          {points > 0 ? (
+            <li>
+              +{points} points
+            </li>
+          ) : null}
+          {resolvedSubmissions > 0 ? (
+            <li className="flex flex-wrap items-center gap-x-2">
+              <span>{plural(resolvedSubmissions, "submission")} decided.</span>
+              <button type="button" onClick={onSeeActivity} className="inline-flex min-h-11 items-center text-primary underline">
+                See what happened
+              </button>
+            </li>
+          ) : null}
+          {badges > 0 ? <li>{plural(badges, "new badge")}</li> : null}
+        </ul>
+        {fresh.length ? (
+          <ul className="mt-2 flex flex-wrap gap-3">
+            {fresh.map((b) => (
+              <li key={b.id} className="flex items-center gap-2">
+                <BadgeMedal id={b.id} earned className="size-10" />
+                <span className="text-sm font-extrabold">{b.name}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -285,6 +372,8 @@ const BADGE_ICONS: Record<string, LucideIcon> = {
   "night-owl": Moon,
   "streak-7": Flame,
   trusted: ShieldCheck,
+  // The API's icon is an emoji (🌱); DESIGN.md draws icons, so it gets the lucide sprout.
+  "founding-contributor": Sprout,
 };
 
 function badgeIcon(id: string): LucideIcon {
@@ -312,6 +401,8 @@ const BADGE_EFFORT: Record<string, number> = {
   trusted: 9,
   "island-hopper": 10,
   cartographer: 11,
+  // Only while fewer than 100 people hold it, which we can't see from here, so it's suggested last.
+  "founding-contributor": 99,
 };
 
 type LineProgress = Map<string, { stamped: number; total: number }>;
@@ -381,8 +472,45 @@ function ProgressTab({ me }: { me: Me }) {
         </section>
       ) : null}
       <BadgeShelf all={all} earned={earned} lines={lines} failed={q.isError} total={q.data?.items.length} />
+      <TrustProgress me={me} />
       <PassportSection q={passport} />
     </>
+  );
+}
+
+/** Trusted reviewer: what it is, how far along they are, and what earns progress (backend TRUST_REASONS). */
+function TrustProgress({ me }: { me: Me }) {
+  const { score, threshold, isTrusted } = me.trust;
+  return (
+    <section aria-labelledby="trust" className="flex flex-col gap-3">
+      <h2 id="trust" className="flex items-center gap-2 text-2xl leading-tight">
+        <ShieldCheck className="size-6 shrink-0 text-primary" aria-hidden /> Trusted reviewer
+      </h2>
+      <div className="flex flex-col gap-2 rounded-3xl border border-border/70 bg-surface p-4 shadow-rest">
+        {isTrusted ? (
+          <p className="font-bold">
+            You&apos;re a trusted reviewer. Your approval alone confirms a new toilet or an edit, from anywhere.
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <p className="shrink-0 text-sm text-muted tabular-nums">
+                <strong className="text-base font-extrabold text-fg">{Math.min(score, threshold)}</strong> of {threshold} points
+              </p>
+              <ProgressBar value={Math.min(score, threshold)} max={threshold} color="var(--primary)" thick />
+            </div>
+            <p className="text-sm">
+              <strong className="font-extrabold">What counts:</strong> points other people back up. A toilet or edit you sent
+              going live, someone confirming your status report, your review vote matching the outcome, and reviews with a photo.
+            </p>
+            <p className="text-sm">
+              <strong className="font-extrabold">What it unlocks:</strong> your approval alone confirms a new toilet or an edit,
+              from anywhere, instead of needing two people nearby.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -604,7 +732,9 @@ function LineRow({ line, stations }: { line: string; stations: Passport["station
 /* ─────────────── activity ─────────────── */
 
 const REASON_LABELS: Record<string, string> = {
-  SUBMISSION_APPROVED: "A toilet you added was approved",
+  SUBMISSION_APPROVED: "A toilet or edit you sent was approved",
+  NEW_TOILET_SUBMITTED: "You added a toilet on site",
+  NEW_TOILET_CONFIRMED: "Someone confirmed a toilet you added",
   REVIEW_POSTED: "Review",
   REVIEW_WITH_PHOTO: "Review with a photo",
   STATUS_CONFIRMED: "Someone confirmed your report",
@@ -650,19 +780,218 @@ function MySubmissions() {
               </Link>
             }
           >
-            Add a toilet and earn 20 points when it&apos;s approved.
+            Add a toilet and earn 20 points once it&apos;s confirmed. Add it while you&apos;re there with a photo and it goes
+            live straight away.
           </EmptyState>
         </Card>
       ) : (
         <ul className="flex flex-col gap-3">
           {q.data.items.map((s) => (
             <li key={s.id}>
-              <SubmissionCard s={s} readOnly />
+              <MySubmissionCard s={s} />
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * One of their own submissions: one plain sentence for where it stands, then what's useful next
+ * (who said what, a form when it needs more info, a link to ask someone nearby).
+ */
+function MySubmissionCard({ s }: { s: SubmissionView }) {
+  const expiry = expiryText(s);
+  // Flagged ones are for a moderator only; nobody nearby can move them, so there's nothing to share.
+  const askable = (s.state === "PENDING" || s.state === "ESCALATED") && s.resolution !== "escalated_flagged";
+  return (
+    <Card className="flex flex-col gap-3" data-testid="my-submission">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-display text-xl leading-tight">
+            {s.toilet ? (
+              <Link href={`/toilets/${encodeURIComponent(s.toilet.id)}`} className="underline decoration-primary/50 underline-offset-4 hover:decoration-primary">
+                {submissionTitle(s)}
+              </Link>
+            ) : (
+              submissionTitle(s)
+            )}
+          </h3>
+          {s.toilet?.label ? <p className="font-bold text-muted">{s.toilet.label}</p> : null}
+          <p className="mt-0.5 text-sm text-muted">
+            {KIND_LABELS[s.kind]} · sent {formatDate(s.createdAt)}
+          </p>
+        </div>
+        <StateBadge state={s.state} />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <p className="font-bold">{submitterSentence(s)}</p>
+        {s.state === "ESCALATED" && s.resolutionText ? <p className="text-sm text-muted">{s.resolutionText}</p> : null}
+        {s.resolutionNote ? (
+          <p className="text-sm">
+            <span className="font-extrabold">Moderator&apos;s note:</span> &ldquo;{s.resolutionNote}&rdquo;
+          </p>
+        ) : null}
+        {expiry ? <p className="text-sm text-muted">{expiry}</p> : null}
+      </div>
+
+      {s.state === "NEEDS_INFO" ? <NeedsInfoForm s={s} /> : null}
+      {askable ? <AskNearby s={s} /> : null}
+
+      {s.reviewerNotes.length ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-sm font-extrabold">What reviewers said</p>
+          <ReviewerNotes notes={s.reviewerNotes} />
+        </div>
+      ) : null}
+
+      <FoldDetails
+        className="group/sent"
+        summaryClassName="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-extrabold text-primary [&::-webkit-details-marker]:hidden"
+        summary={
+          <>
+            <ChevronDown className="size-4 transition-transform duration-200 group-data-expanded/sent:rotate-180" aria-hidden />
+            What you sent
+          </>
+        }
+      >
+        {/* Padding, not margin: a fold can't measure a child's margin. */}
+        <div className="flex flex-col gap-3 pt-2">
+          <PhotoStrip s={s} />
+          <PayloadView s={s} />
+        </div>
+      </FoldDetails>
+    </Card>
+  );
+}
+
+/**
+ * Shares the one link that moves it forward: for a new toilet, its page with `?do=checkin` (a check-in
+ * there counts as a confirmation); for an edit or closure, its card on /review (check-ins don't confirm those).
+ */
+function AskNearby({ s }: { s: SubmissionView }) {
+  const [copied, setCopied] = useState(false);
+  async function share() {
+    const path =
+      s.kind === "NEW_TOILET" && s.toilet
+        ? `/toilets/${encodeURIComponent(s.toilet.id)}?do=checkin`
+        : `/review?id=${encodeURIComponent(s.id)}`;
+    const url = `${window.location.origin}${path}`;
+    const text =
+      s.kind === "NEW_TOILET"
+        ? "Near this toilet? Check in on Shit Go Where to confirm it's there."
+        : "Near this toilet? Help confirm this change on Shit Go Where.";
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: submissionTitle(s), text, url });
+        return;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      window.prompt("Copy this link", url);
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Button variant="secondary" size="sm" onClick={() => void share()}>
+        <Share2 className="size-4" aria-hidden /> Ask someone nearby to confirm
+      </Button>
+      {/* Said in words, not only by an icon swap, for the moment it lasts. */}
+      <span aria-live="polite" className="inline-flex items-center gap-1 text-sm font-extrabold text-mint">
+        {copied ? (
+          <>
+            <Link2 className="size-4" aria-hidden /> Link copied
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/** Reviewers or a moderator asked for more: add a note, a photo or the level, and it goes back for review. */
+function NeedsInfoForm({ s }: { s: SubmissionView }) {
+  const qc = useQueryClient();
+  const [note, setNote] = useState("");
+  const [photos, setPhotos] = useState<PhotoRef[]>([]);
+  const [level, setLevel] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const body: UpdateSubmissionBody = {
+    ...(note.trim() ? { note: note.trim() } : {}),
+    ...(photos.length ? { photoIds: photos.map((p) => p.id) } : {}),
+    ...(level.trim() && s.kind !== "CLOSE_TOILET" ? { level: level.trim() } : {}),
+  };
+  const empty = Object.keys(body).length === 0;
+  const m = useMutation({
+    mutationFn: () => api.updateSubmission(s.id, body),
+    onSuccess: (updated) => {
+      qc.setQueryData<{ items: SubmissionView[] }>(["my-submissions"], (old) =>
+        old ? { items: old.items.map((x) => (x.id === updated.id ? updated : x)) } : old,
+      );
+    },
+  });
+  const id = `ni-${s.id}`;
+  return (
+    <form
+      className="flex flex-col gap-3 rounded-2xl bg-surface-2 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!empty) m.mutate();
+      }}
+    >
+      <p className="flex items-center gap-2 font-extrabold">
+        <PencilLine className="size-4 shrink-0" aria-hidden /> Add what&apos;s missing
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-note`} className="text-sm font-bold">
+          Note for reviewers
+        </label>
+        <textarea
+          id={`${id}-note`}
+          rows={3}
+          maxLength={1000}
+          className={inputClass}
+          placeholder="E.g. it's past the lifts on the left, beside the nursing room"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+      {s.kind !== "CLOSE_TOILET" ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${id}-level`} className="text-sm font-bold">
+            Level
+          </label>
+          <input
+            id={`${id}-level`}
+            className={inputClass}
+            maxLength={20}
+            placeholder="E.g. B1 or L3"
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+          />
+        </div>
+      ) : null}
+      <div>
+        <p className="mb-1.5 text-sm font-bold">Photo</p>
+        <PhotoPicker value={photos} onChange={setPhotos} max={3} onBusyChange={setUploading} />
+      </div>
+      <Button type="submit" disabled={empty || uploading} loading={m.isPending}>
+        Send for review again
+      </Button>
+      {empty ? <p className="text-sm text-muted">Add a note, the level or a photo to send it.</p> : null}
+      {m.isError ? (
+        <p role="alert" className="text-sm text-danger">
+          {errorMessage(m.error)}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
@@ -765,8 +1094,9 @@ function SettingsTab({ me }: { me: Me }) {
   const qc = useQueryClient();
   const router = useRouter();
   const signOut = useSignOut();
+  // The theme is read live from <html data-theme>, so this and the map sheet's ThemeToggle never disagree.
+  const theme = useThemePref();
   // Settings only renders after /me loads in the browser, so reading storage here is safe.
-  const [theme, setTheme] = useState<ThemePref>(getThemePref);
   const [motion, setMotion] = useState<MotionPref>(getMotionPref);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -783,6 +1113,11 @@ function SettingsTab({ me }: { me: Me }) {
   return (
     <section aria-label="Settings" className="flex flex-col gap-6">
       <ul className="divide-y divide-border/70 overflow-hidden rounded-3xl border border-border/70 bg-surface shadow-rest">
+        {me.handle ? (
+          <li>
+            <HandleChange me={me} />
+          </li>
+        ) : null}
         <li>
           <LeaderboardOptIn me={me} />
         </li>
@@ -790,17 +1125,15 @@ function SettingsTab({ me }: { me: Me }) {
           <span id="theme-label" className="font-extrabold">
             Theme
           </span>
+          {/* Device first, as on the ThemeToggle: following the phone is the default. */}
           <Segmented<ThemePref>
             label="Theme"
             value={theme}
-            onChange={(v) => {
-              setTheme(v);
-              setThemePref(v);
-            }}
+            onChange={setThemePref}
             options={[
+              { value: "system", label: "Device" },
               { value: "dark", label: "Dark" },
               { value: "light", label: "Light" },
-              { value: "system", label: "Device" },
             ]}
           />
         </li>
@@ -827,6 +1160,13 @@ function SettingsTab({ me }: { me: Me }) {
       </ul>
 
       <ul className="divide-y divide-border/70 overflow-hidden rounded-3xl border border-border/70 bg-surface shadow-rest">
+        <li>
+          <Link href="/areas" className={actionRow}>
+            <MapIcon className="size-5 text-muted" aria-hidden />
+            <span className="flex-1">Toilets by area</span>
+            <ChevronRight className="size-5 text-muted" aria-hidden />
+          </Link>
+        </li>
         {hasRole(me, "MODERATOR") ? (
           <li>
             <Link href="/admin" className={actionRow}>
@@ -884,6 +1224,93 @@ function SettingsTab({ me }: { me: Me }) {
         </div>
       </Dialog>
     </section>
+  );
+}
+
+/** Changing an existing handle: once every 30 days (the first pick is free and lives in HandleSetup). */
+function HandleChange({ me }: { me: Me }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [handle, setHandle] = useState(me.handle ?? "");
+  // Read once: the page doesn't need to tick over at midnight.
+  const [now] = useState(Date.now);
+  const lockedUntil = me.handleChangeableAt && new Date(me.handleChangeableAt).getTime() > now ? me.handleChangeableAt : null;
+  const problem = handleProblem(handle, me.handle);
+  const m = useMutation({
+    mutationFn: () => api.updateMe({ handle }),
+    onSuccess: (updated) => {
+      qc.setQueryData(ME_KEY, updated);
+      setOpen(false);
+    },
+  });
+  const taken = isApiError(m.error) && m.error.status === 409;
+  return (
+    <div className={row}>
+      <div className="flex min-h-11 items-center justify-between gap-3">
+        <span className="min-w-0">
+          <span className="block font-extrabold">Handle</span>
+          <span className="block text-sm text-muted [overflow-wrap:anywhere]">
+            @{me.handle}.{" "}
+            {lockedUntil ? `You can change it again from ${formatDate(lockedUntil)}.` : "You can change it once every 30 days."}
+          </span>
+        </span>
+        {!open ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="shrink-0"
+            disabled={!!lockedUntil}
+            onClick={() => {
+              setHandle(me.handle ?? "");
+              m.reset();
+              setOpen(true);
+            }}
+          >
+            <PencilLine className="size-4" aria-hidden /> Change
+          </Button>
+        ) : null}
+      </div>
+      {open ? (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!problem) m.mutate();
+          }}
+        >
+          <label htmlFor="new-handle" className="text-sm font-bold">
+            New handle
+          </label>
+          <input
+            id="new-handle"
+            className={inputClass}
+            value={handle}
+            autoComplete="username"
+            maxLength={20}
+            onChange={(e) => {
+              m.reset();
+              setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+            }}
+            aria-invalid={handle.length > 0 && !!problem}
+            aria-describedby="new-handle-status new-handle-err"
+          />
+          <p id="new-handle-status" className={cx("text-sm", problem ? "text-muted" : "font-bold text-mint")} aria-live="polite">
+            {problem ?? `Ready to save @${handle}. You won't be able to change it again for 30 days.`}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" variant={problem ? "secondary" : "primary"} disabled={!!problem} loading={m.isPending}>
+              Save
+            </Button>
+          </div>
+          <p id="new-handle-err" role="alert" className="text-sm text-danger">
+            {taken ? "That handle is taken. Try another one." : m.isError ? errorMessage(m.error) : ""}
+          </p>
+        </form>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,7 +1,20 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Building2, Check, LocateFixed, Plus, Search, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  Check,
+  ChevronDown,
+  Coins,
+  LocateFixed,
+  MapPinCheck,
+  Plus,
+  RotateCcw,
+  Search,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ToiletMap } from "@/components/map";
@@ -28,7 +41,17 @@ import { useRequireAuth } from "@/lib/auth";
 import { AREA_TYPE_LABELS, FEATURE_GROUPS, FEATURE_LABELS, VENUE_TYPE_LABELS, formatDistance } from "@/lib/format";
 import { haversineM, useLocation, type LatLng } from "@/lib/location";
 
-const STEPS = ["Pin", "Venue", "Details", "Features", "Photo", "Submit"] as const;
+const STEPS = ["Pin", "Place", "Details", "Inside"] as const;
+/** The API's "on site" distance: a submitter this close to the pin, with a photo, puts it live straight away. */
+const ON_SITE_M = 150;
+const STEP_TITLES = ["Where is it?", "Which place is it in?", "Help people find it", "What's inside?"] as const;
+
+/** Asked up front: what people filter on in a hurry. The rest folds under "Everything else". */
+const LEAD_FEATURES: Feature[] = ["ACCESSIBLE", "BIDET", "TOILET_PAPER", "SITTING", "BABY_CHANGE", "FREE"];
+const LEAD_SET: ReadonlySet<Feature> = new Set(LEAD_FEATURES);
+const MORE_GROUPS = FEATURE_GROUPS.map((g) => ({ ...g, features: g.features.filter((f) => !LEAD_SET.has(f)) })).filter(
+  (g) => g.features.length,
+);
 
 interface Draft {
   pin: LatLng | null;
@@ -53,6 +76,60 @@ const EMPTY: Draft = {
   features: {},
   photos: [],
 };
+
+/*
+ * The draft survives the tab being thrown away, which phones do to free memory while the camera is
+ * open. localStorage rather than sessionStorage so a closed tab keeps it too; it expires after a few
+ * hours, since an old half-added toilet is more confusing than helpful.
+ */
+const DRAFT_KEY = "sgw:add-draft";
+const DRAFT_TTL_MS = 6 * 3_600_000;
+
+interface Saved {
+  at: number;
+  step: number;
+  d: Draft;
+}
+
+function loadSaved(): Saved | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null") as Saved | null;
+    if (!v || typeof v.step !== "number" || !v.d || Date.now() - v.at > DRAFT_TTL_MS) return null;
+    return { ...v, step: Math.min(Math.max(0, v.step), STEPS.length - 1), d: { ...EMPTY, ...v.d } };
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(step: number, d: Draft) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), step, d } satisfies Saved));
+  } catch {
+    // Private mode or full storage: the wizard still works, it just won't survive a reload.
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+/** `/add?lat=…&lng=…` (from an empty map area) starts the pin there instead of where you stand. */
+function pinFromUrl(): LatLng | null {
+  const q = new URLSearchParams(window.location.search);
+  const lat = Number(q.get("lat"));
+  const lng = Number(q.get("lng"));
+  return q.has("lat") && q.has("lng") && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+/** Client only: the page shows a spinner until hydration is done, so the server never renders the wizard. */
+function initialDraft(): Draft {
+  if (typeof window === "undefined") return EMPTY;
+  return { ...EMPTY, pin: pinFromUrl() };
+}
 
 function useDebounced<T>(value: T, ms: number) {
   const [v, setV] = useState(value);
@@ -98,10 +175,13 @@ function duplicateCandidates(e: unknown): ToiletSummary[] | null {
 export function AddClient() {
   const meQ = useRequireAuth();
   const loc = useLocation();
-  const [step, setStep] = useState(0);
+  const [restored] = useState(() => (typeof window === "undefined" ? null : loadSaved()));
+  const [showRestored, setShowRestored] = useState(!!restored);
+  const [step, setStep] = useState(restored?.step ?? 0);
   // Which way the last Next / Back went, so the new step slides in from that side.
   const [stepDir, setStepDir] = useState<1 | -1>(1);
-  const [d, setD] = useState<Draft>(EMPTY);
+  const [d, setD] = useState<Draft>(() => restored?.d ?? initialDraft());
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [dupes, setDupes] = useState<ToiletSummary[] | null>(null);
@@ -114,14 +194,41 @@ export function AddClient() {
   const canNext = [
     !!d.pin || loc.settled,
     !!d.venue || !!(d.newVenue && d.newVenue.name.trim().length >= 2),
-    true,
-    true,
-    d.photos.length >= 1,
-    true,
+    // A photo still uploading would be dropped from the submission, so wait for it.
+    !photoBusy,
   ][step];
+
+  // Keep the draft as it changes; a finished submission clears it.
+  useEffect(() => {
+    if (!done) saveDraft(step, d);
+  }, [step, d, done]);
+
+  function startOver() {
+    clearDraft();
+    setD(initialDraft());
+    setStepDir(-1);
+    setStep(0);
+    setDupes(null);
+    setSubmitError(null);
+    setShowRestored(false);
+  }
+
+  const featureRow = (f: Feature) => (
+    <li key={f}>
+      <TriToggle
+        label={FEATURE_LABELS[f]}
+        value={d.features[f] ?? "unknown"}
+        onChange={(v) => setD((x) => ({ ...x, features: { ...x.features, [f]: v } }))}
+      />
+    </li>
+  );
+  // Shown on the folded "Everything else", so answers inside it aren't out of sight and out of mind.
+  const moreAnswered = Object.entries(d.features).filter(([f, v]) => v && v !== "unknown" && !LEAD_SET.has(f as Feature)).length;
 
   const user = loc.source === "gps" ? loc.coords : null;
   const place = useNearestPlace(pin);
+  // Within 150 m of the pin by GPS: the API counts it as added on site, and with a photo it goes live at once.
+  const onSite = !!user && haversineM(user, pin) <= ON_SITE_M;
 
   /** Steps slide in the way you're going (globals.css "Wizard steps"). */
   function goStep(dir: 1 | -1) {
@@ -169,6 +276,7 @@ export function AddClient() {
         payload,
         ...(force ? { force: true } : {}),
       });
+      clearDraft();
       setDone(res);
     } catch (e) {
       const c = duplicateCandidates(e);
@@ -184,47 +292,79 @@ export function AddClient() {
   }
 
   if (done) {
+    // Which rule decides it (trust model v2). An older API sends no path: that was always the two-approvals story.
+    const path = done.path ?? "nearby_quorum";
+    const live = path === "auto";
+    const pendingPin = (
+      <NextStep icon={<PinGlyph variant="pending" className="size-9" />} title="It's on the map now, as a pending pin">
+        The dashed outline means it&apos;s waiting for review. People can see it, but we won&apos;t send anyone there for
+        directions yet.
+      </NextStep>
+    );
+    const goesLive = (
+      <NextStep icon={<PinGlyph variant="community" className="size-9" />} title="It goes live and you earn 20 points">
+        It becomes a Community toilet and can show up in directions.
+      </NextStep>
+    );
+    const iconDisc = (icon: React.ReactNode) => (
+      <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 text-primary">{icon}</span>
+    );
     return (
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 pb-8 pt-10" data-testid="add-success">
         <div className="flex flex-col items-center gap-3 text-center">
           {/* The celebration: the mascot plops in, squashed, and springs upright (shared with check-in). */}
           <Mascot mood="celebrating" className="celebrate-in size-28" />
           <h1 ref={doneHeading} tabIndex={-1} className="text-3xl leading-tight sm:text-4xl">
-            Steady lah! Submitted.
+            {live ? "Shiok! It's live now." : "Steady lah! Submitted."}
           </h1>
           <p className="max-w-sm text-muted">
-            Thanks for adding {d.venue?.name ?? d.newVenue?.name ?? "this toilet"}. Here&apos;s what happens next.
+            Thanks for adding {d.venue?.name ?? d.newVenue?.name ?? "this toilet"}.{" "}
+            {live ? "You added it on site with a photo, so it's on the map straight away." : "Here's what happens next."}
           </p>
         </div>
 
         <ol
           className="flex flex-col gap-4 rounded-3xl border border-border/70 bg-surface p-4 shadow-rest"
-          aria-label="What happens next"
+          aria-label={live ? "What happened" : "What happens next"}
         >
-          <NextStep icon={<PinGlyph variant="pending" className="size-9" />} title="It's on the map now, as a pending pin">
-            The dashed outline means it&apos;s waiting for review. People can see it, but we won&apos;t send anyone there
-            for directions yet.
-          </NextStep>
-          <NextStep
-            icon={
-              <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 text-primary">
-                <Users className="size-5" aria-hidden />
-              </span>
-            }
-            title="Two people nearby approve it"
-          >
-            Or one trusted member does. You&apos;ll see how it&apos;s going under your submissions.
-          </NextStep>
-          <NextStep icon={<PinGlyph variant="community" className="size-9" />} title="It goes live and you earn 20 points">
-            It becomes a Community toilet and can show up in directions.
-          </NextStep>
+          {live ? (
+            <>
+              <NextStep icon={<PinGlyph variant="community" className="size-9" />} title="It's live now, as a Community toilet">
+                People can find it and get directions to it.
+              </NextStep>
+              <NextStep icon={iconDisc(<Coins className="size-5 text-accent" aria-hidden />)} title="+5 points now">
+                And +15 more when someone else checks in there.
+              </NextStep>
+            </>
+          ) : path === "on_site_check_in" ? (
+            <>
+              {pendingPin}
+              <NextStep
+                icon={iconDisc(<MapPinCheck className="size-5" aria-hidden />)}
+                title="Live once one other person checks in there, or a moderator confirms it"
+              >
+                You added it on site, so one check-in by someone else is enough. You&apos;ll see how it&apos;s going under your
+                submissions.
+              </NextStep>
+              {goesLive}
+            </>
+          ) : (
+            <>
+              {pendingPin}
+              <NextStep icon={iconDisc(<Users className="size-5" aria-hidden />)} title="Two people nearby approve it">
+                Or one trusted member does. Checking in there counts as approving. You&apos;ll see how it&apos;s going under your
+                submissions.
+              </NextStep>
+              {goesLive}
+            </>
+          )}
         </ol>
 
         <div className="flex w-full flex-col gap-2">
           <Link href="/" className={buttonClass("primary", "lg")}>
             Back to the map
           </Link>
-          <Link href="/me" className={buttonClass("secondary", "lg")}>
+          <Link href="/me?tab=activity" className={buttonClass("secondary", "lg")}>
             See my submissions
           </Link>
           <Button
@@ -234,6 +374,7 @@ export function AddClient() {
               setStep(0);
               setDone(null);
               setDupes(null);
+              setShowRestored(false);
             }}
           >
             <Plus className="size-4" aria-hidden /> Add another
@@ -251,6 +392,30 @@ export function AddClient() {
         {/* Phones need the room for the step itself, so the pin step fits above the action bar. */}
         <p className="text-muted max-sm:hidden">Found one that&apos;s not on the map? Every toilet added helps someone in a hurry.</p>
       </PageHeader>
+
+      {meQ.data.openSubmissions.count >= meQ.data.openSubmissions.limit ? (
+        // Said before they pin anything: the API refuses a new one at the cap, and finding out at Submit wastes the walk.
+        <p role="status" className="mb-4 rounded-2xl bg-warn-soft px-4 py-3 text-sm font-bold text-fg">
+          You have {meQ.data.openSubmissions.count} submissions waiting for review, the most you can have at once. A slot frees up
+          when one is decided, or 14 days after you sent it.{" "}
+          <Link href="/me?tab=activity" className="inline-flex min-h-11 items-center text-primary underline">
+            See your submissions
+          </Link>
+        </p>
+      ) : null}
+
+      {showRestored ? (
+        <p role="status" className="-mt-2 mb-4 flex flex-wrap items-center gap-x-3 font-bold text-muted">
+          Picked up where you left off.
+          <button
+            type="button"
+            onClick={startOver}
+            className="inline-flex min-h-11 items-center gap-1.5 font-bold text-primary underline decoration-primary/50 underline-offset-4 hover:decoration-primary"
+          >
+            <RotateCcw className="size-4" aria-hidden /> Start over
+          </button>
+        </p>
+      ) : null}
 
       <ol className="mb-6 flex gap-1.5" aria-label="Progress">
         {STEPS.map((s, i) => (
@@ -278,10 +443,11 @@ export function AddClient() {
       {/* Keyed by step, so each Next / Back replays the entrance. Never blocks taps while it plays. */}
       <div key={step} className={step === 0 && stepDir > 0 ? undefined : stepDir > 0 ? "step-in-next" : "step-in-back"}>
         <h2 ref={stepHeading} className="mb-4 text-2xl leading-tight" tabIndex={-1}>
-          <span className="text-muted">
-            Step {step + 1} of {STEPS.length}:
-          </span>{" "}
-          {["Where is it?", "Which place is it in?", "Help people find it", "What's inside?", "Snap a photo", "Check and submit"][step]}
+          {/* The progress bar above already says where you are; screen readers still hear the step count. */}
+          <span className="sr-only">
+            Step {step + 1} of {STEPS.length}:{" "}
+          </span>
+          {STEP_TITLES[step]}
         </h2>
 
         {step === 0 ? (
@@ -378,76 +544,53 @@ export function AddClient() {
                 onChange={(e) => set("accessNote", e.target.value)}
               />
             </Field>
+            <div>
+              <p className="font-bold">Photo (optional)</p>
+              {/* Only promised when it's true: within 150 m of the pin by GPS (the API's on-site rule). */}
+              {onSite ? (
+                <p className="mt-1 rounded-2xl bg-mint-soft px-3 py-2 text-sm font-bold text-fg">
+                  Add a photo while you&apos;re here and it goes live straight away, without waiting for review.
+                </p>
+              ) : null}
+              <p className="mb-3 mt-1 text-sm text-muted">
+                {onSite
+                  ? "The entrance or a sign is best (up to 3 toilets a day go live this way)."
+                  : "The entrance or a sign helps people nearby confirm it."}{" "}
+                No people, please. We shrink it and strip location data before uploading.
+              </p>
+              <PhotoPicker
+                value={d.photos}
+                onChange={(p) => set("photos", p)}
+                onBusyChange={setPhotoBusy}
+                max={3}
+                label="Take or choose photo"
+              />
+            </div>
           </div>
         ) : null}
 
         {step === 3 ? (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
             <p className="text-muted">
-              Everything starts as <strong className="font-extrabold text-fg">Not sure</strong>. Only change what you&apos;ve
-              seen with your own eyes; a wrong &ldquo;Yes&rdquo; is worse than a blank.
+              Only answer what you&apos;ve seen and leave the rest as{" "}
+              <strong className="font-extrabold text-fg">Not sure</strong>. A wrong &ldquo;Yes&rdquo; is worse than a blank.
             </p>
-            {FEATURE_GROUPS.map((g) => (
-              <div key={g.title}>
-                <h3 className="mb-2.5 font-display text-lg">{g.title}</h3>
-                <ul className="flex flex-col gap-2">
-                  {g.features.map((f) => (
-                    <li key={f}>
-                      <TriToggle
-                        label={FEATURE_LABELS[f]}
-                        value={d.features[f] ?? "unknown"}
-                        onChange={(v) => setD((x) => ({ ...x, features: { ...x.features, [f]: v } }))}
-                      />
-                    </li>
-                  ))}
-                </ul>
+            <ul className="flex flex-col gap-2">{LEAD_FEATURES.map(featureRow)}</ul>
+            <details className="group">
+              <summary className="-mx-2 inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+                Everything else
+                {moreAnswered ? <span className="font-bold text-muted">· {moreAnswered} answered</span> : null}
+                <ChevronDown className="size-5 transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mt-3 flex flex-col gap-5">
+                {MORE_GROUPS.map((g) => (
+                  <div key={g.title}>
+                    <h3 className="mb-2.5 font-display text-lg">{g.title}</h3>
+                    <ul className="flex flex-col gap-2">{g.features.map(featureRow)}</ul>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : null}
-
-        {step === 4 ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-muted">
-              A photo of the entrance or signage helps reviewers confirm it. Please don&apos;t include people. We shrink it and
-              strip location data before uploading.
-            </p>
-            <PhotoPicker value={d.photos} onChange={(p) => set("photos", p)} max={3} label="Take or choose photo" required />
-            {d.photos.length === 0 ? <p className="text-sm font-bold">At least one photo is required.</p> : null}
-          </div>
-        ) : null}
-
-        {step === 5 ? (
-          <div className="flex flex-col gap-3">
-            <Card className="p-5">
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                <Row k="Place" v={d.venue ? d.venue.name : `${d.newVenue?.name} (new ${VENUE_TYPE_LABELS[d.newVenue!.type].toLowerCase()})`} />
-                <Row k="Pin" v={pinSummary(place.nearest, fromYouText(pin, user))} />
-                <Row k="Label" v={d.label || "—"} />
-                <Row k="Level" v={d.level || "—"} />
-                <Row k="Fare gates" v={AREA_TYPE_LABELS[d.areaType]} />
-                <Row k="Access" v={d.accessNote || "—"} />
-                <Row
-                  k="Has"
-                  v={
-                    Object.entries(d.features)
-                      .filter(([, v]) => v === "yes")
-                      .map(([f]) => FEATURE_LABELS[f as Feature])
-                      .join(", ") || "—"
-                  }
-                />
-                <Row
-                  k="Doesn't have"
-                  v={
-                    Object.entries(d.features)
-                      .filter(([, v]) => v === "no")
-                      .map(([f]) => FEATURE_LABELS[f as Feature])
-                      .join(", ") || "—"
-                  }
-                />
-                <Row k="Photos" v={`${d.photos.length}`} />
-              </dl>
-            </Card>
+            </details>
 
             {dupes ? (
               <Card className="border-2 border-warn bg-warn-soft p-5" role="alert">
@@ -492,12 +635,12 @@ export function AddClient() {
 
       {/*
         Always in reach: on phones a bar fixed above the bottom nav (its padding runs down behind
-        the nav and clears the raised mascot button), from md up a bar stuck to the window bottom.
+        the nav and clears the bar's bump), from md up a bar stuck to the window bottom.
       */}
       <div
         className={cx(
           "fixed inset-x-0 bottom-0 z-30 rounded-t-[28px] border-t border-border bg-surface px-4 pt-3 shadow-card",
-          "pb-[calc(7.25rem+env(safe-area-inset-bottom))]",
+          "pb-[calc(var(--nav-h)+var(--nav-crown)+0.75rem+env(safe-area-inset-bottom))]",
           "md:sticky md:inset-x-auto md:-mx-4 md:mt-6 md:rounded-none md:bg-bg md:pb-6 md:pt-4 md:shadow-none",
         )}
       >
@@ -508,7 +651,14 @@ export function AddClient() {
             </Button>
           ) : null}
           {step < STEPS.length - 1 ? (
-            <Button size="lg" className="flex-1" disabled={!canNext} onClick={() => goStep(1)} data-testid="add-next">
+            <Button
+              size="lg"
+              className="flex-1"
+              disabled={!canNext}
+              loading={step === 2 && photoBusy}
+              onClick={() => goStep(1)}
+              data-testid="add-next"
+            >
               Next <ArrowRight className="size-5" aria-hidden />
             </Button>
           ) : !dupes ? (
@@ -539,20 +689,6 @@ function PinPlaceText({ place }: { place: ReturnType<typeof useNearestPlace> }) 
     <span className="block font-extrabold">
       {formatDistance(n.distanceM)} from {n.name}
     </span>
-  );
-}
-
-function pinSummary(n: NearbyVenue | null, fromYou: string | null): string {
-  const near = n ? (n.distanceM <= 60 ? `At or near ${n.name}` : `${formatDistance(n.distanceM)} from ${n.name}`) : "Set on the map";
-  return fromYou ? `${near}. ${fromYou}.` : near;
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-sm font-bold text-muted">{k}</dt>
-      <dd className="font-medium break-words">{v}</dd>
-    </div>
   );
 }
 

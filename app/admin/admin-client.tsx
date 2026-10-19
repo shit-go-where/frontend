@@ -1,22 +1,34 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, MessageCircleQuestion, ThumbsDown, ThumbsUp } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { Button, Card, EmptyState, ErrorState, PageHeader, Spinner, Tabs } from "@/components/ui";
+import {
+  KIND_LABELS,
+  PayloadView,
+  PhotoStrip,
+  ReviewerNotes,
+  StateBadge,
+  progressText,
+  submissionTitle,
+} from "@/app/review/submission-bits";
+import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Spinner, Tabs, inputClass } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
-import type { DataQuality } from "@/lib/api/types";
+import type { DataQuality, ModeratorSubmission, ResolveSubmissionBody } from "@/lib/api/types";
 import { hasRole, useRequireAuth } from "@/lib/auth";
-import { formatDate, timeAgo } from "@/lib/format";
+import { formatDate, formatDistance, plural, timeAgo } from "@/lib/format";
 
-type Tab = "flags" | "photos" | "quality" | "imports";
+type Tab = "queue" | "flags" | "photos" | "quality" | "imports";
 
 export function AdminClient() {
   const meQ = useRequireAuth();
-  const [tab, setTab] = useState<Tab>("flags");
+  const [tab, setTab] = useState<Tab>("queue");
+  const isMod = hasRole(meQ.data, "MODERATOR");
+  // Fetched here as well as in the tab so the tab label can carry the count. Same key, one request.
+  const subs = useQuery({ queryKey: ["admin-subs", "all"], queryFn: () => api.adminSubmissions("all"), enabled: isMod });
   if (meQ.isLoading || !meQ.data) return <Spinner label="Checking your account" />;
-  if (!hasRole(meQ.data, "MODERATOR")) {
+  if (!isMod) {
     return (
       <div className="mx-auto max-w-2xl px-4 pt-6">
         <EmptyState title="Moderators only" mascot="lost">
@@ -30,12 +42,14 @@ export function AdminClient() {
   }
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-4">
-      <PageHeader title="Moderation" subtitle="Flags, photos and data health." />
+      <PageHeader title="Moderation" subtitle="Submissions, flags, photos and data health." />
+      {/* Five tabs at phone width: short labels, and the queue's count in the label (Tabs takes text only). */}
       <Tabs
         label="Admin sections"
         value={tab}
         onChange={setTab}
         tabs={[
+          { value: "queue", label: subs.data?.items.length ? `Queue (${subs.data.items.length})` : "Queue" },
           { value: "flags", label: "Flags" },
           { value: "photos", label: "Photos" },
           { value: "quality", label: "Data" },
@@ -43,9 +57,144 @@ export function AdminClient() {
         ]}
       />
       <div className="mt-4" role="tabpanel">
-        {tab === "flags" ? <Flags /> : tab === "photos" ? <Photos /> : tab === "quality" ? <Quality /> : <Imports />}
+        {tab === "queue" ? (
+          <Submissions />
+        ) : tab === "flags" ? (
+          <Flags />
+        ) : tab === "photos" ? (
+          <Photos />
+        ) : tab === "quality" ? (
+          <Quality />
+        ) : (
+          <Imports />
+        )}
       </div>
     </div>
+  );
+}
+
+type QueueFilter = "all" | "escalated" | "pending" | "needs_info";
+const QUEUE_FILTERS: { value: QueueFilter; label: string }[] = [
+  { value: "all", label: "All open" },
+  { value: "escalated", label: "With a moderator" },
+  { value: "pending", label: "Pending" },
+  { value: "needs_info", label: "Needs info" },
+];
+
+/** Island-wide: everything still open, escalated first (the API's order), then oldest. */
+function Submissions() {
+  const [filter, setFilter] = useState<QueueFilter>("all");
+  const q = useQuery({ queryKey: ["admin-subs", filter], queryFn: () => api.adminSubmissions(filter) });
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4" role="group" aria-label="Show">
+        {QUEUE_FILTERS.map((f) => (
+          <Chip key={f.value} active={filter === f.value} onClick={() => setFilter(f.value)}>
+            {f.label}
+          </Chip>
+        ))}
+      </div>
+      {q.isError ? (
+        <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />
+      ) : q.isLoading ? (
+        <Spinner />
+      ) : !q.data?.items.length ? (
+        <EmptyState title="Queue empty. Shiok." mascot="happy">
+          Nothing is waiting for a moderator right now.
+        </EmptyState>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {q.data.items.map((s) => (
+            <li key={s.id}>
+              <ModCard s={s} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ModCard({ s }: { s: ModeratorSubmission }) {
+  const qc = useQueryClient();
+  const [note, setNote] = useState("");
+  const resolve = useMutation({
+    mutationFn: (state: ResolveSubmissionBody["state"]) => api.resolveSubmission(s.id, { state, note: note.trim() || undefined }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin-subs"] });
+      void qc.invalidateQueries({ queryKey: ["admin-quality"] });
+    },
+  });
+  const title = submissionTitle(s);
+  const progress = progressText(s);
+  const where =
+    s.submitterDistanceM === null
+      ? "Sent without a location"
+      : s.onSite
+        ? `Sent on site (${formatDistance(s.submitterDistanceM)} away)`
+        : `Sent from ${formatDistance(s.submitterDistanceM)} away`;
+  const busy = resolve.isPending ? resolve.variables : null;
+
+  return (
+    <Card className="flex flex-col gap-3" data-testid="mod-submission">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-xl leading-tight">
+            {s.toilet ? (
+              <Link href={`/toilets/${encodeURIComponent(s.toilet.id)}`} className="underline decoration-primary/50 underline-offset-4 hover:decoration-primary">
+                {title}
+              </Link>
+            ) : (
+              title
+            )}
+          </h2>
+          {s.toilet?.label ? <p className="font-bold text-muted">{s.toilet.label}</p> : null}
+          <p className="mt-0.5 text-sm text-muted tabular-nums">
+            {KIND_LABELS[s.kind]} · {s.ageDays === 0 ? "today" : `${plural(s.ageDays, "day")} old`} · by{" "}
+            {s.submittedBy.handle ? `@${s.submittedBy.handle}` : "someone"}
+          </p>
+        </div>
+        <StateBadge state={s.state} />
+      </div>
+      {s.escalated && s.resolutionText ? <p className="text-sm font-bold">{s.resolutionText}</p> : null}
+      <p className="text-sm text-muted tabular-nums">
+        {where} · {s.hasPhoto ? "has a photo" : "no photo"} · {plural(s.nearbyApprovals, "nearby approval")}
+        {s.approvals > s.nearbyApprovals ? ` (${s.approvals} in all)` : ""} · {plural(s.rejections, "rejection")}
+        {progress ? ` · ${progress}` : ""}
+      </p>
+      <PhotoStrip s={s} />
+      <PayloadView s={s} />
+      <ReviewerNotes notes={s.reviewerNotes} />
+      <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
+        <label htmlFor={`note-${s.id}`} className="text-sm font-extrabold">
+          Note to the submitter (optional)
+        </label>
+        <input
+          id={`note-${s.id}`}
+          className={inputClass}
+          maxLength={500}
+          placeholder="E.g. which level is it on?"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <Button size="lg" loading={busy === "APPROVED"} disabled={resolve.isPending} onClick={() => resolve.mutate("APPROVED")}>
+          <ThumbsUp className="size-5" aria-hidden /> Approve
+        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" loading={busy === "NEEDS_INFO"} disabled={resolve.isPending} onClick={() => resolve.mutate("NEEDS_INFO")}>
+            <MessageCircleQuestion className="size-5" aria-hidden /> Needs info
+          </Button>
+          <Button variant="danger" loading={busy === "REJECTED"} disabled={resolve.isPending} onClick={() => resolve.mutate("REJECTED")}>
+            <ThumbsDown className="size-5" aria-hidden /> Reject
+          </Button>
+        </div>
+        {resolve.isError ? (
+          <p role="alert" className="text-sm text-danger">
+            {errorMessage(resolve.error)}
+          </p>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 
@@ -146,6 +295,7 @@ const QUALITY_LABELS: Record<keyof DataQuality["counts"], string> = {
   toilets: "Toilets",
   venues: "Venues",
   pending: "Pending submissions",
+  escalated: "With a moderator",
   flagsOpen: "Open flags",
   photosPending: "Photos pending",
   noFeatures: "Toilets with no features",
