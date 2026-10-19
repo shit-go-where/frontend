@@ -1,12 +1,12 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Coins, Crown, LoaderCircle, MapPin, Sparkles, Trophy } from "lucide-react";
+import { CalendarDays, ChevronDown, Coins, Crown, History, LoaderCircle, MapPin, Sparkles, Trophy } from "lucide-react";
 import Link from "next/link";
 import { ViewTransition, addTransitionType, startTransition, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
 import { TpBar } from "@/components/tp-bar";
-import { Button, Card, EmptyState, ErrorState, PageHeader, Skeleton, buttonClass, cx } from "@/components/ui";
+import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Skeleton, buttonClass, cx } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import type { Me, ToiletLeaderboard, UserLeaderboard } from "@/lib/api/types";
 import { areaSlug } from "@/lib/format";
@@ -85,7 +85,7 @@ export function LeaderboardClient() {
     <div className="mx-auto w-full max-w-2xl px-4 pb-8 pt-4">
       <PageHeader title="Leaderboard" subtitle="Who's the toilet hero of the week, and which loo is cleanest?" />
       <LeaderTabs value={picked} onChange={pick} id={id} />
-      <div className="mt-5" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
+      <div className="mt-6" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
         <ViewTransition key={tab} enter="lb-panel-in" exit="lb-panel-out" default="none">
           <div>{tab === "people" ? <People /> : <Toilets />}</div>
         </ViewTransition>
@@ -149,10 +149,10 @@ function LeaderTabs({ value, onChange, id }: { value: Tab; onChange: (t: Tab) =>
 }
 
 /**
- * The People tab's filter: built like the Toilets tab's area picker (a labelled, full-width 48px pill
- * on the same track and edge), so the two tabs share one structure: filter, heading, podium.
+ * A board's filter sits under its heading, just above the podium, as the app's filter chips: loose
+ * pills, not a track. Only the tabs above are a track, so the two never read as a second set of tabs.
  */
-function Segmented<T extends string>({
+function FilterChips<T extends string>({
   label,
   value,
   options,
@@ -161,43 +161,23 @@ function Segmented<T extends string>({
 }: {
   label: string;
   value: T;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; icon: React.ComponentType<{ className?: string }> }[];
   onChange: (v: T) => void;
   busy?: boolean;
 }) {
-  const labelId = useId();
   return (
-    <div className="flex flex-col gap-1.5">
-      <span id={labelId} className="text-sm font-extrabold text-muted">
-        {label}
-      </span>
-      <div
-        role="group"
-        aria-labelledby={labelId}
-        aria-busy={busy || undefined}
-        // The tabs' own language (a fudge track, the picked one in glossy pink), one size down so the tabs still lead.
-        className="grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1"
-      >
-        {options.map((o) => {
-          const on = o.value === value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onChange(o.value)}
-              className={cx(
-                "flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-extrabold transition duration-150 active:scale-[0.97]",
-                on ? "bg-primary text-primary-fg shadow-gloss" : "text-muted hover:text-fg",
-              )}
-            >
-              {o.label}
-              {/* Only while the picked board is on its way in. */}
-              {on && busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
-            </button>
-          );
-        })}
-      </div>
+    <div role="group" aria-label={label} aria-busy={busy || undefined} className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const on = o.value === value;
+        const Icon = o.icon;
+        return (
+          <Chip key={o.value} active={on} onClick={() => onChange(o.value)}>
+            {/* Only while the picked board is on its way in. */}
+            {on && busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Icon className="size-4" aria-hidden />}
+            {o.label}
+          </Chip>
+        );
+      })}
     </div>
   );
 }
@@ -434,21 +414,21 @@ function People() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Segmented
+      <div className="flex flex-col gap-1">
+        <h2 className="text-2xl leading-tight">{shownScope === "week" ? "Heroes of the week" : "Heroes of all time"}</h2>
+        <p className="text-sm text-muted">Ranked by points from adding, reviewing and checking in. Only people who join are listed.</p>
+      </div>
+
+      <FilterChips
         label="Time range"
         value={scope}
         onChange={setScope}
         busy={q.isPlaceholderData && q.isFetching}
         options={[
-          { value: "week", label: "This week" },
-          { value: "all", label: "All time" },
+          { value: "week", label: "This week", icon: CalendarDays },
+          { value: "all", label: "All time", icon: History },
         ]}
       />
-
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl leading-tight">{shownScope === "week" ? "Heroes of the week" : "Heroes of all time"}</h2>
-        <p className="text-sm text-muted">Ranked by points from adding, reviewing and checking in. Only people who join are listed.</p>
-      </div>
 
       {q.isError && !board ? (
         <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />
@@ -706,34 +686,6 @@ function Toilets() {
   const busy = q.isPlaceholderData && q.isFetching;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="area" className="text-sm font-extrabold text-muted">
-          Planning area
-        </label>
-        {/* A native select (keyboard and screen readers get the real thing), dressed as a pill. */}
-        <div className="relative">
-          <MapPin
-            className={cx("pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-primary", busy && "animate-pulse")}
-            aria-hidden
-          />
-          <select
-            id="area"
-            aria-busy={busy || undefined}
-            className="min-h-12 w-full cursor-pointer appearance-none rounded-full border-2 border-border-strong bg-surface-2 pl-11 pr-11 font-extrabold text-fg shadow-rest focus:border-primary"
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-          >
-            <option value="">All of Singapore</option>
-            {areas.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted" aria-hidden />
-        </div>
-      </div>
-
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl leading-tight">Cleanest in {where}</h2>
         <p className="text-sm text-muted">
@@ -747,6 +699,33 @@ function Toilets() {
             Every toilet in {shownArea}, scored or not
           </Link>
         ) : null}
+      </div>
+
+      {/* The area filter, in the same place and chip shape as the People tab's time range. A native
+          select (keyboard and screen readers get the real thing), sized to its choice like a chip. */}
+      <div className="relative max-w-full self-start">
+        <label htmlFor="area" className="sr-only">
+          Planning area
+        </label>
+        <MapPin
+          className={cx("pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-primary", busy && "animate-pulse")}
+          aria-hidden
+        />
+        <select
+          id="area"
+          aria-busy={busy || undefined}
+          className="field-sizing-content min-h-11 max-w-full cursor-pointer appearance-none truncate rounded-full border-2 border-border bg-surface-2 pl-10 pr-10 text-sm font-bold text-fg transition duration-150 hover:border-primary/60 focus:border-primary"
+          value={area}
+          onChange={(e) => setArea(e.target.value)}
+        >
+          <option value="">All of Singapore</option>
+          {areas.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
       </div>
 
       {q.isError && !board ? (
