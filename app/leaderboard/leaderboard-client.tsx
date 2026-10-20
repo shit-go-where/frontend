@@ -4,6 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { CalendarDays, ChevronDown, Coins, Crown, History, LoaderCircle, MapPin, Sparkles, TrainFront, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { ViewTransition, addTransitionType, startTransition, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { holdChrome } from "@/components/route-transition";
 import { LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
 import { TpBar } from "@/components/tp-bar";
 import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Skeleton, buttonClass, cx } from "@/components/ui";
@@ -11,7 +12,7 @@ import { api, errorMessage } from "@/lib/api/client";
 import type { Me, ToiletLeaderboard, UserLeaderboard } from "@/lib/api/types";
 import { areaSlug } from "@/lib/format";
 import { ME_KEY, loginHref, useHydrated, useMe } from "@/lib/auth";
-import { EASE_OUT, reducedMotion } from "@/lib/motion";
+import { EASE_OUT, PANEL_IN, PANEL_OUT, reducedMotion } from "@/lib/motion";
 
 const OPT_IN_HREF = "/me#leaderboard-optin";
 
@@ -46,6 +47,8 @@ const TABS: { value: Tab; label: string; icon: React.ComponentType<{ className?:
  */
 function animate(update: () => void, type: string) {
   if (reducedMotion()) return update();
+  // The named entries are drawn above the live page; name the header and tab bar too so they stay on top.
+  holdChrome();
   startTransition(() => {
     addTransitionType(type);
     update();
@@ -109,7 +112,7 @@ export function LeaderboardClient() {
       <PageHeader title="Leaderboard" subtitle="Who's the toilet hero of the week, and which loo is cleanest?" />
       <LeaderTabs value={picked} onChange={pick} id={id} />
       <div className="mt-6" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
-        <ViewTransition key={tab} enter="lb-panel-in" exit="lb-panel-out" default="none">
+        <ViewTransition key={tab} enter={PANEL_IN} exit={PANEL_OUT} default="none">
           <div>{tab === "people" ? <People /> : <Toilets />}</div>
         </ViewTransition>
       </div>
@@ -158,7 +161,7 @@ function LeaderTabs({ value, onChange, id }: { value: Tab; onChange: (t: Tab) =>
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
               // Phones stack the icon over the label, so "Cleanest thrones" never breaks across two lines.
-              "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-3xl px-2 text-sm font-extrabold transition-[color,transform] duration-200 active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-base",
+              "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-3xl px-2 text-sm font-extrabold transition-[color,scale] duration-200 active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-base",
               on ? "text-primary-fg" : "text-muted hover:text-fg",
             )}
           >

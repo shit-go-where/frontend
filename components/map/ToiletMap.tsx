@@ -412,6 +412,26 @@ export default function ToiletMap({
     if (debounce.current) clearTimeout(debounce.current);
   }, []);
 
+  /*
+   * A camera move we start (locate-me, a search result, a route fit, a cluster tap) runs to its end. MapLibre's
+   * easeTo stops whatever move is running, so a padding change that lands mid-flight (the list under the sheet
+   * changing as the map arrives) waits for it instead of stopping the map halfway.
+   */
+  const flying = useRef(false);
+  const padPending = useRef<(() => void) | null>(null);
+  const flown = useCallback(() => {
+    const m = mapRef.current?.getMap();
+    // Not easing: it was instant (reduced motion), so it is already over.
+    if (!m?.isEasing()) return;
+    flying.current = true;
+    m.once("moveend", () => {
+      flying.current = false;
+      const pad = padPending.current;
+      padPending.current = null;
+      pad?.();
+    });
+  }, []);
+
   // Re-centre when asked (locate-me, search result).
   const firstCenter = useRef(true);
   useEffect(() => {
@@ -420,6 +440,7 @@ export default function ToiletMap({
       return;
     }
     mapRef.current?.flyTo({ center: [center.lng, center.lat], zoom: Math.max(mapRef.current.getZoom(), 15), duration: 800, ...cameraMotion() });
+    flown();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recenterKey]);
 
@@ -443,6 +464,7 @@ export default function ToiletMap({
         ],
         { padding: { top: 60, bottom: 60, left: 40, right: 40, ...padding }, maxZoom: 18, duration: glide ? 700 : 0, ...(glide ? cameraMotion() : {}) },
       );
+      flown();
     };
     fitRef.current(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -488,7 +510,8 @@ export default function ToiletMap({
     } catch {
       m.easeTo({ center: [lng, lat], zoom: m.getZoom() + 2, ...cameraMotion() });
     }
-  }, [liveMap]);
+    flown();
+  }, [liveMap, flown]);
 
   // Keep the user and the nearest pins in the visible part of the map as the sheet moves.
   const padTop = viewPadding?.top ?? 0;
@@ -497,12 +520,15 @@ export default function ToiletMap({
     const m = mapRef.current?.getMap();
     if (!m || !viewPadding) return;
     // Pans on the sheet's own curve and duration so map and sheet move as one.
-    m.easeTo({
-      padding: { top: padTop, bottom: padBottom, left: 0, right: 0 },
-      duration: reducedMotion() ? 0 : SHEET_SETTLE_MS,
-      easing: easeSheet,
-      essential: true,
-    });
+    const pad = () =>
+      m.easeTo({
+        padding: { top: padTop, bottom: padBottom, left: 0, right: 0 },
+        duration: reducedMotion() ? 0 : SHEET_SETTLE_MS,
+        easing: easeSheet,
+        essential: true,
+      });
+    if (flying.current) padPending.current = pad;
+    else pad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [padTop, padBottom]);
 
@@ -639,12 +665,14 @@ export default function ToiletMap({
 
         {showPins
           ? clusters.map((c) => (
-              <Marker key={`c${c.id}`} longitude={c.lng} latitude={c.lat} anchor="center">
+              // Keyed by place and size, not the cluster id: ids are renumbered whenever the pins are refetched
+              // (every pan), and a new key would replay the pop on every bubble that didn't change.
+              <Marker key={`c${c.lng},${c.lat},${c.count}`} longitude={c.lng} latitude={c.lat} anchor="center">
                 <button
                   type="button"
                   onClick={() => zoomToCluster(c.id, c.lng, c.lat)}
                   className={cx(
-                    "pin-pop flex size-11 items-center justify-center rounded-full border-[3px] border-bg bg-tier font-display text-sm text-tier-fg shadow-card transition-[transform,opacity] duration-200 active:scale-90",
+                    "pin-pop flex size-11 items-center justify-center rounded-full border-[3px] border-bg bg-tier font-display text-sm text-tier-fg shadow-card transition-[scale,opacity] duration-200 active:scale-90",
                     dim && "opacity-40",
                   )}
                   aria-label={`${c.count} toilets here, zoom in`}
@@ -693,7 +721,7 @@ export default function ToiletMap({
           </Marker>
         ) : null}
 
-        {interactive && showPins && focus && focusHint ? <OffscreenHint key={focus.id} focus={focus} inset={focusInset} /> : null}
+        {interactive && showPins && focus && focusHint ? <OffscreenHint focus={focus} inset={focusInset} /> : null}
 
         {destination ? (
           <Marker longitude={destination.lng} latitude={destination.lat} anchor="bottom">

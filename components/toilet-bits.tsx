@@ -402,9 +402,11 @@ function ToiletCardInner({
       // Going deeper: the detail page arrives from the right (and shows this name while it loads).
       transitionTypes={["push"]}
       onClick={() => openFromCard(t.id, t.venue.name)}
-      onMouseEnter={() => onHover?.(t.id)}
-      onMouseLeave={() => onHover?.(null)}
-      onFocus={() => onHover?.(t.id)}
+      // A real pointer or the keyboard only: a tap fires an emulated hover that never leaves, and a stuck
+      // hover would pin the map's highlight to this card instead of following the list as it scrolls.
+      onPointerEnter={(e) => e.pointerType === "mouse" && onHover?.(t.id)}
+      onPointerLeave={(e) => e.pointerType === "mouse" && onHover?.(null)}
+      onFocus={(e) => e.currentTarget.matches(":focus-visible") && onHover?.(t.id)}
       onBlur={() => onHover?.(null)}
       className={cx(
         "group flex items-start gap-3 p-3 transition hover:brightness-110 active:scale-[0.98]",

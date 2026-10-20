@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DUR, EASE_SHEET, reducedMotion } from "@/lib/motion";
 import { cx } from "./ui";
 
@@ -130,7 +130,9 @@ export function BottomSheet({
       if (!head.offsetHeight) return; // hidden on another tab
       const reveal = head.querySelector<HTMLElement>("[data-sheet-reveal]");
       const peek = content.querySelector<HTMLElement>("[data-sheet-peek]");
-      const below = peek ? peek.getBoundingClientRect().bottom - content.getBoundingClientRect().top : 0;
+      // Layout offsets, not client rects: a card still rising in (`rise-in`, the FLIP entrance) would be measured
+      // where it is mid-animation, and nothing re-measures once the transform ends.
+      const below = peek ? peek.offsetTop + peek.offsetHeight - content.offsetTop : 0;
       const resting = head.offsetHeight - (reveal?.offsetHeight ?? 0);
       setStripPx(Math.round(resting + PEEK_CLEARANCE_PX));
       setPeekPx(Math.round(resting + below + PEEK_CLEARANCE_PX));
@@ -222,6 +224,21 @@ export function BottomSheet({
     },
     [snapHeight, visualHeight],
   );
+
+  /*
+   * The resting height can change under a snap that stays put: the peek re-measured (a picked card, a new nearest
+   * toilet), the screen resized. Glide there like any settle, from wherever the sheet is (mid-settle included),
+   * instead of jumping while the map pans to follow. Before paint, so the new height never shows first.
+   */
+  const shown = useRef<{ snap: number; px: number } | null>(null);
+  useLayoutEffect(() => {
+    const prev = shown.current;
+    shown.current = { snap, px: snapPx };
+    const el = ref.current;
+    if (!prev || prev.snap !== snap || prev.px === snapPx || !el || drag.current?.active) return;
+    if (!el.getClientRects().length) return; // hidden on another tab
+    settleTo(snap, settleCleanup.current ? undefined : prev.px);
+  }, [snap, snapPx, settleTo]);
 
   // The parent asks for a snap (e.g. a pin was tapped): glide there and show the top of the list.
   const lastRequest = useRef<number | undefined>(undefined);
@@ -322,8 +339,10 @@ export function BottomSheet({
         settleCleanup.current?.();
         d.h0 = visualHeight();
         d.y0 = e.clientY;
-        d.maxH = Math.max(snapHeight(2), d.h0);
+        d.maxH = Math.max(snapHeight(SHEET_TOP), d.h0);
         hold(el, d.maxH, d.h0);
+        // The touch never becomes a scroll, so the card under the thumb would stay pressed in (globals.css).
+        el.dataset.dragging = "";
         (e.currentTarget as HTMLElement).setPointerCapture(d.id);
       }
       const dt = e.timeStamp - d.lastT;
@@ -359,6 +378,7 @@ export function BottomSheet({
         return;
       }
       suppressClick.current = true;
+      if (ref.current) delete ref.current.dataset.dragging;
       cancelAnimationFrame(raf.current);
       raf.current = 0;
       // A finger that stopped before lifting carries no flick.

@@ -12,6 +12,14 @@ export const DUR = {
   sheet: 380,
 } as const;
 
+/**
+ * A tab panel's <ViewTransition> enter/exit (leaderboard, /me): it slides only when a tab was tapped
+ * (`lb-tab-left` / `lb-tab-right`). Arriving on or leaving the page, it travels with the route instead
+ * of sliding in again on its own.
+ */
+export const PANEL_IN = { "lb-tab-left": "lb-panel-in", "lb-tab-right": "lb-panel-in", default: "none" };
+export const PANEL_OUT = { "lb-tab-left": "lb-panel-out", "lb-tab-right": "lb-panel-out", default: "none" };
+
 /** Folds (details, filtered lists): taller ones take a little longer, so a long fold doesn't snap and a short one doesn't dawdle. Closing runs at 3/4 of this. */
 export function foldMs(px: number) {
   return Math.round(Math.min(380, 220 + px / 12));
