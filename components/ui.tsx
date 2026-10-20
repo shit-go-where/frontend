@@ -123,7 +123,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
       {mascot ? <Mascot mood={mascot} className="mb-1 size-20" /> : icon ? <div className="text-muted">{icon}</div> : null}
-      <h3 className="font-display text-xl">{title}</h3>
+      <h2 className="font-display text-xl">{title}</h2>
       {children ? <div className="max-w-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-3 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
@@ -313,9 +313,10 @@ export function Dialog({
 /**
  * The pink pill under a pill track's picked option. It slides from option to option rather than
  * blinking between them (reduced motion: it just moves). Put it first inside a `relative grid` track
- * with `p-1 gap-1` and equal columns.
+ * with `p-1 gap-1` and equal columns. Never named for a view transition: unnamed, it stays live (and
+ * keeps sliding) while a panel swaps in one, and a name would lift it out of every route change too.
  */
-export function SlidingPill({ index, count, vtName }: { index: number; count: number; vtName?: string }) {
+export function SlidingPill({ index, count }: { index: number; count: number }) {
   return (
     <span
       aria-hidden
@@ -324,17 +325,13 @@ export function SlidingPill({ index, count, vtName }: { index: number; count: nu
         width: `calc((100% - 0.5rem - ${count - 1} * 0.25rem) / ${count})`,
         transform: `translateX(calc(${Math.max(0, index)} * (100% + 0.25rem)))`,
         transitionTimingFunction: EASE_OUT,
-        // When the tab swap runs inside a view transition, the browser pauses rendering and the CSS
-        // slide above never shows. A name (page-unique) lets the transition glide the pill instead.
-        ...(vtName ? { viewTransitionName: vtName, viewTransitionClass: "tab-pill" } : {}),
       }}
     />
   );
 }
 
 /**
- * Pill tabs. `idBase` wires each tab to its panel (`${idBase}-tab-${value}`, `${idBase}-panel`) and,
- * when the panel swaps inside a view transition, names the pill so it still slides. Arrow keys move between tabs.
+ * Pill tabs. `idBase` wires each tab to its panel (`${idBase}-tab-${value}`, `${idBase}-panel`). Arrow keys move between tabs.
  */
 export function Tabs<T extends string>({
   tabs,
@@ -365,7 +362,7 @@ export function Tabs<T extends string>({
       className="relative grid gap-1 rounded-full bg-surface-2 p-1"
       style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
     >
-      <SlidingPill index={index} count={tabs.length} vtName={idBase ? `${idBase}-tab-pill` : undefined} />
+      <SlidingPill index={index} count={tabs.length} />
       {tabs.map((t, i) => {
         const on = value === t.value;
         return (
@@ -383,11 +380,9 @@ export function Tabs<T extends string>({
             onClick={() => onChange(t.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
-              "relative min-h-11 rounded-full px-3 text-sm font-extrabold transition-[color,transform] duration-200 active:scale-[0.97]",
+              "relative min-h-11 rounded-full px-3 text-sm font-extrabold transition-[color,scale] duration-200 active:scale-[0.97]",
               on ? "text-primary-fg" : "text-muted hover:text-fg",
             )}
-            // Named too, so in a view transition the labels stay above the gliding pill and recolour with it.
-            style={idBase ? { viewTransitionName: `${idBase}-tab-${t.value}`, viewTransitionClass: "tab-pill" } : undefined}
           >
             {t.label}
           </button>

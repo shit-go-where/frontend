@@ -5,13 +5,14 @@ import { CalendarDays, ChevronDown, Coins, Crown, History, LoaderCircle, MapPin,
 import Link from "next/link";
 import { ViewTransition, addTransitionType, startTransition, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
+import { holdChrome } from "@/components/route-transition";
 import { TpBar } from "@/components/tp-bar";
 import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Skeleton, buttonClass, cx } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import type { Me, ToiletLeaderboard, UserLeaderboard } from "@/lib/api/types";
 import { areaSlug } from "@/lib/format";
 import { ME_KEY, loginHref, useHydrated, useMe } from "@/lib/auth";
-import { EASE_OUT, reducedMotion } from "@/lib/motion";
+import { EASE_OUT, PANEL_IN, PANEL_OUT, reducedMotion } from "@/lib/motion";
 
 const OPT_IN_HREF = "/me#leaderboard-optin";
 
@@ -41,11 +42,14 @@ const TABS: { value: Tab; label: string; icon: React.ComponentType<{ className?:
  * Live re-rank. The board is a scoreboard, not a page that swaps: a new tab slides in from the side
  * you tapped, and a new time range or area re-ranks what's there. Every person and toilet is a named
  * view transition, so it glides to its new place (morphing between podium and list), newcomers rise
- * in, leavers drop away, and their numbers count to the new value. Reduced motion: it all just changes.
+ * in, leavers drop away, and their numbers count to the new value. The header and tab bar hold still
+ * while it plays, so the board passes under them. Reduced motion: it all just changes.
  * The CSS lives in globals.css ("Leaderboard re-rank").
  */
 function animate(update: () => void, type: string) {
   if (reducedMotion()) return update();
+  // The named entries are drawn above the live page; name the header and tab bar too so they stay on top.
+  holdChrome();
   startTransition(() => {
     addTransitionType(type);
     update();
@@ -109,7 +113,7 @@ export function LeaderboardClient() {
       <PageHeader title="Leaderboard" subtitle="Who's the toilet hero of the week, and which loo is cleanest?" />
       <LeaderTabs value={picked} onChange={pick} id={id} />
       <div className="mt-6" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
-        <ViewTransition key={tab} enter="lb-panel-in" exit="lb-panel-out" default="none">
+        <ViewTransition key={tab} enter={PANEL_IN} exit={PANEL_OUT} default="none">
           <div>{tab === "people" ? <People /> : <Toilets />}</div>
         </ViewTransition>
       </div>
@@ -157,13 +161,14 @@ function LeaderTabs({ value, onChange, id }: { value: Tab; onChange: (t: Tab) =>
             onClick={() => onChange(t.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
-              // Phones stack the icon over the label, so "Cleanest thrones" never breaks across two lines.
-              "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-3xl px-2 text-sm font-extrabold transition-[color,transform] duration-200 active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-base",
+              // Phones stack the icon over the label, so "Cleanest thrones" stays on one line at normal text size
+              // (and wraps, rather than overlapping its neighbour, when the system text size is large).
+              "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-3xl px-2 text-sm font-extrabold transition-[color,scale] duration-200 active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-base",
               on ? "text-primary-fg" : "text-muted hover:text-fg",
             )}
           >
             <Icon className={cx("size-5 shrink-0 transition-colors duration-200", !on && "text-accent")} aria-hidden />
-            <span className="whitespace-nowrap leading-tight">{t.label}</span>
+            <span className="text-center leading-tight text-balance">{t.label}</span>
           </button>
         );
       })}

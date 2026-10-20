@@ -6,6 +6,7 @@ import { isApiError, isNetworkError, setUnauthorizedHandler } from "@/lib/api/cl
 import { captureSourceFromUrl, initAnalytics } from "@/lib/analytics";
 import { ME_KEY, loginHref, useAnalyticsIdentity } from "@/lib/auth";
 import { LocationProvider } from "@/lib/location";
+import { forgetSignedInCopies } from "@/lib/offline";
 
 function makeClient() {
   const qc: QueryClient = new QueryClient({
@@ -18,9 +19,11 @@ function makeClient() {
         networkMode: "offlineFirst",
         retry: (count, err) => {
           if (isApiError(err) && err.status < 500) return false;
-          // One quick retry for a dropped or slow request, none when we know we're offline
-          // (the worker had nothing saved): a fast "no signal" beats a long spinner.
-          if (isNetworkError(err)) return err.kind !== "offline" && count < 1;
+          // One quick retry for a dropped request, none when we know we're offline (the worker had
+          // nothing saved) and none after a timeout, which already waited its full 10 s: retrying
+          // doubled a lie-fi spinner to ~25 s. A fast "no signal" beats a long spinner, and the
+          // error state has a "Try again" button.
+          if (isNetworkError(err)) return err.kind === "unreachable" && count < 1;
           return count < 2;
         },
       },
@@ -33,6 +36,7 @@ function makeClient() {
         // A mutation that needed a session: the cached "me" is stale, go sign in.
         if (isApiError(err) && err.status === 401) {
           qc.setQueryData(ME_KEY, null);
+          void forgetSignedInCopies();
           window.location.assign(loginHref());
         }
       },
@@ -46,7 +50,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Any non-silent 401 means our session is gone.
-    setUnauthorizedHandler(() => client.setQueryData(ME_KEY, null));
+    // Also drop the worker's saved copies that can carry the signed-in person's own data.
+    setUnauthorizedHandler(() => {
+      client.setQueryData(ME_KEY, null);
+      void forgetSignedInCopies();
+    });
     return () => setUnauthorizedHandler(null);
   }, [client]);
 

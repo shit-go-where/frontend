@@ -6,12 +6,15 @@
  * If the backend changes a response shape, `pnpm typecheck` fails here, naming the type.
  * This file has no runtime code.
  */
+import type { Api } from "./client";
 import type { components } from "./schema";
 import type * as T from "./types";
 
 type S = components["schemas"];
 type Fits<Actual, Expected> = [Actual] extends [Expected] ? true : { mismatch: Actual; expected: Expected };
 type Assert<X extends true> = X;
+/** The body argument of an `api.*` call (lib/api/client.ts), for calls whose body type is written inline. */
+type Body<K extends keyof Api, I extends number = 1> = NonNullable<Parameters<Api[K]>[I]>;
 
 export type ContractChecks = [
   Assert<Fits<S["ToiletSummary_Output"], T.ToiletSummary>>,
@@ -48,9 +51,26 @@ export type ContractChecks = [
   Assert<Fits<S["StationDetailDto_Output"], T.StationDetail>>,
   Assert<Fits<S["LineBoardDto_Output"]["items"][number], T.LineRow>>,
   Assert<Fits<S["TelegramLinkTokenDto_Output"], T.TelegramLinkToken>>,
+  Assert<Fits<S["ReviewDto_Output"], T.Review>>,
+  Assert<Fits<S["ReviewPageDto_Output"], T.Page<T.Review>>>,
+  Assert<Fits<S["StatusReportListDto_Output"], T.List<T.StatusReport>>>,
+  Assert<Fits<S["SubmissionListDto_Output"], T.List<T.SubmissionView>>>,
+  Assert<Fits<S["VenueLiteListDto_Output"], T.List<T.VenueLite>>>,
+  Assert<Fits<S["MediaPhotoRefDto_Output"], T.PhotoRef>>,
   // Request bodies: what the UI sends must be accepted by the backend.
   Assert<Fits<T.RecommendBody, S["RecommendBodyDto"]>>,
   Assert<Fits<T.CreateSubmissionBody, S["CreateSubmissionDto"]>>,
   Assert<Fits<T.UpdateSubmissionBody, S["UpdateSubmissionDto"]>>,
   Assert<Fits<T.ResolveSubmissionBody, S["ResolveDto"]>>,
+  // Bodies written inline in lib/api/client.ts.
+  Assert<Fits<Body<"postReview">, S["CreateReviewDto"]>>,
+  Assert<Fits<Body<"checkIn">, S["CheckInDto"]>>,
+  Assert<Fits<Body<"verify">, S["VerifyDto"]>>,
+  Assert<Fits<Body<"vote">, S["VoteDto"]>>,
+  Assert<Fits<Body<"updateMe", 0>, S["UpdateMeDto"]>>,
+  Assert<Fits<Body<"presign", 0>, S["PresignDto"]>>,
+  Assert<Fits<Body<"devLogin", 0>, S["DevLoginBody"]>>,
+  Assert<Fits<{ reason: Body<"flagToilet"> }, S["CreateFlagDto"]>>,
+  Assert<Fits<{ kind: Body<"reportStatus">; afterRoute?: true }, S["CreateStatusDto"]>>,
+  Assert<Fits<{ toiletId: Body<"routingStarted", 0> }, S["RouteStartedBodyDto"]>>,
 ];

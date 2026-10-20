@@ -178,7 +178,7 @@ export function RoutePrompt() {
             }
           }}
           className={cx(
-            "rise-in fixed inset-x-4 z-30 mx-auto max-w-md rounded-3xl border border-border/70 bg-surface p-4 text-fg shadow-card",
+            "rise-in vt-route-prompt fixed inset-x-4 z-30 mx-auto max-w-md rounded-3xl border border-border/70 bg-surface p-4 text-fg shadow-card",
             // Phones: just above the tab bar and its bump. Desktop: bottom right, clear of the content column.
             "bottom-[calc(var(--nav-h)+var(--nav-crown)+env(safe-area-inset-bottom)+0.75rem)] md:inset-x-auto md:right-6 md:bottom-6 md:w-96",
           )}

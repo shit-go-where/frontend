@@ -26,12 +26,17 @@
  *     turns into an offline NetworkError that is not retried.
  *   - This cache is not tied to the deploy version, so a deploy doesn't wipe saved toilets.
  * - Other public GET /api reads (toilet detail, reviews, venues, badges, leaderboards):
- *   network-first with the saved copy as the offline fallback.
- * - /_next/static and /icons: cache-first (content-hashed, immutable).
- * - RSC payloads and other same-origin GETs: network-first.
+ *   network-first with the same 2.5 s race, the saved copy as the slow or offline fallback.
+ *   Some of these carry the signed-in person's own bits (myReview, confirmedByMe, earned badges,
+ *   the leaderboard's `me`); lib/offline.ts forgetSignedInCopies() drops them on sign-out.
+ * - /_next/static, /maplibre/<version> and /icons: cache-first (content-hashed or versioned, immutable).
+ * - RSC payloads and other same-origin GETs: network-first with the same race.
+ * - A 404 or 410 from the network deletes the saved copy (a toilet that was rejected or removed
+ *   stops being served from the cache), for pages, RSC payloads and API reads alike.
  * - API, PAGES and DATA caches are trimmed to the 100 most recently stored entries.
- * - Never cached: non-GET requests, /api/auth, /api/me, /api/admin, /api/submissions,
- *   /api/media, /ingest (analytics), cross-origin requests.
+ * - Never cached: non-GET requests, /api/auth, /api/me (incl. /api/me/telegram), /api/admin,
+ *   /api/submissions, /api/media, /api/integrations, /ingest (analytics), cross-origin requests,
+ *   and any /api path not listed in SAVED_API or NETWORK_FIRST_API.
  */
 const BUILD = "__SGW_BUILD__";
 const VERSION = `sgw-${BUILD}`;
@@ -58,6 +63,7 @@ const NEVER = [
   /^\/api\/admin\//,
   /^\/api\/submissions/,
   /^\/api\/media\//,
+  /^\/api\/integrations\//,
   // Analytics proxy (PostHog, next.config.ts): straight to the network, never stored.
   /^\/ingest(\/|$)/,
 ];
@@ -97,6 +103,20 @@ async function precache() {
 
 function cacheable(res) {
   return res && res.ok && res.status === 200 && (res.type === "basic" || res.type === "default");
+}
+
+/** The thing is gone for good (rejected, deleted): a saved copy must not outlive it. */
+function gone(res) {
+  return res && (res.status === 404 || res.status === 410);
+}
+
+async function forget(cacheName, key) {
+  try {
+    const c = await caches.open(cacheName);
+    await c.delete(key, { ignoreVary: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 async function put(cacheName, key, res, max) {
@@ -175,7 +195,11 @@ function shellFor(url) {
 async function navigate(event, req, url) {
   // Redirected responses can't answer a navigation (Safari refuses them), so never store one.
   const network = fetchAndStore(event, req, (res) =>
-    cacheable(res) && !res.redirected ? put(PAGES, req, res.clone(), MAX_ENTRIES) : undefined,
+    cacheable(res) && !res.redirected
+      ? put(PAGES, req, res.clone(), MAX_ENTRIES)
+      : gone(res)
+        ? forget(PAGES, req)
+        : undefined,
   );
   const first = await race(network, RACE_MS);
   if (first && first.res && first.res.status < 500) return first.res;
@@ -317,17 +341,23 @@ function offlineJson() {
 // Everything else
 // ---------------------------------------------------------------------------
 
-async function networkFirst(req, cacheName) {
-  try {
-    const res = await fetch(req);
-    // Not awaited: let streamed responses render while the copy is stored.
-    if (cacheable(res)) void put(cacheName, req, res.clone(), MAX_ENTRIES);
-    return res;
-  } catch (e) {
-    const cached = await caches.match(req);
-    if (cached) return cached;
-    throw e;
-  }
+/**
+ * Network-first, raced like navigations: a saved copy answers when the network is slow, fails or
+ * answers 5xx; with nothing saved, the network's own answer (or error) is waited for.
+ */
+async function networkFirst(event, req, cacheName) {
+  const network = fetchAndStore(event, req, (res) =>
+    cacheable(res) ? put(cacheName, req, res.clone(), MAX_ENTRIES) : gone(res) ? forget(cacheName, req) : undefined,
+  );
+  const first = await race(network, RACE_MS);
+  if (first && first.res && first.res.status < 500) return first.res;
+
+  const cached = await caches.match(req);
+  if (cached) return cached;
+
+  const outcome = first || (await settle(network));
+  if (outcome.res) return outcome.res;
+  throw outcome.err;
 }
 
 async function cacheFirst(req) {
@@ -347,7 +377,8 @@ self.addEventListener("fetch", (event) => {
 
   if (NEVER.some((r) => r.test(path))) return;
 
-  if (path.startsWith("/_next/static/") || path.startsWith("/icons/")) {
+  // /maplibre/<version>/ is MapLibre itself (app/maplibre), versioned and immutable like /_next/static.
+  if (path.startsWith("/_next/static/") || path.startsWith("/icons/") || path.startsWith("/maplibre/")) {
     event.respondWith(cacheFirst(req));
     return;
   }
@@ -358,7 +389,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (path.startsWith("/api/")) {
-    if (NETWORK_FIRST_API.some((r) => r.test(path))) event.respondWith(networkFirst(req, API));
+    if (NETWORK_FIRST_API.some((r) => r.test(path))) event.respondWith(networkFirst(event, req, API));
     return;
   }
 
@@ -368,5 +399,5 @@ self.addEventListener("fetch", (event) => {
   }
 
   // RSC payloads, manifest, other same-origin assets.
-  event.respondWith(networkFirst(req, DATA));
+  event.respondWith(networkFirst(event, req, DATA));
 });

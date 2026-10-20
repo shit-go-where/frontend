@@ -12,7 +12,7 @@ import type {
   ToiletSummary,
   VenueLite,
 } from "../lib/api/types";
-import { levelOrder } from "../lib/level";
+import { levelOrder } from "../lib/level.ts";
 
 export const ORIGIN = { lat: 1.2993, lng: 103.8455 };
 

@@ -545,7 +545,7 @@ export function HomeClient() {
             {/* Phones: the key and "Help me choose" open with the list and fold away at the peek. */}
             <div
               data-sheet-reveal
-              className="grid transition-[grid-template-rows] duration-[380ms] ease-[var(--ease-sheet)]"
+              className="grid transition-[grid-template-rows] duration-[380ms] ease-[var(--ease-sheet)] motion-reduce:transition-none"
               style={{ gridTemplateRows: revealed ? "1fr" : "0fr" }}
               inert={!revealed}
             >
@@ -716,6 +716,14 @@ export function HomeClient() {
             {hasImported ? "Some toilet data © OpenStreetMap contributors (ODbL). " : ""}
             <Link href="/about" className="font-semibold underline">
               How we rate toilets and where the data comes from
+            </Link>
+          </p>
+          <p className="mt-2 flex gap-4">
+            <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center font-semibold underline">
+              Privacy
+            </Link>
+            <Link href="/terms" className="inline-flex min-h-11 min-w-11 items-center font-semibold underline">
+              Terms
             </Link>
           </p>
         </div>

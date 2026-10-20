@@ -599,7 +599,7 @@ export function GoClient() {
               <ol className="mt-3 flex flex-col gap-2" aria-label={`Toilets near ${loc.placeName ?? "Raffles Place"}`}>
                 {items.map((it) => (
                   <li key={it.toilet.id}>
-                    <AltRow item={it} urgent={urgent} noFix />
+                    <AltRow item={it} noFix />
                   </li>
                 ))}
               </ol>
@@ -615,7 +615,7 @@ export function GoClient() {
                   <ol className="mt-2 flex flex-col gap-2" aria-label="Other options">
                     {rest.map((it) => (
                       <li key={it.toilet.id}>
-                        <AltRow item={it} urgent={urgent} required={required} essential={purpose?.essential} />
+                        <AltRow item={it} required={required} essential={purpose?.essential} />
                       </li>
                     ))}
                   </ol>
@@ -845,13 +845,11 @@ function HeroCard({
 
 function AltRow({
   item,
-  urgent,
   required = [],
   noFix,
   essential,
 }: {
   item: RecommendItem;
-  urgent: boolean;
   required?: ToiletSummary["features"];
   noFix?: boolean;
   essential?: Feature;
@@ -869,7 +867,6 @@ function AltRow({
       <Link
         href={takeHref(new URLSearchParams(sp), t.id)}
         className="flex min-h-16 min-w-0 flex-1 items-center gap-3 p-3 transition hover:bg-surface-2"
-        aria-label={`${urgent ? "Go" : "Walk"} to ${t.venue.name}${noFix ? "" : `, ${mins} minute walk`}`}
       >
         {/* Grows past 48px for a long distance ("1.2 km") instead of running into its edges. */}
         <span className="flex min-w-12 shrink-0 flex-col items-center rounded-2xl bg-mint px-2 py-1.5 text-center text-mint-fg shadow-gloss">

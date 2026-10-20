@@ -8,6 +8,18 @@ import type { AreaDetail, AreaSummary, LineRow, List, SitemapToilet, StationDeta
 
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "");
 
+/**
+ * Server renders call the API directly, not through proxy.ts, so they prove who they are with the shared
+ * secret and send no client IP: the API treats that as an internal render and doesn't IP-throttle it.
+ * Read from the environment only (no headers()), so cached and prerendered pages stay that way.
+ */
+function apiHeaders(): Record<string, string> {
+  const h: Record<string, string> = { Accept: "application/json" };
+  const secret = process.env.API_PROXY_SECRET;
+  if (secret) h["x-sgw-proxy-secret"] = secret;
+  return h;
+}
+
 export type ServerResult<T> =
   | { kind: "ok"; data: T }
   | { kind: "not-found" }
@@ -16,7 +28,7 @@ export type ServerResult<T> =
 async function serverGet<T>(path: string): Promise<ServerResult<T>> {
   try {
     const res = await fetch(`${API_ORIGIN}${path}`, {
-      headers: { Accept: "application/json" },
+      headers: apiHeaders(),
       // Fail fast so a dead API turns into a friendly error state, not a hung page.
       signal: AbortSignal.timeout(6000),
     });

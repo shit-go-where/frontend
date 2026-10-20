@@ -61,13 +61,18 @@ test.describe("find", () => {
     const count = sheet.getByRole("heading", { name: "3 toilets within 1 km" });
     await expect(sheet.getByTestId("toilet-card").first()).toBeVisible();
 
-    const box = (await count.boundingBox())!;
-    await page.mouse.move(box.x + 20, box.y + 10);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 20, box.y + 200, { steps: 40 });
-    await page.mouse.up();
-
-    await expect(sheet.getByRole("button", { name: "Show nearest toilet" })).toBeVisible();
+    // The sheet is still settling after its entrance (it measures its peek over a few frames, and the count
+    // shifts by a few px): a drag that starts in that window can be dropped, so the drag is retried from
+    // wherever the count is until the sheet follows (about one run in fifty needed a second go under load).
+    await page.waitForTimeout(600);
+    await expect(async () => {
+      const box = (await count.boundingBox())!;
+      await page.mouse.move(box.x + 20, box.y + 10);
+      await page.mouse.down();
+      await page.mouse.move(box.x + 20, box.y + 200, { steps: 40 });
+      await page.mouse.up();
+      await expect(sheet.getByRole("button", { name: "Show nearest toilet" })).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 15_000 });
     await expect(count).toBeVisible();
     // The list is out of reach (inert) while only the count shows.
     await expect(sheet.getByTestId("toilet-card").first().locator("xpath=ancestor::*[@inert]")).toHaveCount(1);

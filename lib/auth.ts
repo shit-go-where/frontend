@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
 import { api } from "./api/client";
 import { identifyUser, resetUser } from "./analytics";
+import { forgetSignedInCopies } from "./offline";
 import type { Me, Role } from "./api/types";
 
 export const ME_KEY = ["me"] as const;
@@ -147,6 +148,7 @@ export function useSignOut() {
       await api.logout();
     } finally {
       resetUser({ force: true });
+      await forgetSignedInCopies();
       qc.setQueryData(ME_KEY, null);
       await qc.invalidateQueries();
       router.push("/");

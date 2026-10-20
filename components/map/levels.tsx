@@ -181,7 +181,7 @@ export function StackRolls({
             aria-label={rollLabel(p)}
             aria-pressed={p.id === selectedId}
             className={cx(
-              "group absolute left-0 flex items-start transition-[opacity,transform] duration-200 active:scale-95",
+              "group absolute left-0 flex items-start transition-[scale,opacity] duration-200 active:scale-95",
               faded && "opacity-35",
             )}
             // Upper rolls sit in front, so a lower roll is tapped on the slice of it that shows.
@@ -265,7 +265,7 @@ export function FoldedStack({
             : `${n} toilets stacked here${levels > 1 ? ` on ${levels} levels` : ""}, show them`
         }
         className={cx(
-          "pin-pop relative flex transition-[opacity,transform] duration-200 active:scale-95",
+          "pin-pop relative flex transition-[scale,opacity] duration-200 active:scale-95",
           faded && !open && "opacity-35",
         )}
       >

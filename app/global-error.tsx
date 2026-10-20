@@ -1,14 +1,18 @@
 "use client";
 
+import { useEffect } from "react";
 import { Mascot } from "@/components/mascot";
 import { buttonClass } from "@/components/styles";
+import { describeError, reportError } from "@/lib/report-error";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme-script";
 // The layout's own faces and variables (one declaration, no second set of files), so the crash page speaks in the app's voice.
 import { dela, rounded } from "./fonts";
 import "./globals.css";
 
 /** Replaces the root layout when it crashes, so it brings its own document, styles, font and theme. */
-export default function GlobalError({ retry }: { error: unknown; retry: () => void }) {
+export default function GlobalError({ error, retry }: { error: unknown; retry: () => void }) {
+  useEffect(() => reportError(error, "global"), [error]);
+  const digest = describeError(error, "global").digest;
   return (
     <html lang="en-SG" className={`${dela.variable} ${rounded.variable} antialiased`} suppressHydrationWarning>
       <head>
@@ -20,6 +24,7 @@ export default function GlobalError({ retry }: { error: unknown; retry: () => vo
           <Mascot mood="worried" className="size-28" />
           <h1 className="mt-3 text-3xl leading-tight sm:text-4xl">Aiyo, the app crashed</h1>
           <p className="max-w-sm text-muted">Sorry about that. Try again, or head back to the map.</p>
+          {digest ? <p className="text-sm text-muted">Reference: {digest}</p> : null}
           {/* Full page loads on purpose: the app shell is what crashed. */}
           <div className="mt-5 flex w-full flex-col gap-3">
             <a href="/go?urgent=1" className={buttonClass("urgent", "lg")}>

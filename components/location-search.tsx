@@ -163,7 +163,7 @@ export function LocationSearch({
             <li key={`${it.lat},${it.lng},${i}`}>
               <button
                 type="button"
-                className="flex w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-surface-2"
+                className="flex w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-surface-2 active:bg-surface-2"
                 onClick={() => {
                   setManual({ lat: it.lat, lng: it.lng, name: it.name });
                   setQ("");
