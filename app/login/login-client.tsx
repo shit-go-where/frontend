@@ -178,11 +178,11 @@ export function LoginClient() {
       <p className="text-sm text-muted">
         From Google we only keep your email, name and profile picture, and we never show your email or name publicly. By
         signing in you agree to the{" "}
-        <Link href="/terms" className="font-bold text-primary underline">
+        <Link href="/terms" className="whitespace-nowrap font-bold text-primary underline">
           terms of use
         </Link>
         ; see the{" "}
-        <Link href="/privacy" className="font-bold text-primary underline">
+        <Link href="/privacy" className="whitespace-nowrap font-bold text-primary underline">
           privacy notice
         </Link>{" "}
         for how we handle your data.

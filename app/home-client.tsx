@@ -657,10 +657,10 @@ export function HomeClient() {
             </Link>
           </p>
           <p className="mt-2 flex gap-4">
-            <Link href="/privacy" className="font-semibold underline">
+            <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center font-semibold underline">
               Privacy
             </Link>
-            <Link href="/terms" className="font-semibold underline">
+            <Link href="/terms" className="inline-flex min-h-11 min-w-11 items-center font-semibold underline">
               Terms
             </Link>
           </p>

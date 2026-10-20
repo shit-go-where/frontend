@@ -228,7 +228,7 @@ export default function AboutPage() {
           Privacy notice
         </Link>
         {" · "}
-        <Link href="/terms" className={link}>
+        <Link href="/terms" className={`${link} inline-flex min-h-11 items-center`}>
           Terms of use
         </Link>
         {CONTACT_EMAIL ? (
