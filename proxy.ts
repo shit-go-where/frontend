@@ -11,7 +11,7 @@ import { NextResponse, type NextRequest } from "next/server";
  *   x-sgw-proxy-secret  the shared secret
  *   x-sgw-client-ip     x-real-ip, else the first X-Forwarded-For entry, as this edge received them
  * Without the secret this does nothing and the next.config.ts rewrite handles /api as before.
- * /ingest (analytics) is not matched.
+ * /ingest (analytics) and /monitoring (Sentry error reports) are not matched.
  */
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://localhost:4000").replace(/\/+$/, "");
 

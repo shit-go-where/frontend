@@ -1,14 +1,26 @@
 import type { Instrumentation } from "next";
+import { SENTRY_DSN, sentryBaseOptions } from "./lib/sentry-options";
+
+/**
+ * Server and edge error reporting (Sentry), only when NEXT_PUBLIC_SENTRY_DSN is set. The SDK is
+ * imported here rather than at the top so a build without a DSN never loads it. Options and scrubbing
+ * (no PII, no query strings, no headers but User-Agent) are shared with the browser: lib/sentry-options.ts.
+ */
+export async function register() {
+  if (!SENTRY_DSN) return;
+  const Sentry = await import("@sentry/nextjs");
+  Sentry.init(sentryBaseOptions());
+}
 
 /**
  * Server-side errors (Server Components, route handlers, OG images) as one JSON line each, so Vercel's
  * runtime logs can be searched by the digest a person sees on the error page ("Reference: …", app/error.tsx)
- * and alerted on. Replace or extend with Sentry's captureRequestError once a DSN exists.
+ * and alerted on; and, with a DSN, to Sentry tagged with the same digest.
  *
  * Logs the path without its query (it can carry coordinates or redirect targets) and never the
  * request headers (cookies).
  */
-export const onRequestError: Instrumentation.onRequestError = (err, request, context) => {
+export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
   const e = err instanceof Error ? err : null;
   const digest = typeof err === "object" && err !== null && "digest" in err ? String((err as { digest: unknown }).digest) : undefined;
   console.error(
@@ -27,4 +39,15 @@ export const onRequestError: Instrumentation.onRequestError = (err, request, con
       build: process.env.SGW_BUILD_ID,
     }),
   );
+
+  if (!SENTRY_DSN) return;
+  try {
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.withScope((scope) => {
+      if (digest) scope.setTag("digest", digest);
+      Sentry.captureRequestError(err, request, context);
+    });
+  } catch {
+    /* reporting must never turn one error into two */
+  }
 };

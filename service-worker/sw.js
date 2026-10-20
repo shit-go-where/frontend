@@ -35,7 +35,8 @@
  *   stops being served from the cache), for pages, RSC payloads and API reads alike.
  * - API, PAGES and DATA caches are trimmed to the 100 most recently stored entries.
  * - Never cached: non-GET requests, /api/auth, /api/me (incl. /api/me/telegram), /api/admin,
- *   /api/submissions, /api/media, /api/integrations, /ingest (analytics), cross-origin requests,
+ *   /api/submissions, /api/media, /api/integrations, /ingest (analytics), /monitoring (error
+ *   reports, POSTs anyway), cross-origin requests,
  *   and any /api path not listed in SAVED_API or NETWORK_FIRST_API.
  * - Photos: /api/media/photos/<id>[/thumb] answers with a redirect to a presigned R2 URL that expires
  *   within hours (the bucket is private), so the worker must never store it: /api/media is in NEVER
@@ -73,6 +74,8 @@ const NEVER = [
   /^\/api\/integrations\//,
   // Analytics proxy (PostHog, next.config.ts): straight to the network, never stored.
   /^\/ingest(\/|$)/,
+  // Sentry error reports (the withSentryConfig tunnel, next.config.ts): straight to the network, never stored.
+  /^\/monitoring(\/|$)/,
 ];
 
 /** Stored on saved API answers: "lat,lng,epochMs" of the place and time they were fetched for. */
