@@ -4,8 +4,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { CalendarDays, ChevronDown, Coins, Crown, History, LoaderCircle, MapPin, Sparkles, TrainFront, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { ViewTransition, addTransitionType, startTransition, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { holdChrome } from "@/components/route-transition";
 import { LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
+import { holdChrome } from "@/components/route-transition";
 import { TpBar } from "@/components/tp-bar";
 import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Skeleton, buttonClass, cx } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
@@ -42,7 +42,8 @@ const TABS: { value: Tab; label: string; icon: React.ComponentType<{ className?:
  * Live re-rank. The board is a scoreboard, not a page that swaps: a new tab slides in from the side
  * you tapped, and a new time range or area re-ranks what's there. Every person and toilet is a named
  * view transition, so it glides to its new place (morphing between podium and list), newcomers rise
- * in, leavers drop away, and their numbers count to the new value. Reduced motion: it all just changes.
+ * in, leavers drop away, and their numbers count to the new value. The header and tab bar hold still
+ * while it plays, so the board passes under them. Reduced motion: it all just changes.
  * The CSS lives in globals.css ("Leaderboard re-rank").
  */
 function animate(update: () => void, type: string) {
