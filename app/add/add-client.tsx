@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ToiletMap } from "@/components/map";
+import { LevelPicker } from "@/components/level-picker";
 import { Mascot } from "@/components/mascot";
 import { PhotoPicker } from "@/components/photo-picker";
 import { PinGlyph } from "@/components/pin";
@@ -39,6 +40,7 @@ import {
 } from "@/lib/api/types";
 import { useRequireAuth } from "@/lib/auth";
 import { AREA_TYPE_LABELS, CONTRIBUTOR_FEATURE_GROUPS, FEATURE_LABELS, VENUE_TYPE_LABELS, formatDistance } from "@/lib/format";
+import { levelShort, levelText, normalizeLevel } from "@/lib/level";
 import { haversineM, useLocation, type LatLng } from "@/lib/location";
 
 const STEPS = ["Pin", "Place", "Details", "Inside"] as const;
@@ -186,16 +188,27 @@ export function AddClient() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [dupes, setDupes] = useState<ToiletSummary[] | null>(null);
   const [done, setDone] = useState<SubmissionView | null>(null);
+  const dupeLevels = useMemo(
+    () => [...new Set((dupes ?? []).map((t) => levelShort(t.level)).filter((l): l is string => !!l))],
+    [dupes],
+  );
   const [recenter, setRecenter] = useState(0);
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const pin = d.pin ?? loc.coords;
 
+  /*
+   * A place that already has a toilet listed needs the new one's level, or nobody (the map, the duplicate
+   * check) can tell them apart. Known for places picked from the nearby list; the API checks every time.
+   */
+  const listedHere = (d.venue as NearbyVenue | null)?.toiletCount ?? 0;
+  const levelNeeded = !!d.venue && listedHere > 0;
+
   const canNext = [
     !!d.pin || loc.settled,
     !!d.venue || !!(d.newVenue && d.newVenue.name.trim().length >= 2),
     // A photo still uploading would be dropped from the submission, so wait for it.
-    !photoBusy,
+    !photoBusy && (!levelNeeded || !!normalizeLevel(d.level)),
   ][step];
 
   // Keep the draft as it changes; a finished submission clears it.
@@ -262,7 +275,7 @@ export function AddClient() {
       lat: pin.lat,
       lng: pin.lng,
       label: d.label.trim() || undefined,
-      level: d.level.trim() || undefined,
+      level: normalizeLevel(d.level) ?? undefined,
       areaType: d.areaType,
       accessNote: d.accessNote.trim() || undefined,
       features,
@@ -501,9 +514,17 @@ export function AddClient() {
             <Field label="Label (optional)" htmlFor="label" hint='E.g. "Near Exit B", "Beside food court"'>
               <input id="label" className={inputClass} maxLength={80} value={d.label} onChange={(e) => set("label", e.target.value)} />
             </Field>
-            <Field label="Level (optional)" htmlFor="level" hint="B1, L1, L3…">
-              <input id="level" className={inputClass} maxLength={10} value={d.level} onChange={(e) => set("level", e.target.value)} />
-            </Field>
+            <LevelPicker
+              label={levelNeeded ? "Level" : "Level (optional)"}
+              required={levelNeeded}
+              hint={
+                levelNeeded
+                  ? `${d.venue!.name} already has ${listedHere === 1 ? "a toilet" : `${listedHere} toilets`} listed, so say which floor this one is on.`
+                  : "Ground floor is L1."
+              }
+              value={d.level}
+              onChange={(v) => set("level", v)}
+            />
             <fieldset aria-describedby="area-help">
               <legend className="font-bold">Fare gates</legend>
               <p id="area-help" className="mb-3 text-sm text-muted">
@@ -595,7 +616,13 @@ export function AddClient() {
             {dupes ? (
               <Card className="border-2 border-warn bg-warn-soft p-5" role="alert">
                 <h3 className="font-display text-xl">Is it one of these?</h3>
-                <p className="mt-1">We already have toilets very close to your pin.</p>
+                <p className="mt-1">
+                  {dupeLevels.length
+                    ? `There's already one on ${dupeLevels.join(" and ")} right here.`
+                    : "We already have toilets very close to your pin."}
+                  {/* Same spot, other floor: the level is what tells them apart. */}
+                  {!normalizeLevel(d.level) ? " If yours is on another floor, go back and pick its level." : null}
+                </p>
                 {dupes.length ? (
                   <ul className="mt-3 flex flex-col gap-2">
                     {dupes.map((t) => (
@@ -606,7 +633,7 @@ export function AddClient() {
                         <span className="min-w-0">
                           <span className="block font-extrabold">{t.venue.name}</span>
                           <span className="text-sm text-muted">
-                            {[t.label, t.level && `Level ${t.level}`, formatDistance(t.distanceM ?? haversineM(pin, t))]
+                            {[t.label, levelText(t.level) ?? "Level not recorded", formatDistance(t.distanceM ?? haversineM(pin, t))]
                               .filter(Boolean)
                               .join(" · ")}
                           </span>

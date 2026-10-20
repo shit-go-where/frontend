@@ -44,6 +44,7 @@ import {
 import { FEATURE_HUE, FILTER_HUE, HUE_TEXT } from "@/lib/feature-hues";
 import type { FilterKey } from "@/lib/filters";
 import { openFromCard } from "@/lib/toilet-handoff";
+import { levelText } from "@/lib/level";
 import { PinGlyph, tierPinVariant } from "./pin";
 import { Dialog, cx } from "./ui";
 
@@ -447,7 +448,7 @@ function ToiletCardInner({
               {distanceFrom ? ` from ${distanceFrom}` : null}
             </span>
           ) : null}
-          {t.level ? <span className="text-muted">Level {t.level}</span> : null}
+          {t.level ? <span className="text-muted">{levelText(t.level)}</span> : null}
           {t.scoreCleanliness !== null && t.scoreCleanliness !== undefined ? (
             <span className="inline-flex items-center gap-1 font-semibold">
               <Sparkles className="size-3.5 text-accent" aria-hidden />

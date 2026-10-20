@@ -76,6 +76,7 @@ import {
 import { FEATURE_HUE, HUE_CHIP, type Hue } from "@/lib/feature-hues";
 import { FILTERS } from "@/lib/filters";
 import { estimateWalkSeconds, haversineM, useLocation } from "@/lib/location";
+import { compareLevelOrder, levelOrder, levelShort, levelText } from "@/lib/level";
 import { hoursText, opensText } from "@/lib/opening-hours";
 import { isUnnamed } from "@/lib/unnamed-toilet";
 import { useHydrated, useMe } from "@/lib/auth";
@@ -232,6 +233,7 @@ function Detail({ t }: { t: ToiletDetail }) {
           <h1 className={TITLE_CLASS}>{t.venue.name}</h1>
           {t.label ? <p className="mt-0.5 text-lg font-bold text-muted">{t.label}</p> : null}
           <VenueLine t={t} />
+          <OtherFloors t={t} />
         </header>
       </div>
 
@@ -376,6 +378,50 @@ function Detail({ t }: { t: ToiletDetail }) {
 }
 
 /** One quiet row under the name: what kind of place, which lines, which area. */
+/**
+ * The building's other toilets, one chip per floor with this one lit: in a mall the toilet one floor
+ * down is often the better bet, and its page is a tap away.
+ */
+function OtherFloors({ t }: { t: ToiletDetail }) {
+  // A page saved offline before siblings came in has none.
+  const siblings = t.siblings ?? [];
+  if (!siblings.length) return null;
+  const all = [{ id: t.id, label: t.label, level: t.level, levelOrder: levelOrder(t.level) }, ...siblings].sort(
+    (a, b) => compareLevelOrder(a.levelOrder, b.levelOrder),
+  );
+  const chip = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full border-2 px-4 text-sm font-bold tabular-nums";
+  return (
+    <nav aria-labelledby="other-floors" className="mt-3" data-testid="other-floors">
+      <p id="other-floors" className="text-sm font-bold text-muted">
+        {siblings.length === 1 ? "1 other toilet in this building" : `${siblings.length} other toilets in this building`}
+      </p>
+      <ul className="no-scrollbar -mx-4 mt-1.5 flex gap-2 overflow-x-auto px-4 pb-1">
+        {all.map((s) => {
+          const text = levelShort(s.level) ?? s.label ?? "Level unknown";
+          return (
+            <li key={s.id} className="shrink-0">
+              {s.id === t.id ? (
+                <span aria-current="page" className={cx(chip, "border-primary bg-primary text-primary-fg shadow-gloss")}>
+                  {text}
+                  <span className="sr-only"> (this one)</span>
+                </span>
+              ) : (
+                <Link
+                  href={`/toilets/${encodeURIComponent(s.id)}`}
+                  className={cx(chip, "border-border bg-surface-2 text-fg transition hover:border-primary/60 active:scale-[0.96]")}
+                >
+                  {levelShort(s.level) ? <span className="sr-only">Toilet on </span> : null}
+                  {text}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
 function VenueLine({ t }: { t: ToiletDetail }) {
   const type = t.venue.type !== "OTHER" ? VENUE_TYPE_LABELS[t.venue.type] : null;
   // "Public toilet" alone says nothing, and a pending toilet has no directions here: both say where they are.
@@ -643,14 +689,10 @@ function WalkTimeButton({ status, onLocate }: { status: ReturnType<typeof useLoc
   );
 }
 
-function levelText(level: string): string {
-  const parts = level.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
-  return `${parts.length > 1 ? "Levels" : "Level"} ${parts.join(", ")}`;
-}
-
 function whereParts(t: ToiletDetail): string[] {
   const out: string[] = [];
-  if (t.level) out.push(levelText(t.level));
+  const level = levelText(t.level);
+  if (level) out.push(level);
   if (t.nearestExit) out.push(/^exit/i.test(t.nearestExit) ? t.nearestExit : `Exit ${t.nearestExit}`);
   if (t.areaType === "PAID_AREA") out.push("Inside fare gates");
   if (t.areaType === "UNPAID_AREA") out.push("Outside fare gates");

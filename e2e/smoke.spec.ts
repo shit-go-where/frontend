@@ -144,7 +144,9 @@ test.describe("submit", () => {
 
     // 3. details, with the optional photo
     await page.getByLabel("Label (optional)").fill("Level 4, near Food Republic");
-    await page.getByLabel("Level (optional)").fill("L4");
+    // Plaza Singapura already has toilets listed, so its level is needed before Next.
+    await expect(next).toBeDisabled();
+    await page.getByRole("group", { name: /^Level/ }).getByRole("button", { name: "L4", exact: true }).click();
     await page.getByLabel("Outside the fare gates").check();
     await page.getByTestId("photo-input").setInputFiles({ name: "toilet.png", mimeType: "image/png", buffer: PNG_BYTES });
     await expect(page.getByAltText("Your uploaded photo")).toBeVisible();
@@ -160,6 +162,8 @@ test.describe("submit", () => {
     // submit → 409 → force
     await page.getByTestId("add-submit").click();
     await expect(page.getByRole("heading", { name: "Is it one of these?" })).toBeVisible();
+    // The candidates say their floor, so a different floor is easy to tell apart.
+    await expect(page.getByText("There's already one on L3 right here.")).toBeVisible();
     await page.getByRole("button", { name: "No, it's a different toilet" }).click();
     await expect(page.getByTestId("add-success")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Steady lah! Submitted." })).toBeVisible();
@@ -203,13 +207,14 @@ test.describe("submit", () => {
     await next.click();
     await page.getByTestId("venue-option").filter({ hasText: "Plaza Singapura" }).click();
     await next.click();
-    await page.getByLabel("Level (optional)").fill("B1");
+    const levels = page.getByRole("group", { name: /^Level/ });
+    await levels.getByRole("button", { name: "B1", exact: true }).click();
 
     // The tab is thrown away (as phones do while the camera is open) and comes back.
     await page.reload();
     await expect(page.getByText("Picked up where you left off.")).toBeVisible();
     await expect(page.getByRole("heading", { name: /Step 3 of 4/ })).toBeVisible();
-    await expect(page.getByLabel("Level (optional)")).toHaveValue("B1");
+    await expect(levels.getByRole("button", { name: "B1", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     // No photo: Next still works, and so does submitting.
     await expect(next).toBeEnabled();
@@ -316,7 +321,7 @@ test.describe("what's inside", () => {
     await page.getByRole("button", { name: "Update what's inside" }).click();
 
     const dialog = page.getByRole("dialog", { name: "What's inside?" });
-    await dialog.getByLabel("Level").fill("B2");
+    await dialog.getByRole("group", { name: "Level" }).getByRole("button", { name: "B2", exact: true }).click();
     await dialog.getByText("Inside the fare gates", { exact: true }).click();
     await pick(dialog, "Baby change: Yes");
     await dialog.getByLabel("Anything else? (optional)").fill("Moved after the renovation");

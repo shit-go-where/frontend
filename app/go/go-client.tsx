@@ -64,6 +64,7 @@ import { rankOffline, useOnline } from "@/lib/offline";
 import { PURPOSE_OPTIONS, parsePurpose, type PurposeOption } from "@/lib/purposes";
 import { markArrived, startRoute } from "@/lib/route-session";
 import { HUE_TEXT, type Hue } from "@/lib/feature-hues";
+import { distinctLevels } from "@/lib/level";
 
 /** Each mission wears the hue of the features it hunts for (sitting for number two, soap for freshening up). */
 const PURPOSE_STYLE: Record<Purpose, { icon: React.ComponentType<{ className?: string }>; hue: Hue }> = {
@@ -252,6 +253,12 @@ export function GoClient() {
   const lat = roundCoord(loc.coords.lat);
   const lng = roundCoord(loc.coords.lng);
   const showWizard = !urgent && fussyParam === null;
+  /*
+   * Which floor they're on, asked once when the nearest place has toilets on two or more floors (a mall,
+   * a big station), since the floors between count as walking. null until answered; level null is "Not sure".
+   */
+  const [floorAnswer, setFloorAnswer] = useState<{ level: string | null } | null>(null);
+  const myLevel = floorAnswer?.level ?? undefined;
   const urgentFilters = useMemo(() => toFilterQuery(stored.active), [stored.active]);
 
   const body = useMemo<RecommendBody | null>(() => {
@@ -263,6 +270,7 @@ export function GoClient() {
         require: urgentFilters.features.length ? urgentFilters.features : undefined,
         openNow: urgentFilters.openNow || undefined,
         areaType: urgentFilters.areaType,
+        ...(myLevel ? { level: myLevel } : {}),
       };
     if (fussyParam === null) return null;
     const fussy = Math.min(10, Math.max(0, Number(fussyParam) || 0));
@@ -276,8 +284,9 @@ export function GoClient() {
       areaType: fq.areaType,
       // ASSUMPTION: weights are relative 0..1; "fussiness" trades distance for cleanliness.
       weights: { cleanliness: fussy / 10, distance: 1 - fussy / 20 },
+      ...(myLevel ? { level: myLevel } : {}),
     };
-  }, [urgent, fussyParam, need, purpose, lat, lng, urgentFilters]);
+  }, [urgent, fussyParam, need, purpose, lat, lng, urgentFilters, myLevel]);
 
   const rec = useQuery({
     queryKey: ["recommend", body],
@@ -288,6 +297,32 @@ export function GoClient() {
     // A fresh fix asks again; meanwhile the answer from the old one stays up, labelled with its age.
     placeholderData: urgent ? keepPreviousData : undefined,
   });
+
+  // The nearest candidate's building, and the floors its ACTIVE toilets are on: two or more, and we ask.
+  const nearestVenue = useMemo(() => {
+    let best: { venue: ToiletSummary["venue"]; d: number } | null = null;
+    for (const it of rec.data?.items ?? []) {
+      const d = it.toilet.distanceM ?? it.walkDistanceM;
+      if (!best || d < best.d) best = { venue: it.toilet.venue, d };
+    }
+    return best?.venue ?? null;
+  }, [rec.data]);
+  const askFloor = !floorAnswer && loc.source === "gps" && !!nearestVenue;
+  const venueToiletsQ = useQuery({
+    queryKey: ["go-floors", nearestVenue?.id],
+    queryFn: ({ signal }) =>
+      api.nearbyToilets({ lat: nearestVenue!.lat, lng: nearestVenue!.lng, radius: 300, limit: 100 }, signal),
+    enabled: askFloor,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const venueFloors = useMemo(
+    () =>
+      nearestVenue
+        ? distinctLevels((venueToiletsQ.data?.items ?? []).filter((t) => t.venue.id === nearestVenue.id && t.status === "ACTIVE"))
+        : [],
+    [nearestVenue, venueToiletsQ.data],
+  );
 
   /*
    * No answer and no way to get one (no signal, timed out, or the request is waiting for a network): rank
@@ -471,6 +506,17 @@ export function GoClient() {
       ) : null}
 
       <div className={cx(urgent && !noFix ? "-mt-6" : "mt-5")}>
+        {/* One light question, never in the way: the results are already up and stay usable. */}
+        {askFloor && !noFix && venueFloors.length >= 2 && nearestVenue ? (
+          <FloorQuestion venue={nearestVenue.name} floors={venueFloors} onAnswer={(level) => setFloorAnswer({ level })} />
+        ) : floorAnswer?.level ? (
+          <p className="relative z-10 mb-3 flex items-center justify-between gap-2 rounded-2xl bg-surface px-4 py-1 text-sm font-bold shadow-card">
+            <span>Counting floors from {floorAnswer.level}</span>
+            <button type="button" onClick={() => setFloorAnswer(null)} className="min-h-11 font-extrabold text-primary underline">
+              Change
+            </button>
+          </p>
+        ) : null}
         {/* Still finding you after a few seconds, or a rough fix: search where you are instead. */}
         {showSearch || (slow && waitingForFix && !noFix) ? (
           <Card className="relative z-10 mb-3 flex flex-col gap-3 shadow-card">
@@ -604,6 +650,40 @@ export function GoClient() {
         </Link>
       ) : null}
     </div>
+  );
+}
+
+/** "Which level are you on?": the floors of the nearest building, and a way to skip. */
+function FloorQuestion({
+  venue,
+  floors,
+  onAnswer,
+}: {
+  venue: string;
+  floors: { level: string }[];
+  onAnswer: (level: string | null) => void;
+}) {
+  return (
+    <Card className="relative z-10 mb-3 flex flex-col gap-2 shadow-card" data-testid="floor-question">
+      <div>
+        <h2 id="floor-question" className="font-bold">
+          Which level are you on?
+        </h2>
+        <p className="text-sm text-muted">
+          {venue} has toilets on {floors.length} floors. Lifts take time, so we&apos;ll count them.
+        </p>
+      </div>
+      <div role="group" aria-labelledby="floor-question" className="flex flex-wrap gap-2">
+        {floors.map((f) => (
+          <Chip key={f.level} active={false} onClick={() => onAnswer(f.level)} className="min-w-14 px-3 tabular-nums">
+            {f.level}
+          </Chip>
+        ))}
+        <Chip active={false} onClick={() => onAnswer(null)} className="px-3">
+          Not sure
+        </Chip>
+      </div>
+    </Card>
   );
 }
 

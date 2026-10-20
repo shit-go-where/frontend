@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Send, ThumbsUp } from "lucide-react";
 import { useId, useState } from "react";
+import { LevelPicker } from "@/components/level-picker";
 import { Mascot } from "@/components/mascot";
 import { TriToggle, type Tri } from "@/components/tri-toggle";
 import { Button, Field, cx, inputClass } from "@/components/ui";
@@ -16,6 +17,7 @@ import {
   type ToiletDetail,
 } from "@/lib/api/types";
 import { AREA_TYPE_LABELS, CONTRIBUTOR_FEATURE_GROUPS, FEATURE_LABELS } from "@/lib/format";
+import { normalizeLevel } from "@/lib/level";
 
 // ---------------------------------------------------------------------------
 // "What's inside?": Yes / No / Not sure per feature, plus level and fare gates.
@@ -83,7 +85,8 @@ function changesOf(t: ToiletDetail, d: Draft): EditToiletPayload["changes"] {
     const v = d.features[f];
     if (v && v !== "unknown" && v !== listed[f]) features[f] = v === "yes";
   }
-  const level = d.level.trim();
+  // Sent the way the API stores it, so "level 3" against a listed "L3" isn't a change.
+  const level = normalizeLevel(d.level) ?? "";
   const exit = d.exit.trim();
   const access = d.access.trim();
   const hours = hoursOf(d);
@@ -213,15 +216,7 @@ export function useFactsForm({
       {showLevel || showExit || showGates || showHours ? (
         <div className="flex flex-col gap-4">
           {showLevel ? (
-            <Field label="Level" htmlFor={`${ids}-level`} hint="B1, L1, L3…">
-              <input
-                id={`${ids}-level`}
-                className={inputClass}
-                maxLength={20}
-                value={d.level}
-                onChange={(e) => setD((x) => ({ ...x, level: e.target.value }))}
-              />
-            </Field>
+            <LevelPicker label="Level" hint="Ground floor is L1." value={d.level} onChange={(level) => setD((x) => ({ ...x, level }))} />
           ) : null}
           {showExit ? (
             <Field label="Nearest exit" htmlFor={`${ids}-exit`} hint="Exit A, Exit 3…">
