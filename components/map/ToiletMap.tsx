@@ -24,6 +24,22 @@ import { cx } from "../ui";
 import type { MapFocus } from "./focus";
 import { OffscreenHint } from "./offscreen-hint";
 
+/**
+ * MapLibre 6, loaded by URL instead of bundled, so the main thread and its worker share one download of
+ * maplibre-gl-shared.mjs (served by app/maplibre/*, see lib/server/maplibre-asset.ts). Started once, on
+ * the first map; the import is left alone by the bundler.
+ */
+const MAPLIBRE_URL = `/maplibre/${process.env.MAPLIBRE_VERSION}/maplibre-gl.mjs`;
+let mapLib: Promise<typeof import("maplibre-gl")> | null = null;
+function loadMapLib() {
+  mapLib ??= (import(/* webpackIgnore: true */ MAPLIBRE_URL) as Promise<typeof import("maplibre-gl")>).catch((e: unknown) => {
+    // No signal: let the next map try again instead of keeping the failure.
+    mapLib = null;
+    throw e;
+  });
+  return mapLib;
+}
+
 /** [west, south, east, north] */
 export const SG_BOUNDS: [number, number, number, number] = [103.55, 1.15, 104.15, 1.49];
 
@@ -73,7 +89,7 @@ const PIN_COLORS = {
 
 const PIN_PX = 80; // drawn at 2x, shown at 40 css px
 
-/** Draws the toilet-roll pin for a tier onto a canvas (synchronously, so styleimagemissing can use it). */
+/** Draws the toilet-roll pin for a tier onto a canvas (synchronously, so the missing-image resolver can use it). */
 function drawPin(tier: ToiletTier, dark: boolean): ImageData | null {
   if (typeof document === "undefined") return null;
   const c = dark ? PIN_COLORS.dark : PIN_COLORS.light;
@@ -268,6 +284,10 @@ export default function ToiletMap({
   const darkRef = useRef(dark);
   const style = useMemo(() => basemap(dark), [dark]);
   const [bounds, setBounds] = useState<Bounds | null>(null);
+  // The map never started (no WebGL2, which MapLibre 6 requires, or its module didn't arrive): hand it to
+  // MapErrorBoundary (./index.tsx) so the page says so instead of showing an empty box. Tile errors don't count.
+  const [fatal, setFatal] = useState<unknown>(null);
+  if (fatal) throw fatal;
   const [clusters, setClusters] = useState<{ id: number; lat: number; lng: number; count: number }[]>([]);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -283,7 +303,7 @@ export default function ToiletMap({
   // A theme switch swaps the style, which drops custom images; redraw them in the new colours.
   useEffect(() => {
     darkRef.current = dark;
-    // On (re)mount the style isn't attached yet; onLoad / styleimagemissing add the pins then.
+    // On (re)mount the style isn't attached yet; onLoad / the missing-image resolver add the pins then.
     const m = liveMap();
     if (!m) return;
     for (const tier of TIERS) if (m.hasImage(`pin-${tier}`)) m.removeImage(`pin-${tier}`);
@@ -421,8 +441,9 @@ export default function ToiletMap({
   const padPending = useRef<(() => void) | null>(null);
   const flown = useCallback(() => {
     const m = mapRef.current?.getMap();
-    // Not easing: it was instant (reduced motion), so it is already over.
-    if (!m?.isEasing()) return;
+    // Not moving: it was instant (reduced motion), so it is already over. (MapLibre 6 keeps isEasing on its
+    // internal camera; isMoving is the public equivalent and is set as soon as easeTo/flyTo starts.)
+    if (!m?.isMoving()) return;
     flying.current = true;
     m.once("moveend", () => {
       flying.current = false;
@@ -441,7 +462,7 @@ export default function ToiletMap({
     }
     mapRef.current?.flyTo({ center: [center.lng, center.lat], zoom: Math.max(mapRef.current.getZoom(), 15), duration: 800, ...cameraMotion() });
     flown();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when asked to re-centre (recenterKey), not on every new fix.
   }, [recenterKey]);
 
   // Fit route / destination.
@@ -467,7 +488,7 @@ export default function ToiletMap({
       flown();
     };
     fitRef.current(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fit only for a new fit request or route, not on every prop change.
   }, [fitKey, routeGeo]);
 
   /** Taps within ~22px of a pin count, so a thumb doesn't need to land on the glyph. */
@@ -529,7 +550,7 @@ export default function ToiletMap({
       });
     if (flying.current) padPending.current = pad;
     else pad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reacts to the padding values only; the map and refs are stable.
   }, [padTop, padBottom]);
 
   const issueColor = dark ? PIN_COLORS.dark.danger : PIN_COLORS.light.danger;
@@ -552,6 +573,12 @@ export default function ToiletMap({
     >
       <Map
         ref={mapRef}
+        mapLib={loadMapLib()}
+        onError={(e) => {
+          // react-map-gl reports a failed start with no target; everything else is a map event (a tile, say).
+          if (!e.target) setFatal(e.error ?? new Error("The map could not start"));
+          else console.error(e.error);
+        }}
         initialViewState={{ latitude: center.lat, longitude: center.lng, zoom }}
         mapStyle={style}
         minZoom={11}
@@ -577,8 +604,9 @@ export default function ToiletMap({
           }
           if (viewPadding) m.setPadding({ top: viewPadding.top, bottom: viewPadding.bottom, left: 0, right: 0 });
           addPinImages(m, darkRef.current);
-          m.on("styleimagemissing", (ev: { id: string }) => {
-            if (ev.id.startsWith("pin-")) addPinImages(m, darkRef.current);
+          // MapLibre 6: `styleimagemissing` only notifies; a resolver is what supplies the image.
+          m.setMissingStyleImageResolver((id) => {
+            if (id.startsWith("pin-")) addPinImages(m, darkRef.current);
           });
           readBounds();
           fitRef.current(false);
