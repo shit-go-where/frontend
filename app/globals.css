@@ -368,6 +368,15 @@ h3 {
   display: none;
 }
 
+/*
+ * A drag on the map sheet (bottom-sheet.tsx) starts on whatever card is under the thumb, and since the touch never
+ * turns into a scroll the browser keeps that card :active for the whole drag. Let it go as soon as it's a drag.
+ */
+[data-dragging] :active {
+  scale: none;
+  translate: none;
+}
+
 /* The home map lifts its credit above the bottom sheet on phones (home-client sets the variable). */
 /* Doubled class so it outranks MapLibre's own `.maplibregl-ctrl-bottom-left { bottom: 0 }`. */
 .maplibregl-ctrl-bottom-left.maplibregl-ctrl-bottom-left {
@@ -591,11 +600,6 @@ h3 {
     animation-name: sgw-fade;
   }
 }
-/* A tab pill (components/ui.tsx SlidingPill) gliding to its new tab inside a panel's view transition. */
-::view-transition-group(.tab-pill) {
-  animation-duration: 340ms;
-  animation-timing-function: var(--ease-out);
-}
 
 /* A tapped badge medal answers with a quick squeeze-and-swell (/me shelf). */
 @keyframes sgw-medal-tap {
@@ -766,7 +770,7 @@ h3 {
  * (tab-right: from the right; tab-left: from the left; anything else: a straight crossfade).
  * The header and tab bar are named apart and stay perfectly still, showing the new state.
  * Reduced motion keeps the crossfade and drops the travel. Clicks pass through to the new page.
- * A swipe-back the browser already animated plays nothing (route-transition.tsx leaves it out).
+ * Browser back and forward (a swipe back included) restore the page without one; BackButton plays its own.
  */
 :root {
   --route-shift: 28px;
@@ -824,18 +828,25 @@ h3 {
 :root[data-route-vt] .status-scrim {
   view-transition-name: status-scrim;
 }
+/* The "How was it?" card (route-prompt.tsx) is fixed over the tab bar too: it stays put rather than sliding with the page. */
+:root[data-route-vt] .vt-route-prompt {
+  view-transition-name: route-prompt;
+}
 ::view-transition-group(site-header),
 ::view-transition-group(tab-bar),
 ::view-transition-group(status-scrim),
+::view-transition-group(route-prompt),
 ::view-transition-new(site-header),
 ::view-transition-new(tab-bar),
-::view-transition-new(status-scrim) {
+::view-transition-new(status-scrim),
+::view-transition-new(route-prompt) {
   animation: none;
 }
 /* Above anything that grows during a route change (the route map below), as on the live page. */
 ::view-transition-group(site-header),
 ::view-transition-group(tab-bar),
-::view-transition-group(status-scrim) {
+::view-transition-group(status-scrim),
+::view-transition-group(route-prompt) {
   z-index: 2;
 }
 
@@ -872,7 +883,8 @@ h3 {
 }
 ::view-transition-old(site-header),
 ::view-transition-old(tab-bar),
-::view-transition-old(status-scrim) {
+::view-transition-old(status-scrim),
+::view-transition-old(route-prompt) {
   display: none;
 }
 
@@ -1044,5 +1056,15 @@ h3 {
 .dialog-sheet:not([open]) {
   @variant motion-reduce {
     opacity: 0;
+  }
+}
+/*
+ * Without `overlay` (Safari, Firefox) a closing dialog leaves the top layer at once, so its exit
+ * would play unpinned, wherever the dialog sits in the page. There it just goes; opening still rises.
+ */
+@supports not (overlay: auto) {
+  .dialog-sheet:not([open]),
+  .dialog-sheet:not([open])::backdrop {
+    transition: none;
   }
 }

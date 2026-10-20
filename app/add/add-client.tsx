@@ -662,7 +662,17 @@ export function AddClient() {
               Next <ArrowRight className="size-5" aria-hidden />
             </Button>
           ) : !dupes ? (
-            <Button size="lg" className="flex-1" loading={submitting} onClick={() => void submit(false)} data-testid="add-submit">
+            <Button
+              size="lg"
+              className="flex-1"
+              loading={submitting}
+              // Next and Submit share a spot: the second tap of a double tap on the last Next lands here,
+              // and would submit before the review step has been seen.
+              onClick={(e) => {
+                if (e.detail < 2) void submit(false);
+              }}
+              data-testid="add-submit"
+            >
               <Check className="size-5" aria-hidden /> Submit for review
             </Button>
           ) : null}

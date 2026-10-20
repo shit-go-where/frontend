@@ -66,7 +66,7 @@ import type { ActivityItem, Badge, Me, Passport, PhotoRef, Role, SubmissionView,
 import { track } from "@/lib/analytics";
 import { ME_KEY, hasRole, useRequireAuth, useSignOut } from "@/lib/auth";
 import { MRT_LINES, formatDate, lineColor, lineTextColor, plural } from "@/lib/format";
-import { getMotionPref, reducedMotion, setMotionPref, type MotionPref } from "@/lib/motion";
+import { PANEL_IN, PANEL_OUT, getMotionPref, reducedMotion, setMotionPref, type MotionPref } from "@/lib/motion";
 import { setThemePref, useThemePref, type ThemePref } from "@/lib/theme";
 
 const ROLE_LABELS: Record<Role, string> = { USER: "Member", TRUSTED: "Trusted", MODERATOR: "Moderator", ADMIN: "Admin" };
@@ -153,7 +153,7 @@ export function MeClient() {
         <Tabs tabs={TABS} value={picked} onChange={pick} label="Your profile" idBase="me" />
       </div>
       <div role="tabpanel" id="me-panel" aria-labelledby={`me-tab-${tab}`}>
-        <ViewTransition key={tab} enter="lb-panel-in" exit="lb-panel-out" default="none">
+        <ViewTransition key={tab} enter={PANEL_IN} exit={PANEL_OUT} default="none">
           <div className="flex flex-col gap-8">
             {tab === "progress" ? <ProgressTab me={me} /> : null}
             {tab === "activity" ? <ActivityTab /> : null}
@@ -628,7 +628,7 @@ function BadgeShelf({
                 aria-pressed={open === b.id}
                 onClick={() => setOpen(open === b.id ? null : b.id)}
                 className={cx(
-                  "flex size-14 items-center justify-center rounded-full ring-primary transition-[box-shadow,transform] duration-200 active:scale-95",
+                  "flex size-14 items-center justify-center rounded-full ring-primary transition-[box-shadow,scale] duration-200 active:scale-95",
                   open === b.id ? "ring-3" : "ring-0",
                 )}
               >
@@ -1136,7 +1136,7 @@ function Segmented<T extends string>({
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            "relative min-h-11 rounded-full px-3 text-sm font-extrabold whitespace-nowrap transition-[color,transform] duration-200 active:scale-[0.97]",
+            "relative min-h-11 rounded-full px-3 text-sm font-extrabold whitespace-nowrap transition-[color,scale] duration-200 active:scale-[0.97]",
             value === o.value ? "text-primary-fg" : "text-muted hover:text-fg",
           )}
         >
