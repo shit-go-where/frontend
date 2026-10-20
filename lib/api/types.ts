@@ -155,6 +155,24 @@ export interface ToiletPin {
   scoreCleanliness: number | null;
   hasIssue: boolean;
   venueType: VenueType;
+  /**
+   * Groups a building's toilets: map stacks, same-building clusters, the floor picker. Required by
+   * the API, but pins saved offline before levels came in lack these three, so readers allow undefined.
+   */
+  venueId: string;
+  /** Normalised ("B1", "L3", "M", "B1; L3"; lib/level.ts), or free text when unreadable. */
+  level: string | null;
+  /** Sort key: B2 = -2, L1 = 1, M = 1.5, a list = its lowest; null when unknown. */
+  levelOrder: number | null;
+}
+
+/** Another ACTIVE toilet at the same place (ToiletDetail.siblings). */
+export interface ToiletSibling {
+  id: string;
+  label: string | null;
+  level: string | null;
+  levelOrder: number | null;
+  status: ToiletStatus;
 }
 
 export interface Survey {
@@ -207,6 +225,11 @@ export interface ToiletDetail extends Omit<ToiletSummary, "venue"> {
   openSubmissionId: string | null;
   /** Who last tapped "still accurate" on site, by handle (GROWTH.md 1.7). Null if unknown or they opted out. */
   verifiedBy: { handle: string } | null;
+  /**
+   * The other ACTIVE toilets at the same venue, lowest level first. A detail page saved offline
+   * before this existed lacks it, so readers treat undefined as none.
+   */
+  siblings: ToiletSibling[];
 }
 
 export interface StatusReport {
@@ -443,6 +466,8 @@ export interface RecommendBody {
   openNow?: boolean;
   radiusM?: number;
   weights?: { distance?: number; cleanliness?: number; freshness?: number };
+  /** The floor they're on ("B1", "L3"): floors to each toilet count as walking. Unknown prefers the ground. */
+  level?: string;
 }
 
 export interface RecommendItem {

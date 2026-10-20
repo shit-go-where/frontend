@@ -1,5 +1,5 @@
 import type { Page, Request, Route } from "@playwright/test";
-import { ME, NEARBY_VENUES, PHOTO, PINS, PRESIGN, RECOMMEND, TOILETS, submissionView } from "./fixtures";
+import { ME, NEARBY_VENUES, PHOTO, PINS, PNG_BYTES, PRESIGN, RECOMMEND, TOILETS, submissionView } from "./fixtures";
 
 type Handler = (req: Request, url: URL) => { status?: number; body?: unknown } | undefined;
 
@@ -59,8 +59,13 @@ export async function mockApi(page: Page, opts: MockOptions = {}): Promise<ApiLo
     });
   });
 
-  // Keep tests offline: no basemap tiles.
-  await page.route("https://www.onemap.gov.sg/**", (route) => route.abort());
+  // Keep tests offline: every basemap tile is one small PNG. Aborted tiles would keep MapLibre from ever
+  // firing "load", and the map only asks for pins (in-bounds) once it has.
+  await page.route("https://www.onemap.gov.sg/**", (route) =>
+    route.request().url().endsWith(".png")
+      ? route.fulfill({ status: 200, contentType: "image/png", body: PNG_BYTES })
+      : route.abort(),
+  );
 
   return {
     calls,

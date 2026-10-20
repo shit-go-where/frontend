@@ -2,7 +2,7 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { GeoJSONSource, Map as MlMap, StyleSpecification } from "maplibre-gl";
+import type { ExpressionSpecification, GeoJSONSource, Map as MlMap, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, {
   AttributionControl,
@@ -22,6 +22,20 @@ import { SHEET_SETTLE_MS } from "../bottom-sheet";
 import { PIN_PATH, PinGlyph, ROLL_BODY, ROLL_TAIL, tierPinVariant } from "../pin";
 import { cx } from "../ui";
 import type { MapFocus } from "./focus";
+import {
+  FloorPicker,
+  FoldedStack,
+  OFF_FLOOR_OPACITY,
+  StackRolls,
+  drawLevelLabel,
+  floorsKey,
+  floorsOf,
+  folds,
+  labelText,
+  spiderReach,
+  stacksOf,
+  type PinStack,
+} from "./levels";
 import { OffscreenHint } from "./offscreen-hint";
 
 /** [west, south, east, north] */
@@ -72,6 +86,12 @@ const PIN_COLORS = {
 };
 
 const PIN_PX = 80; // drawn at 2x, shown at 40 css px
+
+/** Clusters break up past this zoom; from the next whole zoom up, a building's floors stack instead. */
+const CLUSTER_MAX_ZOOM = 16;
+const STACK_MIN_ZOOM = CLUSTER_MAX_ZOOM + 1;
+/** Pins say their level from here in, where a building fills enough of the screen for it to matter. */
+const LEVEL_LABEL_MIN_ZOOM = 17;
 
 /** Draws the toilet-roll pin for a tier onto a canvas (synchronously, so styleimagemissing can use it). */
 function drawPin(tier: ToiletTier, dark: boolean): ImageData | null {
@@ -157,6 +177,11 @@ export interface ToiletMapProps {
   /** Extra room the pill keeps from the open map's edges, for controls floating over the map. */
   focusInset?: { top?: number; bottom?: number };
   onSelect?: (id: string) => void;
+  /**
+   * A tapped cluster that zooming can't split (toilets on different floors at one spot) or that is all
+   * one building: list these toilets instead, lowest level first. Without it, every cluster zooms in.
+   */
+  onSelectGroup?: (ids: string[]) => void;
   /** [lat, lng] pairs */
   route?: [number, number][] | null;
   destination?: LatLng | null;
@@ -194,6 +219,26 @@ export interface MapView {
 }
 
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4;
+
+interface Cluster {
+  id: number;
+  lat: number;
+  lng: number;
+  count: number;
+  /** Every toilet in it is at this venue; "" when they're at several (clusterProperties below). */
+  venue: string;
+}
+
+/**
+ * Sources: each point's venueId, reduced to the shared one or "". A cluster that is one building
+ * opens as a list of its floors instead of zooming in.
+ */
+const CLUSTER_PROPERTIES = {
+  venue: [
+    ["case", ["==", ["accumulated"], ["get", "venue"]], ["accumulated"], ""],
+    ["get", "venueId"],
+  ],
+} as const;
 
 /** Below this the ring hides under the dot anyway; above it, it would cover the whole map. */
 const ACCURACY_RING_MIN_M = 15;
@@ -233,6 +278,7 @@ export default function ToiletMap({
   focusHint = true,
   focusInset,
   onSelect,
+  onSelectGroup,
   route,
   destination,
   fitPoints,
@@ -268,7 +314,16 @@ export default function ToiletMap({
   const darkRef = useRef(dark);
   const style = useMemo(() => basemap(dark), [dark]);
   const [bounds, setBounds] = useState<Bounds | null>(null);
-  const [clusters, setClusters] = useState<{ id: number; lat: number; lng: number; count: number }[]>([]);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  /** Clusters whose expansion zoom is past clustering (their toilets share a spot), by cluster id. */
+  const [coincident, setCoincident] = useState<ReadonlyMap<number, boolean>>(() => new globalThis.Map());
+  const [zoomLevel, setZoomLevel] = useState(zoom);
+  /** The floor picked in the floor picker; null is All. */
+  const [floor, setFloor] = useState<string | null>(null);
+  /** The folded stack that is fanned out, by key. */
+  const [spider, setSpider] = useState<string | null>(null);
+  /** The map is panning to make room for a fan: that move mustn't fold it. */
+  const roomForSpider = useRef(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
@@ -288,6 +343,8 @@ export default function ToiletMap({
     if (!m) return;
     for (const tier of TIERS) if (m.hasImage(`pin-${tier}`)) m.removeImage(`pin-${tier}`);
     addPinImages(m, dark);
+    // Level tags are redrawn on demand (styleimagemissing) in the new colours.
+    for (const id of m.listImages()) if (id.startsWith("lvl-")) m.removeImage(id);
   }, [dark, liveMap]);
 
   const pinsQ = useQuery({
@@ -331,10 +388,60 @@ export default function ToiletMap({
           type: "Feature" as const,
           id: p.id,
           geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
-          properties: { id: p.id, tier: p.tier, hasIssue: p.hasIssue },
+          properties: {
+            id: p.id,
+            tier: p.tier,
+            hasIssue: p.hasIssue,
+            // Pins saved offline before levels came in have none of these: they never group or stack.
+            venueId: p.venueId ?? "",
+            levelOrder: p.levelOrder ?? null,
+            label: labelText(p.level) ?? "",
+            floors: floorsKey(p.level),
+          },
         })),
     }),
     [pins],
+  );
+  // Cluster ids only mean something for the data they were made from.
+  const [coincidentFor, setCoincidentFor] = useState(geojson);
+  if (coincidentFor !== geojson) {
+    setCoincidentFor(geojson);
+    setCoincident(new globalThis.Map());
+  }
+
+  // Past clustering, a building's toilets at one spot become a stack instead of pins on top of each other.
+  const stacks = useMemo(() => (showPins && zoomLevel >= STACK_MIN_ZOOM ? stacksOf(pins) : []), [showPins, zoomLevel, pins]);
+  const stackedIds = useMemo(() => stacks.flatMap((s) => s.pins.map((p) => p.id)), [stacks]);
+  const stackOf = useMemo(() => new globalThis.Map(stacks.flatMap((s) => s.pins.map((p) => [p.id, s.key] as const))), [stacks]);
+  if (spider && !stacks.some((s) => s.key === spider)) setSpider(null);
+
+  // The floor picker: at building zoom, when a building in view has toilets on two or more floors.
+  const floors = useMemo(() => {
+    if (!showPins || !interactive || zoomLevel < STACK_MIN_ZOOM || !bounds) return [];
+    const inView = pins.filter(
+      (p) =>
+        p.status === "ACTIVE" &&
+        p.lat >= bounds.minLat && p.lat <= bounds.maxLat && p.lng >= bounds.minLng && p.lng <= bounds.maxLng,
+    );
+    const byVenue = new globalThis.Map<string, ToiletPin[]>();
+    for (const p of inView) if (p.venueId) byVenue.set(p.venueId, [...(byVenue.get(p.venueId) ?? []), p]);
+    const multiLevel = [...byVenue.values()].some((list) => floorsOf(list).length >= 2);
+    return multiLevel ? floorsOf(inView) : [];
+  }, [showPins, interactive, zoomLevel, bounds, pins]);
+  // The picker going away (zoomed out, panned off the building) puts every floor back.
+  const floorShown = floor !== null && floors.some((f) => f.level === floor);
+  if (floor !== null && !floorShown) setFloor(null);
+
+  /** Data-driven opacity: the filters' dim for every pin, the floor picker's for pins on other floors. */
+  const pinOpacity = useMemo(() => {
+    const base = dim ? 0.35 : 1;
+    if (!floor) return base;
+    return ["case", ["in", `;${floor};`, ["get", "floors"]], base, Math.min(base, OFF_FLOOR_OPACITY)] as ExpressionSpecification;
+  }, [dim, floor]);
+  /** Stacked toilets are drawn by their stack, never twice. */
+  const notStacked = useMemo(
+    () => ["!", ["in", ["get", "id"], ["literal", stackedIds]]] as ExpressionSpecification,
+    [stackedIds],
   );
 
   const routeGeo = useMemo(
@@ -389,23 +496,43 @@ export default function ToiletMap({
     const m = liveMap();
     if (!m || !m.getSource("toilets")) return;
     const seen = new Set<number>();
-    const next: { id: number; lat: number; lng: number; count: number }[] = [];
+    const next: Cluster[] = [];
     for (const f of m.querySourceFeatures("toilets", { filter: ["has", "point_count"] })) {
       const id = f.properties?.cluster_id as number;
       if (seen.has(id) || f.geometry.type !== "Point") continue;
       seen.add(id);
       const [lng, lat] = f.geometry.coordinates as [number, number];
-      next.push({ id, lat, lng, count: f.properties?.point_count as number });
+      next.push({ id, lat, lng, count: f.properties?.point_count as number, venue: (f.properties?.venue as string) ?? "" });
     }
     setClusters((prev) =>
-      prev.length === next.length && prev.every((p, i) => p.id === next[i].id && p.count === next[i].count) ? prev : next,
+      prev.length === next.length && prev.every((p, i) => p.id === next[i].id && p.count === next[i].count && p.venue === next[i].venue)
+        ? prev
+        : next,
     );
+    // Whether zooming in can split each cluster at all, so its button can say what a tap will do.
+    const src = m.getSource("toilets") as GeoJSONSource | undefined;
+    if (!src) return;
+    for (const c of next) {
+      src
+        .getClusterExpansionZoom(c.id)
+        .then((z) =>
+          setCoincident((prev) => {
+            const same = z > CLUSTER_MAX_ZOOM;
+            if (prev.get(c.id) === same) return prev;
+            return new globalThis.Map(prev).set(c.id, same);
+          }),
+        )
+        .catch(() => {});
+    }
   }, [liveMap]);
 
   const onMoveEnd = useCallback(() => {
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(readBounds, 350);
     updateClusters();
+    roomForSpider.current = false;
+    const m = mapRef.current;
+    if (m) setZoomLevel(m.getZoom());
   }, [readBounds, updateClusters]);
 
   useEffect(() => () => {
@@ -451,6 +578,10 @@ export default function ToiletMap({
   /** Taps within ~22px of a pin count, so a thumb doesn't need to land on the glyph. */
   const onClick = useCallback(
     (e: MapLayerMouseEvent) => {
+      // Taps on a marker (a stack's roll, a cluster) also reach the map: the marker has handled them.
+      if ((e.originalEvent?.target as Element | null)?.closest?.(".maplibregl-marker")) return;
+      // A tap anywhere else folds a fanned-out stack.
+      setSpider(null);
       let id = e.features?.[0]?.properties?.id as string | undefined;
       const m = liveMap();
       if (!id && m && m.getLayer("toilet-points")) {
@@ -478,17 +609,49 @@ export default function ToiletMap({
     [onSelect, liveMap],
   );
 
-  const zoomToCluster = useCallback(async (clusterId: number, lng: number, lat: number) => {
+  /**
+   * Zooms into a cluster, unless zooming can't help: its toilets share one spot (different floors of a
+   * mall: zoomed in, one pin would sit on the others) or they are all one building. Those open as a list.
+   */
+  const openCluster = useCallback(async (c: Cluster) => {
     const m = liveMap();
     const src = m?.getSource("toilets") as GeoJSONSource | undefined;
     if (!m || !src) return;
     try {
-      const z = await src.getClusterExpansionZoom(clusterId);
-      m.easeTo({ center: [lng, lat], zoom: z + 0.5, duration: 500, ...cameraMotion() });
+      const z = await src.getClusterExpansionZoom(c.id);
+      if (onSelectGroup && (z > CLUSTER_MAX_ZOOM || c.venue)) {
+        const leaves = await src.getClusterLeaves(c.id, 200, 0);
+        const ids = leaves
+          .map((f) => ({ id: f.properties?.id as string, order: f.properties?.levelOrder as number | null | undefined }))
+          .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
+          .map((l) => l.id);
+        onSelectGroup(ids);
+        return;
+      }
+      m.easeTo({ center: [c.lng, c.lat], zoom: z + 0.5, duration: 500, ...cameraMotion() });
     } catch {
-      m.easeTo({ center: [lng, lat], zoom: m.getZoom() + 2, ...cameraMotion() });
+      m.easeTo({ center: [c.lng, c.lat], zoom: m.getZoom() + 2, ...cameraMotion() });
     }
-  }, [liveMap]);
+  }, [liveMap, onSelectGroup]);
+
+  /** Fans a stack out, first nudging the map so the whole ring lands in the open part of it. */
+  const openSpider = useCallback(
+    (s: PinStack | null) => {
+      setSpider(s?.key ?? null);
+      const m = liveMap();
+      if (!s || !m) return;
+      const reach = spiderReach(s);
+      const { x, y } = m.project([s.lng, s.lat]);
+      const { offsetWidth: w, offsetHeight: h } = m.getContainer();
+      const { top = 0, bottom = 0 } = m.getPadding();
+      const dx = x < reach ? x - reach : x > w - reach ? x - (w - reach) : 0;
+      const dy = y < top + reach ? y - top - reach : y > h - bottom - reach ? y - (h - bottom - reach) : 0;
+      if (!dx && !dy) return;
+      roomForSpider.current = true;
+      m.panBy([dx, dy], { duration: reducedMotion() ? 0 : 300 });
+    },
+    [liveMap],
+  );
 
   // Keep the user and the nearest pins in the visible part of the map as the sheet moves.
   const padTop = viewPadding?.top ?? 0;
@@ -553,11 +716,19 @@ export default function ToiletMap({
           addPinImages(m, darkRef.current);
           m.on("styleimagemissing", (ev: { id: string }) => {
             if (ev.id.startsWith("pin-")) addPinImages(m, darkRef.current);
+            else if (ev.id.startsWith("lvl-") && !m.hasImage(ev.id)) {
+              const tag = drawLevelLabel(ev.id.slice(4), darkRef.current);
+              if (tag) m.addImage(ev.id, tag.image, { pixelRatio: 2 });
+            }
           });
           readBounds();
           fitRef.current(false);
         }}
         onMoveEnd={onMoveEnd}
+        // Moving the map folds a fanned-out stack; it would drift off its spot otherwise.
+        onMoveStart={() => {
+          if (!roomForSpider.current) setSpider(null);
+        }}
         onSourceData={(e) => {
           if (e.sourceId === "toilets" && e.isSourceLoaded) updateClusters();
         }}
@@ -586,12 +757,20 @@ export default function ToiletMap({
         ) : null}
 
         {showPins ? (
-          <Source id="toilets" type="geojson" data={geojson} cluster clusterRadius={44} clusterMaxZoom={16}>
+          <Source
+            id="toilets"
+            type="geojson"
+            data={geojson}
+            cluster
+            clusterRadius={44}
+            clusterMaxZoom={CLUSTER_MAX_ZOOM}
+            clusterProperties={CLUSTER_PROPERTIES}
+          >
             {/* Toilet-roll pins; fill encodes tier (The Honest Pin Rule). */}
             <Layer
               id="toilet-points"
               type="symbol"
-              filter={["!", ["has", "point_count"]]}
+              filter={["all", ["!", ["has", "point_count"]], notStacked]}
               layout={{
                 "icon-image": ["concat", "pin-", ["get", "tier"]],
                 "icon-anchor": "bottom",
@@ -599,21 +778,40 @@ export default function ToiletMap({
                 "icon-ignore-placement": true,
                 "symbol-sort-key": ["match", ["get", "tier"], "VERIFIED", 2, "COMMUNITY", 1, 0],
               }}
-              paint={{ "icon-opacity": dim ? 0.35 : 1, "icon-opacity-transition": pinFade }}
+              paint={{ "icon-opacity": pinOpacity, "icon-opacity-transition": pinFade }}
+            />
+            {/*
+              The level under each pin once a building fills the screen. Drawn as images like the pins: the
+              raster basemap has no glyph server for MapLibre text.
+            */}
+            <Layer
+              id="toilet-levels"
+              type="symbol"
+              minzoom={LEVEL_LABEL_MIN_ZOOM}
+              filter={["all", ["!", ["has", "point_count"]], ["!=", ["get", "label"], ""], notStacked]}
+              layout={{
+                "icon-image": ["concat", "lvl-", ["get", "label"]],
+                "icon-anchor": "top",
+                "icon-offset": [0, 1],
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "symbol-sort-key": ["match", ["get", "tier"], "VERIFIED", 2, "COMMUNITY", 1, 0],
+              }}
+              paint={{ "icon-opacity": pinOpacity, "icon-opacity-transition": pinFade }}
             />
             <Layer
               id="toilet-issues"
               type="circle"
-              filter={["all", ["!", ["has", "point_count"]], ["==", ["get", "hasIssue"], true]]}
+              filter={["all", ["!", ["has", "point_count"]], ["==", ["get", "hasIssue"], true], notStacked]}
               paint={{
                 "circle-radius": 5,
                 "circle-color": issueColor,
                 "circle-stroke-color": dark ? PIN_COLORS.dark.bg : PIN_COLORS.light.surface,
                 "circle-stroke-width": 2,
                 "circle-translate": [14, -34],
-                "circle-opacity": dim ? 0.35 : 1,
+                "circle-opacity": pinOpacity,
                 "circle-opacity-transition": pinFade,
-                "circle-stroke-opacity": dim ? 0.35 : 1,
+                "circle-stroke-opacity": pinOpacity,
                 "circle-stroke-opacity-transition": pinFade,
               }}
             />
@@ -638,22 +836,62 @@ export default function ToiletMap({
         ) : null}
 
         {showPins
-          ? clusters.map((c) => (
-              <Marker key={`c${c.id}`} longitude={c.lng} latitude={c.lat} anchor="center">
-                <button
-                  type="button"
-                  onClick={() => zoomToCluster(c.id, c.lng, c.lat)}
-                  className={cx(
-                    "pin-pop flex size-11 items-center justify-center rounded-full border-[3px] border-bg bg-tier font-display text-sm text-tier-fg shadow-card transition-[transform,opacity] duration-200 active:scale-90",
-                    dim && "opacity-40",
-                  )}
-                  aria-label={`${c.count} toilets here, zoom in`}
-                >
-                  {c.count}
-                </button>
-              </Marker>
-            ))
+          ? clusters.map((c) => {
+              // Say what a tap does: a building's floors and a single spot open as a list, the rest zoom.
+              const building = !!onSelectGroup && !!c.venue;
+              const spot = !!onSelectGroup && coincident.get(c.id) === true;
+              return (
+                <Marker key={`c${c.id}`} longitude={c.lng} latitude={c.lat} anchor="center">
+                  <button
+                    type="button"
+                    onClick={() => void openCluster(c)}
+                    className={cx(
+                      "pin-pop flex size-11 items-center justify-center rounded-full border-[3px] border-bg bg-tier font-display text-sm text-tier-fg shadow-card transition-[transform,opacity] duration-200 active:scale-90",
+                      dim && "opacity-40",
+                    )}
+                    aria-label={
+                      building
+                        ? `${c.count} toilets in this building, see levels`
+                        : spot
+                          ? `${c.count} toilets at this spot, see the list`
+                          : `${c.count} toilets here, zoom in`
+                    }
+                    data-testid="pin-cluster"
+                  >
+                    {c.count}
+                  </button>
+                </Marker>
+              );
+            })
           : null}
+
+        {stacks.map((s) => {
+          const folded = folds(s);
+          return (
+            <Marker
+              key={`k${s.key}`}
+              longitude={s.lng}
+              latitude={s.lat}
+              anchor="bottom"
+              // A fanned-out stack lies over its neighbours; a picked one rises like the picked pin.
+              style={{ zIndex: spider === s.key ? 3 : s.pins.some((p) => p.id === selectedId) ? 2 : 1 }}
+            >
+              {folded ? (
+                <FoldedStack
+                  stack={s}
+                  open={spider === s.key}
+                  dim={dim}
+                  floor={floor}
+                  selectedId={selectedId ?? null}
+                  onToggle={(open) => openSpider(open ? s : null)}
+                  onSelect={(id) => onSelect?.(id)}
+                />
+              ) : (
+                <StackRolls stack={s} dim={dim} floor={floor} selectedId={selectedId ?? null} onSelect={(id) => onSelect?.(id)} />
+              )}
+            </Marker>
+          );
+        })}
 
         {showPins
           ? pending.map((p) => (
@@ -670,7 +908,8 @@ export default function ToiletMap({
             ))
           : null}
 
-        {showPins && mark ? (
+        {/* A stacked toilet is marked by its own roll in the stack. */}
+        {showPins && mark && !stackOf.has(mark.id) ? (
           <Marker
             key={`${mark.picked ? "s" : "e"}${mark.id}`}
             longitude={mark.lng}
@@ -710,6 +949,16 @@ export default function ToiletMap({
           </Marker>
         ) : null}
       </Map>
+
+      {floors.length ? (
+        <FloorPicker
+          floors={floors}
+          value={floorShown ? floor : null}
+          onChange={setFloor}
+          // On the left, opposite the locate button, in the band the search and the sheet leave open.
+          style={{ top: padTop + 12, maxHeight: `calc(100% - ${padTop + padBottom + 24}px)` }}
+        />
+      ) : null}
 
       {onCenterChange ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>

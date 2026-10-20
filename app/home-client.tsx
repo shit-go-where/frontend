@@ -1,6 +1,6 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { ChevronRight, CloudOff, LocateFixed, MapPinCheck, Navigation, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import { FilterChipLabel, TierLegend, ToiletCard } from "@/components/toilet-bit
 import { Button, Chip, Dialog, EmptyState, ErrorState, Skeleton, buttonClass, cx } from "@/components/ui";
 import { NetworkError, api, errorMessage } from "@/lib/api/client";
 import type { ToiletSummary } from "@/lib/api/types";
+import { levelShort } from "@/lib/level";
 import { FILTERS, FILTER_LABEL, MUST_HAVE_GROUPS, toFilterQuery } from "@/lib/filters";
 import { formatDistance, isClosedNow, savedAge } from "@/lib/format";
 import { estimateWalkSeconds, haversineM, roundCoord, useLocation, type LatLng } from "@/lib/location";
@@ -71,6 +72,8 @@ export function HomeClient() {
   const loc = useLocation();
   const { active, toggle, clear } = useStoredFilters();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** A tapped building (or spot) on the map: its toilets, lowest level first. */
+  const [groupIds, setGroupIds] = useState<string[] | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [recenter, setRecenter] = useState(0);
   const [sheetPx, setSheetPx] = useState(330);
@@ -161,8 +164,24 @@ export function HomeClient() {
   /** Filters changed but their results haven't landed: the stale list and pins dim instead of sitting there looking final. */
   const filtering = active !== queryFilters;
   const updating = filtering || (nearby.isPlaceholderData && nearby.isFetching);
+  // A building's toilets are listed together at the top; the list leaves them out.
+  const groupQs = useQueries({
+    queries: (groupIds ?? [])
+      .filter((id) => !items.some((t) => t.id === id))
+      .map((id) => ({ queryKey: ["toilet", id], queryFn: ({ signal }: { signal: AbortSignal }) => api.toilet(id, signal) })),
+  });
+  const group = useMemo(() => {
+    if (!groupIds) return null;
+    const fetched = new Map(groupQs.flatMap((q) => (q.data ? [[q.data.id, q.data as ToiletSummary] as const] : [])));
+    return groupIds.map((id) => ({ id, t: items.find((i) => i.id === id) ?? fetched.get(id) ?? null }));
+  }, [groupIds, groupQs, items]);
+  const groupVenue = group?.find((g) => g.t)?.t?.venue ?? null;
+  const oneBuilding = !!group && group.every((g) => !g.t || g.t.venue.id === groupVenue?.id);
   // The selected toilet sits in its own card above the list, so leave it out of the list.
-  const listItems = useMemo(() => items.filter((t) => t.id !== selectedId), [items, selectedId]);
+  const listItems = useMemo(
+    () => items.filter((t) => t.id !== selectedId && !groupIds?.includes(t.id)),
+    [items, selectedId, groupIds],
+  );
   // "Walk there" goes on the nearest one you can actually use, so it never routes to a shut door.
   const walkId = listItems.find((t) => t.status !== "PENDING" && !isClosedNow(t))?.id;
   const listRef = useRef<HTMLUListElement>(null);
@@ -219,7 +238,14 @@ export function HomeClient() {
   // A picked pin's card takes the peek, so the map stays in view while you decide.
   const onSelect = useCallback((id: string) => {
     setSelectedId(id);
+    setGroupIds(null);
     setSnapRequest({ index: SHEET_PEEK, key: Date.now() });
+  }, []);
+  // A building's floors open the sheet halfway, with room for a few of them.
+  const onSelectGroup = useCallback((ids: string[]) => {
+    setSelectedId(null);
+    setGroupIds(ids);
+    setSnapRequest({ index: SHEET_PEEK + 1, key: Date.now() });
   }, []);
   // The map keeps its framing at the top snap: the sheet covers it, and padding taller than the map makes the camera jump.
   const onSnapChange = useCallback((i: number, px: number) => {
@@ -372,6 +398,7 @@ export function HomeClient() {
           // Only for filter changes: panning refetches the list too, and the pins shouldn't fade for that.
           dimPins={filtering}
           onSelect={onSelect}
+          onSelectGroup={onSelectGroup}
           viewPadding={mapPad}
           foldCredit={phone}
         />
@@ -551,6 +578,41 @@ export function HomeClient() {
             </div>
             <ToiletCard t={selected} selected walk distanceFrom={distanceFrom} />
           </div>
+        ) : null}
+
+        {group ? (
+          <section key={groupIds?.join()} className="rise-in mb-3" data-sheet-peek aria-labelledby="map-group-title" data-testid="map-group">
+            <div className="-mt-1 flex items-center justify-between gap-2">
+              <h3 id="map-group-title" className="min-w-0 truncate text-sm font-semibold text-muted">
+                {oneBuilding && groupVenue
+                  ? `${toilets(group.length)} in ${groupVenue.name}`
+                  : `${toilets(group.length)} at this spot`}
+              </h3>
+              <button
+                type="button"
+                className="tap flex items-center justify-center rounded-full text-muted"
+                onClick={() => setGroupIds(null)}
+                aria-label="Close this list"
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </div>
+            {/* Lowest level first, as the map stacks them. */}
+            <ul className="flex flex-col gap-3" aria-label={oneBuilding ? "Toilets in this building, by level" : "Toilets at this spot"}>
+              {group.map(({ id, t }) => (
+                <li key={id}>
+                  {t ? (
+                    <ToiletCard t={t} distanceFrom={distanceFrom} />
+                  ) : (
+                    <Skeleton className="h-24" />
+                  )}
+                </li>
+              ))}
+            </ul>
+            {group.some((g) => g.t && !levelShort(g.t.level)) ? (
+              <p className="mt-2 text-xs text-muted">Some of these have no level yet. Been there? Check in and add it.</p>
+            ) : null}
+          </section>
         ) : null}
 
         {/* "No toilet nearby" only from a real answer: offline, an empty list just means nothing saved covers it. */}

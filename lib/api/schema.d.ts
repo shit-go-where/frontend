@@ -1150,6 +1150,9 @@ export interface components {
             scoreCleanliness: number | null;
             hasIssue: boolean;
             venueType: components["schemas"]["VenueType_Output"];
+            venueId: string;
+            level: string | null;
+            levelOrder: number | null;
         };
         ToiletPinListDto_Output: {
             items: components["schemas"]["ToiletPin_Output"][];
@@ -1207,6 +1210,13 @@ export interface components {
             url: string;
             thumbUrl: string | null;
         };
+        ToiletSibling_Output: {
+            id: string;
+            label: string | null;
+            level: string | null;
+            levelOrder: number | null;
+            status: components["schemas"]["ToiletStatus_Output"];
+        };
         ToiletDetailDto_Output: {
             id: string;
             label: string | null;
@@ -1262,6 +1272,7 @@ export interface components {
             } | null;
             source: string;
             attribution: string | null;
+            siblings: components["schemas"]["ToiletSibling_Output"][];
         };
         ToiletLeaderboardDto_Output: {
             items: {
@@ -1298,6 +1309,7 @@ export interface components {
                 cleanliness?: number;
                 freshness?: number;
             };
+            level?: string;
         };
         RecommendResponseDto_Output: {
             items: {

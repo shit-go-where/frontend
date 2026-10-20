@@ -12,6 +12,7 @@ import type {
   ToiletSummary,
   VenueLite,
 } from "../lib/api/types";
+import { levelOrder } from "../lib/level";
 
 export const ORIGIN = { lat: 1.2993, lng: 103.8455 };
 
@@ -140,6 +141,7 @@ export const TOILET_DETAIL: ToiletDetail = {
   myReview: null,
   source: "COMMUNITY",
   attribution: null,
+  siblings: [],
 };
 
 export const CHECK_IN: CheckInResult = {
@@ -163,6 +165,9 @@ export const PINS: ToiletPin[] = [
     scoreCleanliness: t.scoreCleanliness,
     hasIssue: t.activeStatus.length > 0,
     venueType: t.venue.type,
+    venueId: t.venue.id,
+    level: t.level,
+    levelOrder: levelOrder(t.level),
   })),
   {
     id: "t-pending",
@@ -173,8 +178,55 @@ export const PINS: ToiletPin[] = [
     scoreCleanliness: null,
     hasIssue: false,
     venueType: "OTHER",
+    venueId: "venue-pending",
+    level: null,
+    levelOrder: null,
   },
 ];
+
+/**
+ * A mall with toilets on three floors a few metres apart (one with a reported issue), a fourth across
+ * the building (40 m off: its own pin), and a tower with six floors at one spot (folds and fans out).
+ * Only the map sees these (in-bounds); each has its own GET /toilets/:id via mallRoutes().
+ */
+// Both just north of ORIGIN, so they're in view at the home map's zoom 16 and one zoom in (17), clear of the
+// search above and the sheet below; 150 m apart, so they never share a cluster.
+const mall: VenueLite = { ...plazaSing, id: "venue-mall", name: "Level Test Mall", lat: 1.2998, lng: 103.845 };
+const tower: VenueLite = { ...plazaSing, id: "venue-tower", name: "Tall Tower", lat: 1.2998, lng: 103.8464 };
+const off = (m: number) => m / 111_320;
+
+export const MALL_TOILETS: ToiletSummary[] = [
+  toilet({ id: "m-l3", venue: mall, lat: mall.lat + off(3), lng: mall.lng, level: "L3", tier: "COMMUNITY" }),
+  toilet({ id: "m-b1", venue: mall, lat: mall.lat, lng: mall.lng, level: "B1" }),
+  toilet({
+    id: "m-l1",
+    venue: mall,
+    lat: mall.lat - off(4),
+    lng: mall.lng + off(2),
+    level: "L1",
+    activeStatus: [{ kind: "NO_PAPER", count: 1, latestAt: new Date().toISOString() }],
+  }),
+  toilet({ id: "m-far", venue: mall, lat: mall.lat + off(40), lng: mall.lng + off(10), level: "L2", tier: "IMPORTED" }),
+];
+
+export const TOWER_TOILETS: ToiletSummary[] = ["B2", "B1", "L1", "L2", "L5", "L9"].map((level) =>
+  toilet({ id: `tw-${level.toLowerCase()}`, venue: tower, lat: tower.lat, lng: tower.lng, level }),
+);
+
+export const pinOf = (t: ToiletSummary): ToiletPin => ({
+  id: t.id,
+  lat: t.lat,
+  lng: t.lng,
+  tier: t.tier,
+  status: t.status,
+  scoreCleanliness: t.scoreCleanliness,
+  hasIssue: t.activeStatus.length > 0,
+  venueType: t.venue.type,
+  venueId: t.venue.id,
+  level: t.level,
+  levelOrder: levelOrder(t.level),
+});
+
 
 export const RECOMMEND: RecommendResponse = {
   searchedRadiusM: 800,
