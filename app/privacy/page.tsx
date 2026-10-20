@@ -21,12 +21,46 @@ export default function PrivacyPage() {
         Finding toilets, viewing details and getting directions never require signing in. Your location is used in your browser
         to search nearby and is sent to our server only as part of that search. We don&apos;t keep a history of where you searched.
       </p>
+      <ul>
+        <li>
+          Your browser remembers your last position on your device for a short while, so the next page opens quickly. It is used for
+          30 minutes at most and is never kept on our servers.
+        </li>
+        <li>
+          To limit abuse, our server counts requests by IP address in memory. Those counts aren&apos;t saved to our database. Like
+          any web host, our hosting provider&apos;s standard server logs can include page addresses and IP addresses for a short time.
+        </li>
+      </ul>
+
+      <h2 id="onemap" className="scroll-mt-20">
+        Maps, place search and routes (OneMap)
+      </h2>
+      <p>
+        Maps, place search and walking routes come from{" "}
+        <a href="https://www.onemap.gov.sg/" className="font-bold text-primary underline hover:decoration-[3px]" target="_blank" rel="noopener noreferrer">
+          OneMap
+        </a>
+        , run by the Singapore Land Authority (SLA), under its own terms.
+      </p>
+      <ul>
+        <li>
+          Map tiles load straight from OneMap&apos;s servers, so OneMap sees your IP address and which part of the map you are looking at.
+        </li>
+        <li>
+          When you search for a place, our server sends OneMap the words you typed. When you ask for a walking route, it sends the
+          start point (your position or the place you picked) and the toilet&apos;s location. These requests come from our server, not
+          your phone, and don&apos;t carry your IP address or your account.
+        </li>
+        <li>A route can be reused for up to ten minutes from the server&apos;s memory so repeat requests are fast. It is not saved to our database.</li>
+      </ul>
 
       <h2>Checking in or reporting without an account</h2>
       <p>
         If you check in or report a toilet&apos;s status without signing in, we set a cookie (<code>sgw_anon</code>) holding a
         random device ID (no name, email or location) for up to a year, so we can limit abuse and give you the points when you sign
-        in; we store only your distance from the toilet, never your location, and the cookie is removed once you sign in.
+        in. A check-in stores only your distance from the toilet, never your location, and a status report stores no location at
+        all. When you sign in, those check-ins and reports move to your account and the cookie is removed. If you never sign in, they
+        stay under the random ID and are not linked to a person.
       </p>
 
       <h2>What we store when you sign in</h2>
@@ -39,7 +73,11 @@ export default function PrivacyPage() {
           <strong>Check-ins keep only the distance</strong> between you and the toilet and which toilet it was. Your coordinates
           are used once to verify you are within 150 m and are then discarded.
         </li>
-        <li>A session cookie (<code>sgw_session</code>) so you stay signed in. We don&apos;t use advertising cookies.</li>
+        <li>
+          A session cookie (<code>sgw_session</code>) so you stay signed in, for up to 30 days or until you sign out. We don&apos;t use
+          advertising cookies. While you sign in with Google, a short-lived cookie (<code>sgw_oauth</code>, 10 minutes) holds the sign-in
+          state.
+        </li>
       </ul>
 
       <h2>Usage analytics</h2>
@@ -55,12 +93,15 @@ export default function PrivacyPage() {
       <ul>
         <li>
           Events are tied to a random ID kept in your browser&apos;s storage, or to your account ID once you sign in. Never your email,
-          name, coordinates or IP-based location, and we strip location from page addresses before anything is sent.
+          name or coordinates, and we strip location from page addresses before anything is sent. PostHog&apos;s servers receive each
+          request as any web service does, so they see your IP address, but we switch off the location lookup that uses it.
         </li>
         <li>No session recordings, no heatmaps and no advertising use.</li>
         <li>
           If your browser sends Do Not Track or Global Privacy Control, analytics doesn&apos;t load at all. Clearing your site data
-          resets the random ID.
+          resets the random ID. Check-ins, reports, reviews, submissions, votes and sign-ins are also sent as events from our server, under your account ID,
+          or under the random ID or a scrambled ID if you aren&apos;t signed in, with the toilet and, for check-ins, your distance
+          rounded to 10 m.
         </li>
         <li>
           Separately, when someone starts walking to a toilet we add one to that toilet&apos;s count for the day. Only the count is
@@ -73,7 +114,7 @@ export default function PrivacyPage() {
       </h2>
       <p>
         Our Telegram bot finds toilets and takes check-ins and status reports, like the app. You don&apos;t need an account to use it.
-        Messages to the bot pass through Telegram, under Telegram&apos;s own privacy policy.
+        Messages to the bot pass through Telegram, under Telegram&apos;s own privacy policy. If you send the bot a place name, the words are passed to OneMap for that one search and not kept.
       </p>
       <ul>
         <li>
@@ -82,7 +123,7 @@ export default function PrivacyPage() {
           <Link href="/me" className="font-bold text-primary underline hover:decoration-[3px]">
             Me
           </Link>
-          , the ID of your Shit Go Where account.
+          , the ID of your Shit Go Where account. In a private chat the chat ID is the same number as your Telegram user ID.
         </li>
         <li>
           <strong>What we don&apos;t keep:</strong> names, usernames, phone numbers, the text of your messages or your coordinates. A
@@ -99,15 +140,29 @@ export default function PrivacyPage() {
         </li>
         <li>
           Send <code>/stop</code> to the bot to delete the chat&apos;s record (its filters and any account link). <code>/unlink</code>{" "}
-          or the Unlink button on Me disconnects your account. Deleting your account also removes the link.
+          or the Unlink button on Me disconnects your account. Deleting your account also removes the link. Removing the bot from a
+          group, or blocking it, deletes the chat&apos;s record too. Check-ins and reports already made stay, under the scrambled ID
+          or your account.
         </li>
       </ul>
 
       <h2>Photos</h2>
       <p>
-        Photos are shrunk in your browser before upload, which also removes embedded location (EXIF) data. Photos are hidden until a
-        moderator or trusted members approve them. Please don&apos;t photograph people.
+        Photos are shrunk in your browser before upload, which also removes embedded location (EXIF) data, and our server
+        re-encodes each photo again when it arrives. They are stored with Cloudflare R2.
       </p>
+      <ul>
+        <li>
+          A photo stays off the public toilet page and reviews until a moderator or trusted members approve it. One that is rejected
+          is deleted.
+        </li>
+        <li>
+          A photo that comes with a new toilet or an edit is also shown to signed-in members near the toilet who are asked to check
+          that submission, and to moderators and trusted members who review photos. Anyone who somehow had the photo&apos;s exact
+          web address could open it, but the addresses are long random strings that we never publish.
+        </li>
+      </ul>
+      <p>Please don&apos;t photograph people.</p>
 
       <h2>Who sees what</h2>
       <ul>
@@ -132,9 +187,32 @@ export default function PrivacyPage() {
         <Link href="/me" className="font-bold text-primary underline hover:decoration-[3px]">
           Me
         </Link>{" "}
-        and choose <em>Delete my account</em>. This permanently deletes your profile, email, points and badges. Toilets, reviews and
-        photos you contributed stay so the map remains useful, but they are anonymised and no longer linked to you.
+        and choose <em>Delete my account</em>. This permanently deletes your profile, email, handle, profile picture link, points,
+        badges, check-ins and Telegram link, and signs you out everywhere.
       </p>
+      <p>
+        Toilets, edits, reviews, photos, status reports, votes and reports you contributed stay so the map remains useful. They are
+        no longer linked to your name, email or handle. The position you stood at when you
+        submitted a toilet or edit stays with that submission. Events already sent to PostHog stay there under your random or account
+        ID, which no longer points to anyone. If you want a particular review or photo removed, ask us (see Contact below).
+      </p>
+
+      <h2>How long we keep things</h2>
+      <ul>
+        <li>Your account, check-ins, points and badges: until you delete your account.</li>
+        <li>Reviews, photos, toilets and edits: until they are removed. They stay after your account is deleted, as above.</li>
+        <li>
+          Status reports: shown while they are live, then removed from our database by a nightly clean-up about a week after they expire.
+        </li>
+        <li>Telegram chat record: until <code>/stop</code>, or the bot is removed from the chat or blocked.</li>
+        <li>
+          Backups: we keep nightly database backups for 30 days, so deleted data drops out of them within about a month.
+        </li>
+        <li>
+          In your browser: an unfinished &ldquo;add a toilet&rdquo; form is restored for up to 6 hours. Clear your site data to remove
+          anything we store there.
+        </li>
+      </ul>
 
       <h2>Contact</h2>
       {CONTACT_EMAIL ? (
@@ -155,7 +233,12 @@ export default function PrivacyPage() {
         </p>
       )}
 
-      <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">Last updated 20 October 2026.</p>
+      <p className="mt-12! border-t border-border/70 pt-4 text-sm text-muted">
+        <Link href="/terms" className="font-bold text-primary underline hover:decoration-[3px]">
+          Terms of use
+        </Link>{" "}
+        · Last updated 20 October 2026.
+      </p>
     </article>
   );
 }

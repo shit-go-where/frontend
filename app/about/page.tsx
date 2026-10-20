@@ -146,14 +146,20 @@ export default function AboutPage() {
           .
         </li>
         <li>
-          <strong className="font-extrabold">data.gov.sg</strong>: hawker centres, MRT station exits, community clubs, parks and libraries, under the{" "}
+          <strong className="font-extrabold">data.gov.sg</strong>: hawker centres (NEA), MRT station exits (LTA), community clubs (People&apos;s
+          Association), parks (NParks), libraries (NLB) and planning area boundaries (URA). Contains information from data.gov.sg
+          datasets accessed under the{" "}
           <a href="https://data.gov.sg/open-data-licence" className={link} target="_blank" rel="noopener noreferrer">
             Singapore Open Data Licence
-          </a>
-          .
+          </a>{" "}
+          version 1.0.
         </li>
         <li>
-          <strong className="font-extrabold">Wikidata</strong>: MRT station details, CC0.
+          <strong className="font-extrabold">Wikidata</strong>: MRT and LRT station names, codes and lines, released under{" "}
+          <a href="https://creativecommons.org/publicdomain/zero/1.0/" className={link} target="_blank" rel="noopener noreferrer">
+            CC0
+          </a>
+          .
         </li>
       </ul>
 
@@ -193,6 +199,18 @@ export default function AboutPage() {
               for what we keep.
             </li>
             <li>
+              <strong className="font-extrabold">A review, photo or name that shouldn&apos;t be here</strong>: if it is abusive, shows
+              a person, or breaks someone&apos;s privacy, email{" "}
+              <a href={`mailto:${CONTACT_EMAIL}?subject=Content%20report`} className={link}>
+                {CONTACT_EMAIL}
+              </a>{" "}
+              with a link to the toilet&apos;s page and what you saw. See the{" "}
+              <Link href="/terms" className={link}>
+                terms of use
+              </Link>
+              .
+            </li>
+            <li>
               <strong className="font-extrabold">Anything else</strong>: partnerships, press, ideas or a toilet we should
               know about, email{" "}
               <a href={`mailto:${CONTACT_EMAIL}`} className={link}>
@@ -207,6 +225,10 @@ export default function AboutPage() {
       <p className="mt-12 border-t border-border/70 pt-4 text-sm text-muted">
         <Link href="/privacy" className={link}>
           Privacy notice
+        </Link>
+        {" · "}
+        <Link href="/terms" className={link}>
+          Terms of use
         </Link>
         {CONTACT_EMAIL ? (
           <>
