@@ -20,7 +20,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "I need to go", short_name: "Go now", url: "/go?urgent=1", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Add a toilet", url: "/add" },
+      { name: "Add a toilet", url: "/add", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

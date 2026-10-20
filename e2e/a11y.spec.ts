@@ -19,6 +19,9 @@ interface Route {
   who?: Who;
   /** Something that exists once the page has rendered its data. */
   ready: string;
+  /** Names a state of the page beyond its first render (a dialog, a tab, a wizard step). */
+  state?: string;
+  act?: (page: Page) => Promise<void>;
 }
 
 const ID = TOILET_DETAIL.id;
@@ -40,6 +43,109 @@ const ROUTES: Route[] = [
   { path: "/areas/museum", ready: "h1" },
   { path: "/review", who: "user", ready: "h1" },
   { path: "/admin", who: "admin", ready: "h1" },
+  // States past the first render: dialogs, sheets, tabs, wizard steps and folds.
+  {
+    path: "/",
+    state: "sheet expanded",
+    ready: '[data-testid="toilet-card"]',
+    act: async (page) => {
+      const handle = page.getByRole("region", { name: "Nearby toilets" }).getByRole("button", { name: "Expand list" });
+      await handle.click();
+      await handle.click();
+    },
+  },
+  {
+    path: "/",
+    state: "filters dialog",
+    ready: '[data-testid="toilet-card"]',
+    act: async (page) => {
+      await page.getByRole("button", { name: "Filters", exact: true }).click();
+      await page.getByRole("dialog").waitFor();
+    },
+  },
+  { path: "/go?urgent=1&to=t-dhoby-nsl", state: "route", ready: '[data-testid="take-me"]' },
+  {
+    path: `/toilets/${ID}`,
+    state: "report dialog",
+    ready: "h1",
+    act: async (page) => {
+      await page.getByRole("button", { name: "Report", exact: true }).click();
+      await page.getByRole("dialog").waitFor();
+    },
+  },
+  {
+    path: `/toilets/${ID}`,
+    state: "checked in",
+    who: "user",
+    ready: "h1",
+    act: async (page) => {
+      await page.getByRole("button", { name: "Check in" }).click();
+      await page.getByRole("heading", { name: "Shiok! Checked in" }).waitFor();
+    },
+  },
+  {
+    path: `/toilets/${ID}`,
+    state: "folds open",
+    ready: "h1",
+    act: async (page) => {
+      for (const name of ["Live status", "What's inside", "Survey", "Reviews"]) {
+        await page.getByText(name, { exact: true }).first().click().catch(() => {});
+      }
+    },
+  },
+  {
+    path: "/add",
+    state: "step 2",
+    who: "user",
+    ready: '[data-testid="add-next"]',
+    act: async (page) => {
+      await page.getByTestId("add-next").click();
+      await page.getByTestId("venue-option").first().waitFor();
+    },
+  },
+  {
+    path: "/add",
+    state: "step 4",
+    who: "user",
+    ready: '[data-testid="add-next"]',
+    act: async (page) => {
+      const next = page.getByTestId("add-next");
+      await next.click();
+      await page.getByTestId("venue-option").first().click();
+      await next.click();
+      await next.click();
+      await page.getByRole("heading", { name: /Step 4 of 4/ }).waitFor();
+    },
+  },
+  {
+    path: "/leaderboard",
+    state: "cleanest toilets tab",
+    ready: "h1",
+    act: async (page) => {
+      await page.getByRole("tab", { name: /Cleanest/ }).click();
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    path: "/me",
+    state: "settings tab",
+    who: "user",
+    ready: "h1",
+    act: async (page) => {
+      await page.getByRole("tab", { name: "Settings" }).click();
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    path: "/me",
+    state: "activity tab",
+    who: "user",
+    ready: "h1",
+    act: async (page) => {
+      await page.getByRole("tab", { name: "Activity" }).click();
+      await page.waitForTimeout(300);
+    },
+  },
 ];
 const THEMES = ["light", "dark"] as const;
 
@@ -51,12 +157,14 @@ async function open(page: Page, route: Route, theme: (typeof THEMES)[number]) {
   await page.locator(route.ready).first().waitFor({ timeout: 15_000 });
   // Let queries settle and the map style fail fast; animations are off (reduced motion) so colours are final.
   await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
+  await route.act?.(page);
   await page.waitForTimeout(400);
   expect(await page.evaluate(() => document.documentElement.dataset.scheme)).toBe(theme);
 }
 
 function label(route: Route, theme: string) {
-  return `${route.path}${route.who && route.who !== "anon" ? ` (${route.who})` : route.path === "/me" ? " (signed out)" : ""} ${theme}`;
+  const who = route.who && route.who !== "anon" ? ` (${route.who})` : route.path === "/me" && !route.state ? " (signed out)" : "";
+  return `${route.path}${who}${route.state ? ` [${route.state}]` : ""} ${theme}`;
 }
 
 test.use({ reducedMotion: "reduce", colorScheme: "light" });

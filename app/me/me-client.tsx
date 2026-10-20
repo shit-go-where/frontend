@@ -197,7 +197,7 @@ function Profile({ me }: { me: Me }) {
             <span className="rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-extrabold text-fg">{ROLE_LABELS[me.role]}</span>
           ) : null}
         </p>
-        <dl className="mt-2 flex gap-5 tabular-nums">
+        <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 tabular-nums">
           <Stat value={me.points} label="points" gold />
           <Stat value={me.badges.length} of={badges.data?.items.length} label="badges" />
           <Stat value={passport.data?.stamped} of={passport.data?.total} label="stations" />

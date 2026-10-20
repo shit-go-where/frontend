@@ -104,17 +104,17 @@
   --primary: #9c1a8a;
   --primary-fg: #ffffff;
   --primary-soft: #f8d6f1;
-  --urgent: #c62f16;
+  --urgent: #b22a14;
   --urgent-fg: #ffffff;
   --tier: #8a4b23;
   --tier-fg: #ffffff;
-  --mint: #09704f;
+  --mint: #086346;
   --mint-fg: #ffffff;
   --mint-soft: #c9efe1;
   --poo: #8a4b23;
   --poo-hi: #d9934f;
   --poo-ink: #24150d;
-  --accent: #876500;
+  --accent: #6f5300;
   --accent-fg: #ffffff;
   --silver: #cfc8c2;
   --silver-fg: #2a160b;
@@ -304,6 +304,8 @@ h1,
 h2,
 h3 {
   text-wrap: balance;
+  /* At 200 % text a long word ("Leaderboard" in the display face) is wider than a phone: break it rather than run off the screen. */
+  overflow-wrap: break-word;
 }
 
 @layer base {

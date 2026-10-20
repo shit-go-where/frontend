@@ -799,41 +799,41 @@ function VenueStep({ pin, d, setD }: { pin: LatLng; d: Draft; setD: React.Dispat
       {loading ? <Spinner label="Looking" /> : null}
       {err ? <p className="text-sm text-danger">{errorMessage(err)}</p> : null}
       {!loading && !err && list.length === 0 ? <p className="text-muted">Nothing found. Add it as a new place below.</p> : null}
-      <ul className="flex flex-col gap-2" role="radiogroup" aria-label="Place">
+      {/* A radiogroup holds radios directly: <li> children are invalid under it (axe: listitem). */}
+      <div className="flex flex-col gap-2" role="radiogroup" aria-label="Place">
         {list.map((v) => (
-          <li key={v.id}>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={d.venue?.id === v.id}
-              onClick={() => setD((x) => ({ ...x, venue: v, newVenue: null }))}
-              className={cx(
-                "flex min-h-16 w-full items-center gap-3 rounded-3xl border-2 px-3 py-2.5 text-left transition-colors",
-                d.venue?.id === v.id
-                  ? "border-primary bg-primary-soft"
-                  : "border-border/70 bg-surface shadow-rest hover:border-primary/60",
-              )}
-              data-testid="venue-option"
-            >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-primary">
-                <Building2 className="size-5" aria-hidden />
+          <button
+            key={v.id}
+            type="button"
+            role="radio"
+            aria-checked={d.venue?.id === v.id}
+            onClick={() => setD((x) => ({ ...x, venue: v, newVenue: null }))}
+            className={cx(
+              "flex min-h-16 w-full items-center gap-3 rounded-3xl border-2 px-3 py-2.5 text-left transition-colors",
+              d.venue?.id === v.id
+                ? "border-primary bg-primary-soft"
+                : "border-border/70 bg-surface shadow-rest hover:border-primary/60",
+            )}
+            data-testid="venue-option"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-primary">
+              <Building2 className="size-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-extrabold">{v.name}</span>
+              <span className="text-sm text-muted">
+                {VENUE_TYPE_LABELS[v.type]}
+                {v.distanceM !== undefined ? ` · ${formatDistance(v.distanceM)}` : ""}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-extrabold">{v.name}</span>
-                <span className="text-sm text-muted">
-                  {VENUE_TYPE_LABELS[v.type]}
-                  {v.distanceM !== undefined ? ` · ${formatDistance(v.distanceM)}` : ""}
-                </span>
+            </span>
+            {d.venue?.id === v.id ? (
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-fg">
+                <Check className="size-4" aria-hidden />
               </span>
-              {d.venue?.id === v.id ? (
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-fg">
-                  <Check className="size-4" aria-hidden />
-                </span>
-              ) : null}
-            </button>
-          </li>
+            ) : null}
+          </button>
         ))}
-      </ul>
+      </div>
       <Button
         variant="secondary"
         onClick={() => {

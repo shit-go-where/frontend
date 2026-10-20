@@ -5,6 +5,7 @@
  * Node can load it directly.
  */
 import {
+  CHECK_IN,
   ME,
   NEARBY_VENUES,
   PHOTO,
@@ -248,6 +249,12 @@ export function fixtureReply(method: string, path: string, url: URL, who: Who, b
     const t = TOILETS.find((x) => x.id === m![1]);
     if (m[1] === TOILET_DETAIL.id) return { body: TOILET_DETAIL };
     return t ? { body: { ...TOILET_DETAIL, ...t, venue: TOILET_DETAIL.venue } } : { status: 404, body: { statusCode: 404, message: "Not found" } };
+  }
+  if (method === "POST" && /^\/toilets\/[^/]+\/check-ins$/.test(path)) return { body: CHECK_IN };
+  if (method === "POST" && /^\/toilets\/[^/]+\/verify$/.test(path)) return { body: { ok: true } };
+  if (method === "POST" && /^\/toilets\/[^/]+\/status$/.test(path)) {
+    const kind = (body as { kind?: string } | null)?.kind ?? "ALL_GOOD";
+    return { body: { id: "status-1", kind, confirmations: 1, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 2 * 3600_000).toISOString(), confirmedByMe: true, unconfirmed: false } };
   }
   if (method === "GET" && /^\/toilets\/[^/]+\/status$/.test(path)) return { body: { items: STATUS } };
   if (method === "GET" && /^\/toilets\/[^/]+\/reviews$/.test(path)) return { body: { items: [], nextCursor: null } };

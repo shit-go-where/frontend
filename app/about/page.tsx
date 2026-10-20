@@ -204,14 +204,15 @@ export default function AboutPage() {
         ) : null}
       </ul>
 
-      <p className="mt-12 border-t border-border/70 pt-4 text-sm text-muted">
-        <Link href="/privacy" className={link}>
+      {/* Standalone links, so each is a 44 px tap target. */}
+      <p className="mt-12 flex flex-wrap items-center gap-x-3 border-t border-border/70 pt-2 text-sm text-muted">
+        <Link href="/privacy" className={`${link} inline-flex min-h-11 items-center`}>
           Privacy notice
         </Link>
         {CONTACT_EMAIL ? (
           <>
-            {" · "}
-            <a href={`mailto:${CONTACT_EMAIL}`} className={link}>
+            <span aria-hidden>·</span>
+            <a href={`mailto:${CONTACT_EMAIL}`} className={`${link} inline-flex min-h-11 items-center`}>
               Contact
             </a>
           </>

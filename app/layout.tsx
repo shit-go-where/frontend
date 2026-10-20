@@ -23,6 +23,9 @@ export const metadata: Metadata = {
   applicationName: "Shit Go Where",
   appleWebApp: { capable: true, title: "ShitGoWhere", statusBarStyle: "black-translucent" },
   formatDetection: { telephone: false },
+  // Next only emits the unprefixed mobile-web-app-capable; iOS before 16.4 needs this one to open the
+  // home screen icon without Safari's bars.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {

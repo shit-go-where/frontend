@@ -240,7 +240,7 @@ function Detail({ t }: { t: ToiletDetail }) {
         <div ref={pinRef} data-fits={fits ? "" : undefined} className="md:data-fits:sticky md:data-fits:top-20">
           <Verdict t={t} />
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             {pending && nearEnough ? (
               // Standing at it: a check-in is the confirmation. The link only adds ?do=checkin, which the
               // Check in tile below picks up, so there is one check-in dialog on the page.
@@ -481,7 +481,7 @@ function Verdict({ t }: { t: ToiletDetail }) {
         </p>
       ) : null}
 
-      <div className="mt-3 flex items-stretch gap-2">
+      <div className="mt-3 flex flex-wrap items-stretch gap-2">
         {mins !== null ? (
           <div className="flex w-24 shrink-0 flex-col items-center justify-center rounded-2xl bg-mint px-2 py-2.5 text-center text-mint-fg shadow-gloss">
             <Footprints className="size-4" aria-hidden />
@@ -493,7 +493,7 @@ function Verdict({ t }: { t: ToiletDetail }) {
           // The page no longer asks for location by itself, so the walk tile asks instead of going missing.
           <WalkTimeButton status={loc.status} onLocate={() => void loc.locate()} />
         )}
-        <div className="flex min-w-0 flex-1 flex-col justify-center rounded-2xl bg-surface-2 px-4 py-2.5">
+        <div className="flex min-w-0 flex-1 basis-36 flex-col justify-center rounded-2xl bg-surface-2 px-4 py-2.5">
           <p className="text-sm font-bold text-muted">Cleanliness</p>
           {t.scoreCleanliness !== null ? (
             <p className="mt-0.5 font-display text-4xl leading-none">

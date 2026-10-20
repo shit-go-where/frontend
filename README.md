@@ -64,10 +64,23 @@ result with the frontend change that uses it (backend PR merges first; PLAN.md Â
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | `next typegen && tsc --noEmit` |
 | `pnpm gen:api` | Regenerate the typed API client |
-| `pnpm test:e2e` | Playwright smoke tests (find, route, submit) |
+| `pnpm test:e2e` | Playwright: smoke tests on four phone sizes, axe, layout, reduced motion, offline |
 
 Playwright builds the app and serves it on port 3100. Every `/api/**` call is mocked in
 `e2e/mock-api.ts`, so no backend is needed. First run: `pnpm exec playwright install chromium`.
+The projects (`playwright.config.ts`), about 6 minutes in all:
+
+| Project | What it runs |
+|---|---|
+| `chromium-mobile`, `iphone-15`, `iphone-se`, `android-large` | The smoke and motion specs at 412, 393, 375 and 430 px wide. WebKit is not installed, so the iPhones are Chromium with an iPhone's size, pixel ratio, touch and user agent |
+| `a11y` | axe on every route and on dialogs, tabs and wizard steps at 390 px, both themes, plus tap targets under 44 px |
+| `layout-390`, `layout-375`, `layout-430` | No sideways page scroll, nothing sticking out past the edge, no control hidden under the tab bar. `LAYOUT_TEXT=200` simulates 200 % text, `LAYOUT_SHOTS=dir` saves screenshots |
+| `offline` | The service worker for real: precache, shell and urgent mode with the signal gone, saved list, lie-fi |
+
+`a11y`, `layout-*` and `offline` need the app's server rendering and the worker's requests, which `page.route` cannot
+mock, so they run against the same build on port 3101 with a stub API (`e2e/stub-api.mjs`, port 4000, same fixtures as
+the mock). `offline` goes through a proxy on 3102 (`e2e/flaky-proxy.mjs`) that drops or stalls connections per browser
+context. If the installed Chromium is not the build this Playwright expects, set `PW_CHROMIUM_PATH` to its binary.
 
 CI (`.github/workflows/ci.yml`) runs install, lint, typecheck, build, and Playwright on every PR
 and push to `main`. When it fails, it uploads the Playwright report and traces as an artifact.

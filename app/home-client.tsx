@@ -518,7 +518,7 @@ export function HomeClient() {
             {/* Phones: the key and "Help me choose" open with the list and fold away at the peek. */}
             <div
               data-sheet-reveal
-              className="grid transition-[grid-template-rows] duration-[380ms] ease-[var(--ease-sheet)]"
+              className="grid transition-[grid-template-rows] duration-[380ms] ease-[var(--ease-sheet)] motion-reduce:transition-none"
               style={{ gridTemplateRows: revealed ? "1fr" : "0fr" }}
               inert={!revealed}
             >
