@@ -28,6 +28,8 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Version comes from package.json#packageManager (pnpm@12.14.0).
       - uses: pnpm/action-setup@v6
@@ -45,6 +47,15 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Next's incremental build cache; saves most of a cold `next build`.
+      - name: Cache Next.js build
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'next.config.ts') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Build
         run: pnpm build
@@ -71,3 +82,21 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 14
+
+  # Informational: reports known vulnerabilities in production dependencies without blocking
+  # merges. Read the log; fix high/critical ones the same week.
+  audit:
+    name: dependency audit (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
