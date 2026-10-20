@@ -3,6 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 // E2E_PORT lets a run sit beside a server already holding 3100.
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 
+/** Specs with their own project below, so the device projects skip them. */
+const SPECIAL = /(a11y|offline)\.spec\.ts$/;
+
 /**
  * Smoke tests for the three core flows (find, route, submit). Every /api/**
  * call is mocked with page.route (see e2e/mock-api.ts), so no backend is needed.
@@ -29,7 +32,26 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-mobile",
+      testIgnore: SPECIAL,
       use: { ...devices["Pixel 7"], browserName: "chromium" },
+    },
+    // WebKit is not installed everywhere, so the iPhone is Chromium wearing an iPhone's size, pixel
+    // ratio, touch and user agent. It catches layout and viewport problems, not Safari engine ones.
+    {
+      name: "iphone-15",
+      testIgnore: SPECIAL,
+      use: { ...devices["iPhone 15"], browserName: "chromium" },
+    },
+    // The smallest phone still in use (375x667) and a large Android (430 wide).
+    {
+      name: "iphone-se",
+      testIgnore: SPECIAL,
+      use: { ...devices["iPhone SE (3rd gen)"], browserName: "chromium" },
+    },
+    {
+      name: "android-large",
+      testIgnore: SPECIAL,
+      use: { ...devices["Pixel 7"], browserName: "chromium", viewport: { width: 430, height: 932 } },
     },
   ],
   webServer: {
