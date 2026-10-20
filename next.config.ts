@@ -28,9 +28,13 @@ const isDev = process.env.NODE_ENV === "development";
  * - connect-src: same-origin /api (rewrite) and /ingest (PostHog, rewrite); OneMap raster tiles fetched
  *   by MapLibre (components/map/ToiletMap.tsx); presigned photo uploads straight to R2's S3 endpoint
  *   (<account>.r2.cloudflarestorage.com) or, without S3_ENDPOINT, AWS S3 (backend src/media/storage.ts).
- * - img-src https: photos come from S3_PUBLIC_URL (an r2.dev or custom domain only the API knows),
- *   Google profile pictures, the OneMap logo; data: and blob: for photo previews, canvas pins and tiles.
- *   Broad on purpose: images cannot run script, and a missed host would mean blank photos.
+ * - img-src: photos are same-origin `/api/media/photos/<id>[/thumb]` (the bucket is private). The API
+ *   checks access and answers 302 to a short-lived presigned GET on R2's S3 endpoint
+ *   (<account>.r2.cloudflarestorage.com, or AWS S3), and img-src is checked on every redirect hop, so
+ *   that host must stay allowed; `https:` covers it, Google profile pictures and the OneMap logo.
+ *   data: and blob: for photo previews, canvas pins and tiles. Broad on purpose: images cannot run
+ *   script, and a missed host would mean blank photos. Photo reads are <img> loads, never fetch(), so
+ *   connect-src only needs the S3 endpoint for the presigned PUT upload.
  * - worker-src: the service worker (/sw.js) and MapLibre's module worker (/maplibre/, same origin);
  *   blob: kept so MapLibre's Blob-URL fallback still works.
  * - Google sign-in is a top-level navigation to /api/auth/google and a 302 to Google, which CSP doesn't
