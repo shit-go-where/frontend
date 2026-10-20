@@ -1,6 +1,6 @@
 "use client";
 
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Baby,
@@ -256,8 +256,9 @@ export function GoClient() {
   /*
    * Which floor they're on, asked once when the nearest place has toilets on two or more floors (a mall,
    * a big station), since the floors between count as walking. null until answered; level null is "Not sure".
+   * The question asked is kept with the answer: its card holds the answer's place at the same height.
    */
-  const [floorAnswer, setFloorAnswer] = useState<{ level: string | null } | null>(null);
+  const [floorAnswer, setFloorAnswer] = useState<{ level: string | null; asked: FloorAsk } | null>(null);
   const myLevel = floorAnswer?.level ?? undefined;
   const urgentFilters = useMemo(() => toFilterQuery(stored.active), [stored.active]);
 
@@ -294,8 +295,10 @@ export function GoClient() {
     // Urgent waits for the saved must-haves to load, so it asks once, with them.
     enabled: !!body && loc.settled && (!urgent || stored.ready),
     staleTime: 60_000,
-    // A fresh fix asks again; meanwhile the answer from the old one stays up, labelled with its age.
-    placeholderData: urgent ? keepPreviousData : undefined,
+    // A fresh fix asks again; meanwhile the answer from the old one stays up, labelled with its age. A floor
+    // answered re-ranks the same list, so it stays up then too, instead of a skeleton jumping in.
+    placeholderData: (prev, prevQuery) =>
+      urgent || sameButLevel(prevQuery?.queryKey[1] as RecommendBody | null | undefined, body) ? prev : undefined,
   });
 
   // The nearest candidate's building, and the floors its ACTIVE toilets are on: two or more, and we ask.
@@ -322,6 +325,10 @@ export function GoClient() {
         ? distinctLevels((venueToiletsQ.data?.items ?? []).filter((t) => t.venue.id === nearestVenue.id && t.status === "ACTIVE"))
         : [],
     [nearestVenue, venueToiletsQ.data],
+  );
+  const floorAsk = useMemo<FloorAsk | null>(
+    () => (askFloor && venueFloors.length >= 2 && nearestVenue ? { venue: nearestVenue.name, floors: venueFloors } : null),
+    [askFloor, venueFloors, nearestVenue],
   );
 
   /*
@@ -506,17 +513,6 @@ export function GoClient() {
       ) : null}
 
       <div className={cx(urgent && !noFix ? "-mt-6" : "mt-5")}>
-        {/* One light question, never in the way: the results are already up and stay usable. */}
-        {askFloor && !noFix && venueFloors.length >= 2 && nearestVenue ? (
-          <FloorQuestion venue={nearestVenue.name} floors={venueFloors} onAnswer={(level) => setFloorAnswer({ level })} />
-        ) : floorAnswer?.level ? (
-          <p className="relative z-10 mb-3 flex items-center justify-between gap-2 rounded-2xl bg-surface px-4 py-1 text-sm font-bold shadow-card">
-            <span>Counting floors from {floorAnswer.level}</span>
-            <button type="button" onClick={() => setFloorAnswer(null)} className="min-h-11 font-extrabold text-primary underline">
-              Change
-            </button>
-          </p>
-        ) : null}
         {/* Still finding you after a few seconds, or a rough fix: search where you are instead. */}
         {showSearch || (slow && waitingForFix && !noFix) ? (
           <Card className="relative z-10 mb-3 flex flex-col gap-3 shadow-card">
@@ -607,6 +603,18 @@ export function GoClient() {
           ) : (
             <>
               <HeroCard item={first} urgent={urgent} required={required} essential={purpose?.essential} />
+              {/*
+                One light question, never in the way: under the best option, so it never pushes the results
+                down, and answered it keeps its height (the list doesn't jump either way).
+              */}
+              {floorAsk || floorAnswer ? (
+                <FloorSlot
+                  asked={floorAnswer?.asked ?? floorAsk!}
+                  answer={floorAnswer ? floorAnswer.level : undefined}
+                  onAnswer={(level) => setFloorAnswer({ level, asked: floorAsk ?? floorAnswer!.asked })}
+                  onChange={() => setFloorAnswer(null)}
+                />
+              ) : null}
               {rest.length ? (
                 <section className="mt-6" aria-labelledby="alternates">
                   <h2 id="alternates" className="text-lg font-bold">
@@ -653,6 +661,56 @@ export function GoClient() {
   );
 }
 
+/** The nearest building with toilets on two or more floors, and those floors. */
+interface FloorAsk {
+  venue: string;
+  floors: { level: string }[];
+}
+
+/** Two recommend bodies that differ only in the floor: the same list, ranked again. */
+function sameButLevel(a: RecommendBody | null | undefined, b: RecommendBody | null) {
+  if (!a || !b) return false;
+  return JSON.stringify({ ...a, level: undefined }) === JSON.stringify({ ...b, level: undefined });
+}
+
+/**
+ * The floor question, then its answer in the same place. Both sit in one grid cell, the question kept
+ * (hidden) under the answer, so the slot is the question's height either way: answering, or "Change",
+ * moves nothing around it.
+ */
+function FloorSlot({
+  asked,
+  answer,
+  onAnswer,
+  onChange,
+}: {
+  asked: FloorAsk;
+  /** undefined: not answered yet; null: "Not sure". */
+  answer: string | null | undefined;
+  onAnswer: (level: string | null) => void;
+  onChange: () => void;
+}) {
+  const answered = answer !== undefined;
+  return (
+    <div className="mt-3 grid" data-testid="floor-slot">
+      <div className={cx("[grid-area:1/1]", answered && "invisible")} inert={answered || undefined}>
+        <FloorQuestion venue={asked.venue} floors={asked.floors} onAnswer={onAnswer} />
+      </div>
+      {answered ? (
+        <Card className="relative z-10 flex flex-col justify-center gap-1 shadow-card [grid-area:1/1]" data-testid="floor-answer">
+          <p className="font-bold">{answer ? `Counting floors from ${answer}` : "Not counting floors"}</p>
+          <p className="text-sm text-muted">
+            {answer ? "The lift or escalator ride is in each walking time." : "Walking times leave out lifts and escalators."}
+          </p>
+          <button type="button" onClick={onChange} className="-ml-1 min-h-11 self-start px-1 font-extrabold text-primary underline">
+            Change your level
+          </button>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
 /** "Which level are you on?": the floors of the nearest building, and a way to skip. */
 function FloorQuestion({
   venue,
@@ -664,7 +722,7 @@ function FloorQuestion({
   onAnswer: (level: string | null) => void;
 }) {
   return (
-    <Card className="relative z-10 mb-3 flex flex-col gap-2 shadow-card" data-testid="floor-question">
+    <Card className="relative z-10 flex h-full flex-col gap-2 shadow-card" data-testid="floor-question">
       <div>
         <h2 id="floor-question" className="font-bold">
           Which level are you on?

@@ -25,6 +25,7 @@ import type { MapFocus } from "./focus";
 import {
   FloorPicker,
   FoldedStack,
+  MAX_SPIDER_LEGS,
   OFF_FLOOR_OPACITY,
   StackRolls,
   drawLevelLabel,
@@ -195,9 +196,10 @@ export interface ToiletMapProps {
   onSelect?: (id: string) => void;
   /**
    * A tapped cluster that zooming can't split (toilets on different floors at one spot) or that is all
-   * one building: list these toilets instead, lowest level first. Without it, every cluster zooms in.
+   * one building: list these toilets instead, lowest level first, with the building's id when they share
+   * one (so the list can ask for the building once). Without it, every cluster zooms in.
    */
-  onSelectGroup?: (ids: string[]) => void;
+  onSelectGroup?: (ids: string[], venueId: string | null) => void;
   /** [lat, lng] pairs */
   route?: [number, number][] | null;
   destination?: LatLng | null;
@@ -338,6 +340,8 @@ export default function ToiletMap({
   /** Clusters whose expansion zoom is past clustering (their toilets share a spot), by cluster id. */
   const [coincident, setCoincident] = useState<ReadonlyMap<number, boolean>>(() => new globalThis.Map());
   const [zoomLevel, setZoomLevel] = useState(zoom);
+  /** The camera is moving (a drag, a zoom, a flight); the region says so, for tests to wait on. */
+  const [moving, setMoving] = useState(false);
   /** The floor picked in the floor picker; null is All. */
   const [floor, setFloor] = useState<string | null>(null);
   /** The folded stack that is fanned out, by key. */
@@ -551,6 +555,7 @@ export default function ToiletMap({
     debounce.current = setTimeout(readBounds, 350);
     updateClusters();
     roomForSpider.current = false;
+    setMoving(false);
     const m = mapRef.current;
     if (m) setZoomLevel(m.getZoom());
   }, [readBounds, updateClusters]);
@@ -668,7 +673,7 @@ export default function ToiletMap({
           .map((f) => ({ id: f.properties?.id as string, order: f.properties?.levelOrder as number | null | undefined }))
           .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
           .map((l) => l.id);
-        onSelectGroup(ids);
+        onSelectGroup(ids, c.venue || null);
         return;
       }
       m.easeTo({ center: [c.lng, c.lat], zoom: z + 0.5, duration: 500, ...cameraMotion() });
@@ -734,6 +739,9 @@ export default function ToiletMap({
       // A picture-only map (a route preview) is out of the tab order and hidden from screen readers;
       // the card around it says everything it shows.
       inert={!interactive || undefined}
+      // Where the camera settled, so e2e tests wait for the map instead of for a guessed time.
+      data-zoom={zoomLevel.toFixed(2)}
+      data-moving={moving}
     >
       <Map
         ref={mapRef}
@@ -782,6 +790,7 @@ export default function ToiletMap({
         onMoveEnd={onMoveEnd}
         // Moving the map folds a fanned-out stack; it would drift off its spot otherwise.
         onMoveStart={() => {
+          setMoving(true);
           if (!roomForSpider.current) setSpider(null);
         }}
         onSourceData={(e) => {
@@ -940,7 +949,12 @@ export default function ToiletMap({
                   dim={dim}
                   floor={floor}
                   selectedId={selectedId ?? null}
-                  onToggle={(open) => openSpider(open ? s : null)}
+                  onToggle={(open) =>
+                    // Too many floors to fan out on a phone: list them like a building's cluster.
+                    open && onSelectGroup && s.pins.length > MAX_SPIDER_LEGS
+                      ? onSelectGroup(s.pins.map((p) => p.id), s.pins[0].venueId ?? null)
+                      : openSpider(open ? s : null)
+                  }
                   onSelect={(id) => onSelect?.(id)}
                 />
               ) : (

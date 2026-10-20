@@ -69,6 +69,7 @@ test.describe("level chips", () => {
       overrides: {
         // Somewhere with no toilets yet: the level stays optional.
         "GET /venues/nearby": () => ({ body: { items: [{ ...NEARBY_VENUES[0], toiletCount: 0 }] } }),
+        [`GET /venues/${NEARBY_VENUES[0].id}`]: () => ({ body: { ...NEARBY_VENUES[0], address: null, planningArea: null, toilets: [] } }),
         "POST /submissions": (req) => {
           const body = req.postDataJSON() as { payload: unknown };
           return { body: { id: "sub-9", kind: "NEW_TOILET", state: "PENDING", payload: body.payload } };
@@ -114,6 +115,77 @@ test.describe("level chips", () => {
   });
 });
 
+test.describe("a level the place needs", () => {
+  const plaza = NEARBY_VENUES[0];
+  const venueBody = (toilets: unknown[]) => ({ body: { ...plaza, address: null, planningArea: null, toilets } });
+
+  test("the API's level_needed sends you back to the level, marked needed, with the reason", async ({ page }) => {
+    let posts = 0;
+    const message = "This place already has a toilet listed. Add the level (for example B1 or L3) so people can tell them apart.";
+    const api = await mockApi(page, {
+      signedIn: true,
+      overrides: {
+        // Nothing listed as far as this phone knows; someone else's pending toilet landed meanwhile.
+        "GET /venues/nearby": () => ({ body: { items: [{ ...plaza, toiletCount: 0 }] } }),
+        [`GET /venues/${plaza.id}`]: () => venueBody([]),
+        "POST /submissions": (req) => {
+          posts++;
+          if (posts === 1) return { status: 400, body: { statusCode: 400, error: "Bad Request", message, code: "level_needed" } };
+          const body = req.postDataJSON() as { payload: unknown };
+          return { body: { id: "sub-9", kind: "NEW_TOILET", state: "PENDING", payload: body.payload } };
+        },
+      },
+    });
+    await page.goto("/add");
+    const next = page.getByTestId("add-next");
+    await next.click();
+    await page.getByTestId("venue-option").filter({ hasText: "Plaza Singapura" }).click();
+    await next.click();
+    await expect(page.getByRole("group", { name: "Level (optional)" })).toBeVisible();
+    await next.click();
+    await page.getByTestId("add-submit").click();
+
+    // Back on the details step, not a dead end on the last one.
+    await expect(page.getByRole("heading", { name: /Step 3 of 4/ })).toBeVisible();
+    const levels = page.getByRole("group", { name: "Level (needed here)" });
+    await expect(levels.getByRole("alert")).toHaveText(message);
+    await expect(levels.getByRole("button", { name: "B3", exact: true })).toBeFocused();
+    await expect(next).toBeDisabled();
+
+    await levels.getByRole("button", { name: "L2", exact: true }).click();
+    await expect(levels.getByRole("alert")).toHaveCount(0);
+    await next.click();
+    await page.getByTestId("add-submit").click();
+    await expect(page.getByTestId("add-success")).toBeVisible();
+    expect(api.find("POST", "/submissions")[1].body).toMatchObject({ payload: { venueId: plaza.id, level: "L2" } });
+  });
+
+  test("a place found by search with only a pending toilet needs a level too", async ({ page }) => {
+    const searched = { ...plaza, id: "venue-searched", name: "Searched Mall" };
+    const pending = { ...TOILETS[1], id: "t-pending-here", status: "PENDING" as const, venue: searched };
+    await mockApi(page, {
+      signedIn: true,
+      overrides: {
+        "GET /venues/search": () => ({ body: { items: [searched] } }),
+        [`GET /venues/${searched.id}`]: () => ({ body: { ...searched, address: null, planningArea: null, toilets: [pending] } }),
+      },
+    });
+    await page.goto("/add");
+    const next = page.getByTestId("add-next");
+    await next.click();
+    await page.getByLabel("Search places").fill("Searched");
+    await page.getByTestId("venue-option").filter({ hasText: "Searched Mall" }).click();
+    await next.click();
+
+    const levels = page.getByRole("group", { name: "Level (needed here)" });
+    await expect(levels).toBeVisible();
+    await expect(page.getByText("Searched Mall already has a toilet listed, so say which floor this one is on.")).toBeVisible();
+    await expect(next).toBeDisabled();
+    await levels.getByRole("button", { name: "B1", exact: true }).click();
+    await expect(next).toBeEnabled();
+  });
+});
+
 test.describe("level-aware routing", () => {
   test("urgent: asks which floor once, when the nearest building has toilets on two floors", async ({ page }) => {
     const dhoby = TOILETS[0];
@@ -137,9 +209,78 @@ test.describe("level-aware routing", () => {
 
     await question.getByRole("button", { name: "L1", exact: true }).click();
     await expect.poll(() => api.find("POST", "/routing/recommend").some((c) => (c.body as { level?: string }).level === "L1")).toBe(true);
-    await expect(question).toHaveCount(0);
+    await expect(question).toBeHidden();
     await expect(page.getByText("Counting floors from L1")).toBeVisible();
+    // Change asks again, in the same place.
+    await page.getByRole("button", { name: "Change your level" }).click();
+    await expect(question).toBeVisible();
   });
+
+  /*
+   * The question lands after the results and is answered while they're up, so it must not move them:
+   * it sits under the best option, and its answer keeps its height. Layout shifts are counted the way CLS
+   * counts them (none within 0.5 s of a tap), with the re-ranked answer held back past that window.
+   */
+  for (const path of ["/go?urgent=1", "/go?fussy=5"]) {
+    test(`${path}: the floor question moves nothing (CLS under 0.1)`, async ({ page }) => {
+      const dhoby = TOILETS[0];
+      const upstairs = { ...dhoby, id: "t-dhoby-l1", level: "L1", label: "Concourse" };
+      await page.addInitScript(() => {
+        const w = window as unknown as { __cls: number };
+        w.__cls = 0;
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) {
+            if (e.hadRecentInput) continue;
+            w.__cls += e.value;
+          }
+        }).observe({ type: "layout-shift", buffered: true });
+      });
+      await mockApi(page, {
+        overrides: {
+          "GET /toilets/nearby": () => ({ body: { items: [...TOILETS, upstairs] } }),
+          "POST /routing/recommend": () => ({ body: RECOMMEND }),
+        },
+      });
+      // The answer with a floor comes back late, as a real re-rank would over a phone network.
+      await page.route("**/api/routing/recommend", async (route) => {
+        const level = (route.request().postDataJSON() as { level?: string }).level;
+        if (level) await new Promise((r) => setTimeout(r, 900));
+        await route.fallback();
+      });
+      await page.goto(path);
+      const hero = page.getByTestId("recommendation").first();
+      await expect(hero).toContainText("Dhoby Ghaut");
+      const slot = page.getByTestId("floor-slot");
+      const question = page.getByTestId("floor-question");
+      await expect(question).toBeVisible();
+
+      // Where on the page (not the screen: tapping a chip may scroll it into view).
+      const onPage = (l: typeof slot) =>
+        l.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return { y: r.top + window.scrollY, height: r.height };
+        });
+      // Under the best option, never above it.
+      const heroBox = await onPage(hero);
+      const asked = await onPage(slot);
+      expect(asked.y).toBeGreaterThanOrEqual(heroBox.y + heroBox.height);
+
+      const reranked = page.waitForResponse(
+        (r) => r.url().endsWith("/api/routing/recommend") && !!(r.request().postDataJSON() as { level?: string }).level,
+      );
+      await question.getByRole("button", { name: "B1", exact: true }).click();
+      await expect(page.getByText("Counting floors from B1")).toBeVisible();
+      const answered = await onPage(slot);
+      expect(answered.height).toBeCloseTo(asked.height, 0);
+      expect(answered.y).toBeCloseTo(asked.y, 0);
+      // The late re-rank has landed and painted.
+      await reranked;
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const { cls } = await page.evaluate(() => ({ cls: (window as unknown as { __cls: number }).__cls }));
+      expect(cls).toBeLessThan(0.1);
+      expect((await onPage(hero)).y).toBeCloseTo(heroBox.y, 0);
+    });
+  }
 });
 
 test.describe("a toilet's page", () => {

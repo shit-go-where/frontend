@@ -164,6 +164,13 @@ function fromYouText(pin: LatLng, user: LatLng | null): string | null {
   return m < 8 ? "Pin is right where you are" : `Pin is ${formatDistance(m)} from you`;
 }
 
+/** The API's 400 for a place that already has a toilet listed and no level given (API_CONTRACT.md, Submissions). */
+function levelNeededError(e: unknown): string | null {
+  if (!isApiError(e) || e.status !== 400) return null;
+  const b = e.body as Record<string, unknown> | null;
+  return b?.code === "level_needed" ? e.message : null;
+}
+
 /** 409 body: `{ candidateIds, candidates: ToiletSummary[] }` (API_CONTRACT.md, Submissions). */
 function duplicateCandidates(e: unknown): ToiletSummary[] | null {
   if (!isApiError(e) || e.status !== 409) return null;
@@ -199,10 +206,26 @@ export function AddClient() {
 
   /*
    * A place that already has a toilet listed needs the new one's level, or nobody (the map, the duplicate
-   * check) can tell them apart. Known for places picked from the nearby list; the API checks every time.
+   * check) can tell them apart. The API counts ACTIVE and PENDING toilets at a picked place, from the nearby
+   * list or from search, so ask the place for the same count. Until it answers, the nearby list's count
+   * (ACTIVE only) stands in; the API checks every time, and its 400 brings you back here.
    */
-  const listedHere = (d.venue as NearbyVenue | null)?.toiletCount ?? 0;
-  const levelNeeded = !!d.venue && listedHere > 0;
+  const venueId = d.venue?.id ?? null;
+  const venueQ = useQuery({
+    queryKey: ["venue", venueId],
+    queryFn: ({ signal }) => api.venue(venueId!, signal),
+    enabled: !!venueId,
+    staleTime: 60_000,
+  });
+  const listedHere = venueQ.data
+    ? venueQ.data.toilets.filter((t) => t.status === "ACTIVE" || t.status === "PENDING").length
+    : ((d.venue as NearbyVenue | null)?.toiletCount ?? 0);
+  // The API said so on submit: needed whatever we counted.
+  const [levelDemand, setLevelDemand] = useState<{ venueId: string; message: string } | null>(null);
+  const demanded = !!venueId && levelDemand?.venueId === venueId;
+  const levelNeeded = !!d.venue && (listedHere > 0 || demanded);
+  const levelPicker = useRef<HTMLFieldSetElement>(null);
+  const focusLevel = useRef(false);
 
   const canNext = [
     !!d.pin || loc.settled,
@@ -259,6 +282,15 @@ export function AddClient() {
       firstRender.current = false;
       return;
     }
+    // Sent back for a level: start at the floors, not the heading.
+    if (focusLevel.current) {
+      focusLevel.current = false;
+      const first = levelPicker.current?.querySelector<HTMLElement>("button, input");
+      if (first) {
+        first.focus();
+        return;
+      }
+    }
     stepHeading.current?.focus();
   }, [step]);
   useEffect(() => {
@@ -293,8 +325,16 @@ export function AddClient() {
       setDone(res);
     } catch (e) {
       const c = duplicateCandidates(e);
+      const levelMessage = levelNeededError(e);
       if (c) setDupes(c);
-      else setSubmitError(errorMessage(e));
+      else if (levelMessage && venueId) {
+        // Back to the details step, the level marked as needed, with the reason beside it.
+        setLevelDemand({ venueId, message: levelMessage });
+        focusLevel.current = true;
+        setStepDir(-1);
+        setStep(STEPS.indexOf("Details"));
+        void venueQ.refetch();
+      } else setSubmitError(errorMessage(e));
     } finally {
       setSubmitting(false);
     }
@@ -515,13 +555,16 @@ export function AddClient() {
               <input id="label" className={inputClass} maxLength={80} value={d.label} onChange={(e) => set("label", e.target.value)} />
             </Field>
             <LevelPicker
+              ref={levelPicker}
               label={levelNeeded ? "Level" : "Level (optional)"}
               required={levelNeeded}
               hint={
-                levelNeeded
+                levelNeeded && listedHere > 0
                   ? `${d.venue!.name} already has ${listedHere === 1 ? "a toilet" : `${listedHere} toilets`} listed, so say which floor this one is on.`
                   : "Ground floor is L1."
               }
+              // The API's reason, until a level is picked.
+              error={demanded && !normalizeLevel(d.level) ? levelDemand!.message : undefined}
               value={d.level}
               onChange={(v) => set("level", v)}
             />

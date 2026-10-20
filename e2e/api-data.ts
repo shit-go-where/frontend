@@ -258,6 +258,13 @@ export function fixtureReply(method: string, path: string, url: URL, who: Who, b
   }
   if (method === "GET" && /^\/toilets\/[^/]+\/status$/.test(path)) return { body: { items: STATUS } };
   if (method === "GET" && /^\/toilets\/[^/]+\/reviews$/.test(path)) return { body: { items: [], nextCursor: null } };
+  if (method === "GET" && (m = path.match(/^\/venues\/([^/]+)$/))) {
+    const v = NEARBY_VENUES.find((x) => x.id === m![1]) ?? TOILETS.find((t) => t.venue.id === m![1])?.venue;
+    if (!v) return { status: 404, body: { statusCode: 404, message: "Venue not found" } };
+    const { id, name, type, lines, lat, lng, toiletStatus, note } = v;
+    const toilets = TOILETS.filter((t) => t.venue.id === id);
+    return { body: { id, name, type, lines, lat, lng, toiletStatus, note, address: null, planningArea: null, toilets } };
+  }
   if (method === "GET" && (m = path.match(/^\/areas\/([^/]+)$/))) {
     return AREAS.some((a) => a.slug === m![1]) ? { body: { ...AREA_DETAIL, ...AREAS.find((a) => a.slug === m![1]) } } : { status: 404, body: { statusCode: 404, message: "Not found" } };
   }

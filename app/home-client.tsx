@@ -33,6 +33,8 @@ const MAX_RADIUS_M = 5000;
  * Tighter than the API's 150 m so walking past a mall doesn't count as being there.
  */
 const AT_TOILET_M = 50;
+/** A tapped spot shared by several places lists this many: each is its own request. */
+const GROUP_MAX = 12;
 
 const inside = (b: Bounds, p: LatLng) => p.lat >= b.minLat && p.lat <= b.maxLat && p.lng >= b.minLng && p.lng <= b.maxLng;
 const toilets = (n: number) => `${n} toilet${n === 1 ? "" : "s"}`;
@@ -72,8 +74,9 @@ export function HomeClient() {
   const loc = useLocation();
   const { active, toggle, clear } = useStoredFilters();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** A tapped building (or spot) on the map: its toilets, lowest level first. */
-  const [groupIds, setGroupIds] = useState<string[] | null>(null);
+  /** A tapped building (or spot) on the map: its toilets, lowest level first, and the building when it is one. */
+  const [tapped, setTapped] = useState<{ ids: string[]; venueId: string | null } | null>(null);
+  const groupIds = tapped?.ids ?? null;
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [recenter, setRecenter] = useState(0);
   const [sheetPx, setSheetPx] = useState(330);
@@ -164,17 +167,42 @@ export function HomeClient() {
   /** Filters changed but their results haven't landed: the stale list and pins dim instead of sitting there looking final. */
   const filtering = active !== queryFilters;
   const updating = filtering || (nearby.isPlaceholderData && nearby.isFetching);
-  // A building's toilets are listed together at the top; the list leaves them out.
+  /*
+   * A building's toilets are listed together at the top; the list leaves them out. One building is one
+   * request for all of them (a big mall, one by one, would run into the API's rate limit). Several places
+   * at one spot are fetched one by one, so that list stops at GROUP_MAX.
+   */
+  const groupVenueId = tapped?.venueId ?? null;
+  const venueQ = useQuery({
+    queryKey: ["venue", groupVenueId],
+    queryFn: ({ signal }) => api.venue(groupVenueId!, signal),
+    enabled: !!groupIds && !!groupVenueId,
+    staleTime: 60_000,
+  });
+  const byOne = !groupVenueId || venueQ.isError;
+  const shownIds = useMemo(() => (groupIds && byOne ? groupIds.slice(0, GROUP_MAX) : groupIds), [groupIds, byOne]);
+  const venueToilets = useMemo(() => new Map((venueQ.data?.toilets ?? []).map((t) => [t.id, t])), [venueQ.data]);
+  // Fetched one by one: a spot shared by several places, a building that didn't answer, or one it left out.
+  const toFetch = useMemo(() => {
+    if (!shownIds || (groupVenueId && venueQ.isPending)) return [];
+    return shownIds.filter((id) => !items.some((t) => t.id === id) && !venueToilets.has(id)).slice(0, GROUP_MAX);
+  }, [shownIds, groupVenueId, venueQ.isPending, items, venueToilets]);
   const groupQs = useQueries({
-    queries: (groupIds ?? [])
-      .filter((id) => !items.some((t) => t.id === id))
-      .map((id) => ({ queryKey: ["toilet", id], queryFn: ({ signal }: { signal: AbortSignal }) => api.toilet(id, signal) })),
+    queries: toFetch.map((id) => ({
+      queryKey: ["toilet", id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.toilet(id, signal),
+    })),
   });
   const group = useMemo(() => {
-    if (!groupIds) return null;
+    if (!shownIds) return null;
     const fetched = new Map(groupQs.flatMap((q) => (q.data ? [[q.data.id, q.data as ToiletSummary] as const] : [])));
-    return groupIds.map((id) => ({ id, t: items.find((i) => i.id === id) ?? fetched.get(id) ?? null }));
-  }, [groupIds, groupQs, items]);
+    return shownIds.map((id) => ({
+      id,
+      t: items.find((i) => i.id === id) ?? venueToilets.get(id) ?? fetched.get(id) ?? null,
+    }));
+  }, [shownIds, groupQs, items, venueToilets]);
+  const groupTotal = groupIds?.length ?? 0;
+  const groupMore = groupTotal - (shownIds?.length ?? 0);
   const groupVenue = group?.find((g) => g.t)?.t?.venue ?? null;
   const oneBuilding = !!group && group.every((g) => !g.t || g.t.venue.id === groupVenue?.id);
   // The selected toilet sits in its own card above the list, so leave it out of the list.
@@ -238,13 +266,13 @@ export function HomeClient() {
   // A picked pin's card takes the peek, so the map stays in view while you decide.
   const onSelect = useCallback((id: string) => {
     setSelectedId(id);
-    setGroupIds(null);
+    setTapped(null);
     setSnapRequest({ index: SHEET_PEEK, key: Date.now() });
   }, []);
   // A building's floors open the sheet halfway, with room for a few of them.
-  const onSelectGroup = useCallback((ids: string[]) => {
+  const onSelectGroup = useCallback((ids: string[], venueId: string | null) => {
     setSelectedId(null);
-    setGroupIds(ids);
+    setTapped({ ids, venueId });
     setSnapRequest({ index: SHEET_PEEK + 1, key: Date.now() });
   }, []);
   // The map keeps its framing at the top snap: the sheet covers it, and padding taller than the map makes the camera jump.
@@ -585,13 +613,13 @@ export function HomeClient() {
             <div className="-mt-1 flex items-center justify-between gap-2">
               <h3 id="map-group-title" className="min-w-0 truncate text-sm font-semibold text-muted">
                 {oneBuilding && groupVenue
-                  ? `${toilets(group.length)} in ${groupVenue.name}`
-                  : `${toilets(group.length)} at this spot`}
+                  ? `${toilets(groupTotal)} in ${groupVenue.name}`
+                  : `${toilets(groupTotal)} at this spot`}
               </h3>
               <button
                 type="button"
                 className="tap flex items-center justify-center rounded-full text-muted"
-                onClick={() => setGroupIds(null)}
+                onClick={() => setTapped(null)}
                 aria-label="Close this list"
               >
                 <X className="size-4" aria-hidden />
@@ -609,6 +637,7 @@ export function HomeClient() {
                 </li>
               ))}
             </ul>
+            {groupMore > 0 ? <p className="mt-2 text-xs text-muted">And {groupMore} more at this spot.</p> : null}
             {group.some((g) => g.t && !levelShort(g.t.level)) ? (
               <p className="mt-2 text-xs text-muted">Some of these have no level yet. Been there? Check in and add it.</p>
             ) : null}

@@ -213,6 +213,18 @@ export const TOWER_TOILETS: ToiletSummary[] = ["B2", "B1", "L1", "L2", "L5", "L9
   toilet({ id: `tw-${level.toLowerCase()}`, venue: tower, lat: tower.lat, lng: tower.lng, level }),
 );
 
+/** A big mall: twenty toilets in one building, a few metres apart. Opening it must be one request, not twenty. */
+const bigMall: VenueLite = { ...plazaSing, id: "venue-big", name: "Big Test Mall", lat: 1.2998, lng: 103.845 };
+export const BIG_MALL_TOILETS: ToiletSummary[] = Array.from({ length: 20 }, (_, i) =>
+  toilet({
+    id: `big-${String(i).padStart(2, "0")}`,
+    venue: bigMall,
+    lat: bigMall.lat + off((i % 5) * 3),
+    lng: bigMall.lng + off(Math.floor(i / 5) * 3),
+    level: i < 3 ? `B${3 - i}` : `L${i - 2}`,
+  }),
+);
+
 export const pinOf = (t: ToiletSummary): ToiletPin => ({
   id: t.id,
   lat: t.lat,

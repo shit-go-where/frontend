@@ -42,6 +42,7 @@ import type {
   ToiletTier,
   UpdateSubmissionBody,
   UserLeaderboard,
+  VenueDetail,
   VenueLite,
   WalkRoute,
   TelegramLinkToken,
@@ -349,6 +350,7 @@ export const api = {
     request<List<NearbyVenue>>("/venues/nearby", { query: p }),
   searchVenues: (p: { q: string; lat?: number; lng?: number }, signal?: AbortSignal) =>
     request<List<VenueLite>>("/venues/search", { query: p, signal }),
+  venue: (id: string, signal?: AbortSignal) => request<VenueDetail>(`/venues/${encodeURIComponent(id)}`, { signal }),
 
   // Routing & geo
   /** Someone started walking to this toilet: a per-day count, no person. Fire and forget. */

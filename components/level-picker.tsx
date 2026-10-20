@@ -12,14 +12,19 @@ const isChip = (v: string | null): v is (typeof LEVEL_CHIPS)[number] => !!v && (
  * stores it, so people see the form their level will take.
  */
 export function LevelPicker({
+  ref,
   label,
   hint,
+  error,
   value,
   onChange,
   required,
 }: {
+  ref?: React.Ref<HTMLFieldSetElement>;
   label: string;
   hint?: string;
+  /** Why a level is needed after all (the API turned the form down without one); announced when it appears. */
+  error?: string;
   value: string;
   onChange: (level: string) => void;
   /** Says so in the legend; the form decides what that blocks. */
@@ -31,7 +36,11 @@ export function LevelPicker({
   const picked = !other && isChip(norm) ? norm : null;
 
   return (
-    <fieldset aria-describedby={hint ? `${ids}-hint` : undefined}>
+    <fieldset
+      ref={ref}
+      aria-describedby={[error ? `${ids}-error` : null, hint ? `${ids}-hint` : null].filter(Boolean).join(" ") || undefined}
+      data-testid="level-picker"
+    >
       <legend className="font-bold">
         {label}
         {required ? <span className="font-medium text-muted"> (needed here)</span> : null}
@@ -86,6 +95,11 @@ export function LevelPicker({
             if (isChip(n)) setOther(false);
           }}
         />
+      ) : null}
+      {error ? (
+        <p id={`${ids}-error`} role="alert" className="mt-2 rounded-2xl bg-danger-soft px-3 py-2 text-sm font-bold text-danger">
+          {error}
+        </p>
       ) : null}
       {hint ? (
         <p id={`${ids}-hint`} className="mt-1.5 text-sm text-muted">

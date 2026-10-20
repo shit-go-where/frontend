@@ -113,6 +113,8 @@ const ROUTES: Route[] = [
       await next.click();
       await page.getByTestId("venue-option").first().click();
       await next.click();
+      // The place already has toilets listed, so the level is needed before Next.
+      await page.getByRole("group", { name: /^Level/ }).getByRole("button", { name: "L1", exact: true }).click();
       await next.click();
       await page.getByRole("heading", { name: /Step 4 of 4/ }).waitFor();
     },

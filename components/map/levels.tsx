@@ -16,10 +16,13 @@ import { cx } from "../ui";
 export const STACK_RADIUS_M = 15;
 /** Rolls in a stack, in css px: the glyph, and how far each roll sits above the one below. */
 const ROLL_PX = 34;
-const STEP_PX = 22;
-/** Taller than this, or more rolls than this, and the stack folds into one roll that fans out. */
-const MAX_STACK_PX = 140;
-const MAX_STACK_ROLLS = 4;
+/** Every roll and its tag is one tap target at least this big each way (the app's 44 px rule). */
+const TARGET_PX = 44;
+const STEP_PX = TARGET_PX;
+/** More rolls than this and the stack folds into one roll that fans out (four would stand 176 px tall). */
+const MAX_STACK_ROLLS = 3;
+/** A fan of more than this many doesn't fit on a phone: the stack opens as a list instead. */
+export const MAX_SPIDER_LEGS = 12;
 /** Dimmed by the floor picker: a little fainter than the filters' stale-pins dim. */
 export const OFF_FLOOR_OPACITY = 0.3;
 
@@ -87,7 +90,7 @@ export function stacksOf(pins: ToiletPin[]): PinStack[] {
 
 /** Whether a stack is drawn folded (one roll with a count) rather than as its rolls. */
 export function folds(stack: PinStack): boolean {
-  return stack.pins.length > MAX_STACK_ROLLS || ROLL_PX + (stack.pins.length - 1) * STEP_PX > MAX_STACK_PX;
+  return stack.pins.length > MAX_STACK_ROLLS;
 }
 
 /** ";B1;L3;" for "B1; L3": what the floor picker's opacity expression looks a floor up in. */
@@ -108,12 +111,15 @@ export function floorsOf(pins: ToiletPin[]): { level: string; order: number }[] 
 
 /** How far from its spot a fanned-out stack reaches, in css px: the ring plus a leg's roll and tag. */
 export function spiderReach(stack: PinStack): number {
-  return spiderRadius(stack.pins.length) + 34;
+  return spiderRadius(stack.pins.length) + TARGET_PX / 2 + 12;
 }
 
 function spiderRadius(n: number): number {
-  // Roomier as it fills: neighbours' rolls (34 px plus their tags) shouldn't touch.
-  return Math.max(64, (n * 44) / (2 * Math.PI));
+  /*
+   * Each leg is a 44 px square target. Neighbours a chord of 44√2 apart can't overlap at any angle round
+   * the ring, and 68 px keeps the top leg clear of the folded roll it fans out of.
+   */
+  return Math.max(68, (TARGET_PX * Math.SQRT2) / (2 * Math.sin(Math.PI / n)));
 }
 
 /** What a roll says out loud, naming its floor. */
@@ -147,7 +153,8 @@ function LevelTag({ level, className }: { level: string | null; className?: stri
 
 /**
  * A stack drawn as its rolls, lowest floor at the bottom: each roll is its own button, so the toilet
- * underneath is one tap away instead of hidden under its neighbour.
+ * underneath is one tap away instead of hidden under its neighbour. Each button is a full 44 px band
+ * holding the roll and its level tag, so no roll's target is a sliver under the one above.
  */
 export function StackRolls({
   stack,
@@ -162,7 +169,7 @@ export function StackRolls({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  const height = ROLL_PX + (stack.pins.length - 1) * STEP_PX;
+  const height = stack.pins.length * STEP_PX;
   return (
     <div
       role="group"
@@ -181,13 +188,14 @@ export function StackRolls({
             aria-label={rollLabel(p)}
             aria-pressed={p.id === selectedId}
             className={cx(
-              "group absolute left-0 flex items-start transition-[scale,opacity] duration-200 active:scale-95",
+              "group absolute left-0 flex items-end transition-[scale,opacity] duration-200 active:scale-95",
               faded && "opacity-35",
             )}
-            // Upper rolls sit in front, so a lower roll is tapped on the slice of it that shows.
-            style={{ bottom: i * STEP_PX, zIndex: i + 1, width: ROLL_PX, height: ROLL_PX }}
+            // The roll sits at the bottom of its band; the band's top is the gap to the roll above.
+            style={{ bottom: i * STEP_PX, zIndex: i + 1, minWidth: TARGET_PX, height: STEP_PX }}
+            data-testid="stack-roll"
           >
-            <span className="relative flex">
+            <span className="relative flex shrink-0">
               <PinGlyph
                 variant={tierPinVariant(p.tier)}
                 className={cx(
@@ -195,10 +203,10 @@ export function StackRolls({
                   p.id === selectedId && "scale-110 drop-shadow-[0_0_3px_var(--primary)]",
                 )}
               />
-              {/* Low on the roll's left, where the roll above doesn't cover it (the tag takes the right). */}
+              {/* Low on the roll's left (the tag takes the right). */}
               {p.hasIssue ? <IssueDot className="-left-1 top-[15px]" /> : null}
             </span>
-            <LevelTag level={p.level} className="absolute left-[calc(100%-2px)] top-1.5" />
+            <LevelTag level={p.level} className="-ml-0.5 mb-[18px]" />
           </button>
         );
       })}
@@ -253,7 +261,7 @@ export function FoldedStack({
   });
 
   return (
-    <div className="relative" style={{ width: 40, height: 40 }} data-testid="pin-stack-folded">
+    <div className="relative" style={{ width: TARGET_PX, height: TARGET_PX }} data-testid="pin-stack-folded">
       <button
         ref={toggleRef}
         type="button"
@@ -265,15 +273,17 @@ export function FoldedStack({
             : `${n} toilets stacked here${levels > 1 ? ` on ${levels} levels` : ""}, show them`
         }
         className={cx(
-          "pin-pop relative flex transition-[scale,opacity] duration-200 active:scale-95",
+          "pin-pop relative flex size-11 items-end justify-center transition-[scale,opacity] duration-200 active:scale-95",
           faded && !open && "opacity-35",
         )}
       >
-        <PinGlyph variant={tierPinVariant(lead.tier)} className="size-10 drop-shadow-[0_3px_3px_rgb(10_5_2/0.55)]" />
-        <span className="absolute -right-2 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-surface bg-tier px-1 text-[11px] font-extrabold text-tier-fg tabular-nums">
-          {n}
+        <span className="relative flex">
+          <PinGlyph variant={tierPinVariant(lead.tier)} className="size-10 drop-shadow-[0_3px_3px_rgb(10_5_2/0.55)]" />
+          <span className="absolute -right-2 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-surface bg-tier px-1 text-[11px] font-extrabold text-tier-fg tabular-nums">
+            {n}
+          </span>
+          {anyIssue ? <IssueDot className="-left-0.5 top-0" /> : null}
         </span>
-        {anyIssue ? <IssueDot className="-left-0.5 top-0" /> : null}
       </button>
       {open ? (
         // The ring is centred on the spot itself: the bottom of the folded roll.
@@ -300,10 +310,11 @@ export function FoldedStack({
                 aria-label={rollLabel(p)}
                 aria-pressed={p.id === selectedId}
                 className={cx(
-                  "rise-in absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center transition-opacity duration-200 active:scale-95",
+                  "rise-in absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center transition-opacity duration-200 active:scale-95",
                   off && "opacity-35",
                 )}
-                style={{ left: x, top: y }}
+                style={{ left: x, top: y, width: TARGET_PX, height: TARGET_PX }}
+                data-testid="spider-leg"
               >
                 <span className="relative flex">
                   <PinGlyph variant={tierPinVariant(p.tier)} className="size-8 drop-shadow-[0_2px_2px_rgb(10_5_2/0.5)]" />

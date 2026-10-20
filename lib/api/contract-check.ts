@@ -38,6 +38,7 @@ export type ContractChecks = [
   Assert<Fits<S["PresignResultDto_Output"], T.PresignResponse>>,
   Assert<Fits<S["DataQualityDto_Output"], T.DataQuality>>,
   Assert<Fits<S["VenueNearbyListDto_Output"]["items"][number], T.NearbyVenue>>,
+  Assert<Fits<S["VenueDetailDto_Output"], T.VenueDetail>>,
   Assert<Fits<S["AdminFlagListDto_Output"]["items"][number], T.AdminFlag>>,
   Assert<Fits<S["PendingPhotoListDto_Output"]["items"][number], T.PendingPhoto>>,
   Assert<Fits<S["ImportRunListDto_Output"]["items"][number], T.ImportRun>>,

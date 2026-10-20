@@ -514,6 +514,13 @@ export interface GeoSearchResult {
 
 export type NearbyVenue = VenueLite & { distanceM: number; toiletCount: number };
 
+/** GET /venues/:id: the place and every toilet it lists (pending and closed ones too, not rejected). */
+export interface VenueDetail extends VenueLite {
+  address: string | null;
+  planningArea: string | null;
+  toilets: ToiletSummary[];
+}
+
 export interface CheckInResult {
   id: string;
   distanceM: number;
