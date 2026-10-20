@@ -34,11 +34,14 @@ pnpm dev                      # http://localhost:3000
 | `NEXT_PUBLIC_SITE_URL` | unset (falls back to `VERCEL_PROJECT_PRODUCTION_URL`, then localhost) | Public origin for canonical URLs, `sitemap.xml`, `robots.txt` and the Open Graph URLs. Set it to the final domain. Inlined at build time. |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | unset | Takedown/contact address shown on `/about` and `/privacy`; unset hides the email lines. Inlined at build time. |
 | `NEXT_PUBLIC_POSTHOG_KEY` | unset | PostHog US project key. Unset = analytics off, nothing loads or is sent. Inlined at build time; traffic goes through the `/ingest` rewrite. |
+| `NEXT_PUBLIC_SENTRY_DSN` | unset | Sentry DSN (US region) for error reporting. Unset = off: the SDK never loads in the browser or on the server and nothing is sent. Browser reports go through the same-origin `/monitoring` tunnel. Inlined at build time. See [Error reporting](#error-reporting-sentry). |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | unset | Build-time only, for uploading source maps. Without `SENTRY_AUTH_TOKEN` no source maps are generated or uploaded and the build is unchanged. Never set the token locally. |
 | `NEXT_PUBLIC_DEV_LOGIN` | `true` locally | Shows the email-only dev login on `/login`. Pairs with `DEV_LOGIN_ENABLED=true` on the API. Leave unset in production. |
 
-Vercel also provides `VERCEL_DEPLOYMENT_ID`, `VERCEL_GIT_COMMIT_SHA` and `VERCEL_PROJECT_PRODUCTION_URL`;
-`next.config.ts` and `lib/site.ts` read them (the service worker's cache version is derived from the
-deployment id). Nothing else needs setting. Everything `NEXT_PUBLIC_*` is baked into the bundle at
+Vercel also provides `VERCEL_DEPLOYMENT_ID`, `VERCEL_ENV`, `VERCEL_GIT_COMMIT_SHA` and
+`VERCEL_PROJECT_PRODUCTION_URL`; `next.config.ts` and `lib/site.ts` read them (the service worker's cache
+version is derived from the deployment id; Sentry's environment and release are `VERCEL_ENV` and the
+commit SHA). Nothing else needs setting. Everything `NEXT_PUBLIC_*` is baked into the bundle at
 build time and visible to every visitor: changing one means a redeploy, and it must never hold a secret.
 
 ### How `/api/*` works
@@ -113,6 +116,9 @@ Separate Vercel Hobby project from the API.
 | `NEXT_PUBLIC_SITE_URL` | **required once a domain exists**: `https://shitgowhere.com` | unset (previews then canonicalise to the production alias, which is fine) | unset |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | recommended: the takedown/contact alias | same or unset | unset |
 | `NEXT_PUBLIC_POSTHOG_KEY` | the US project key | **unset** (keeps preview traffic out of the product data) | unset |
+| `NEXT_PUBLIC_SENTRY_DSN` | the `sgw-frontend` DSN (US) | same (events are tagged `environment: preview`) | unset |
+| `SENTRY_ORG` / `SENTRY_PROJECT` | `shit-go-where` / `sgw-frontend` | same | unset |
+| `SENTRY_AUTH_TOKEN` | recommended: an org auth token with `project:releases` (Sentry, Settings, Auth Tokens), marked Sensitive. Without it the build still succeeds and simply skips source maps | same | unset |
 | `NEXT_PUBLIC_DEV_LOGIN` | **unset** | unset | `true` |
 
 `API_ORIGIN` is also read while the build prerenders `sitemap.xml` and the area/station pages, so the API
@@ -150,6 +156,32 @@ Test locally: `SGW_IGNORE_DRY_RUN=1 VERCEL_GIT_COMMIT_SHA=<sha> VERCEL_GIT_PREVI
 
 Incident triage, rollback, restore and the other runbooks live with the API:
 [`../backend/docs/RUNBOOKS.md`](../backend/docs/RUNBOOKS.md). `../backend/docs/probe-production.sh`
-records the live site's headers, redirects and latency. There is no error tracking or uptime monitor
-wired up yet (see the audit plan); until there is, the Vercel logs (about one hour on Hobby) are all
-you have.
+records the live site's headers, redirects and latency. There is no uptime monitor wired up yet (see
+the audit plan).
+
+### Error reporting (Sentry)
+
+With `NEXT_PUBLIC_SENTRY_DSN` set, errors go to the Sentry project `sgw-frontend` (US region, free plan):
+
+- **Browser:** `instrumentation-client.ts` loads the SDK (`lib/sentry-client.ts`, about 30 kB gzipped, its
+  own chunk) once the page is idle, or straight away when an error boundary reports something
+  (`lib/report-error.ts`, tagged `where: route|global` and the server `digest`). Uncaught errors thrown
+  before it arrives are held and sent once it starts. It sends through `/monitoring`, a same-origin rewrite
+  to Sentry's ingest added by `withSentryConfig` (`tunnelRoute`), so the CSP needs no Sentry origin and ad
+  blockers don't drop reports. `proxy.ts` doesn't match it and the service worker never caches it.
+- **Server and edge:** `instrumentation.ts` `register()` starts the SDK, and `onRequestError` sends each
+  server error tagged with its digest, beside the `[sgw:server-error]` log line.
+- **Privacy:** errors only (tracing compiled out, `tracesSampleRate: 0`, no replay, no session pings).
+  `lib/sentry-options.ts` turns off all of the SDK's data collection (user, IP inference, cookies, headers
+  except User-Agent, bodies, query strings, local variables) and scrubs every event and breadcrumb: query
+  strings and hashes go from every URL and path, and coordinate pairs in messages become `[coords]`.
+  Do Not Track and Global Privacy Control turn browser reporting off, as for analytics.
+- **Source maps:** only when `SENTRY_AUTH_TOKEN` is set. The build then generates browser source maps,
+  uploads them for the release (the commit SHA) and deletes them before deploy, so the site serves none.
+- **Sentry project settings to set once:** Security & Privacy, turn on "Prevent Storing of IP Addresses"
+  and keep "Data Scrubber" on; add an alert rule that emails you on new issues.
+- To try it locally, put the DSN in `.env.local`, `pnpm build && pnpm start`, and remove it afterwards
+  (local events are tagged `environment: local`).
+
+Until an issue reaches Sentry, the Vercel logs (about one hour on Hobby) are the fallback; search them
+for the digest a person reads off the error page.
