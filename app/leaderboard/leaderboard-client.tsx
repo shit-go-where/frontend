@@ -161,13 +161,14 @@ function LeaderTabs({ value, onChange, id }: { value: Tab; onChange: (t: Tab) =>
             onClick={() => onChange(t.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
-              // Phones stack the icon over the label, so "Cleanest thrones" never breaks across two lines.
+              // Phones stack the icon over the label, so "Cleanest thrones" stays on one line at normal text size
+              // (and wraps, rather than overlapping its neighbour, when the system text size is large).
               "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-3xl px-2 text-sm font-extrabold transition-[color,scale] duration-200 active:scale-[0.97] sm:flex-row sm:gap-2 sm:px-3 sm:text-base",
               on ? "text-primary-fg" : "text-muted hover:text-fg",
             )}
           >
             <Icon className={cx("size-5 shrink-0 transition-colors duration-200", !on && "text-accent")} aria-hidden />
-            <span className="whitespace-nowrap leading-tight">{t.label}</span>
+            <span className="text-center leading-tight text-balance">{t.label}</span>
           </button>
         );
       })}

@@ -123,7 +123,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
       {mascot ? <Mascot mood={mascot} className="mb-1 size-20" /> : icon ? <div className="text-muted">{icon}</div> : null}
-      <h3 className="font-display text-xl">{title}</h3>
+      <h2 className="font-display text-xl">{title}</h2>
       {children ? <div className="max-w-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-3 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>

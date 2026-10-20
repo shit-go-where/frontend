@@ -19,9 +19,11 @@ function makeClient() {
         networkMode: "offlineFirst",
         retry: (count, err) => {
           if (isApiError(err) && err.status < 500) return false;
-          // One quick retry for a dropped or slow request, none when we know we're offline
-          // (the worker had nothing saved): a fast "no signal" beats a long spinner.
-          if (isNetworkError(err)) return err.kind !== "offline" && count < 1;
+          // One quick retry for a dropped request, none when we know we're offline (the worker had
+          // nothing saved) and none after a timeout, which already waited its full 10 s: retrying
+          // doubled a lie-fi spinner to ~25 s. A fast "no signal" beats a long spinner, and the
+          // error state has a "Try again" button.
+          if (isNetworkError(err)) return err.kind === "unreachable" && count < 1;
           return count < 2;
         },
       },
