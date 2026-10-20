@@ -15,6 +15,8 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   timeout: 45_000,
   use: {
+    // Escape hatch for machines whose installed Chromium is not the build this Playwright expects.
+    launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
     // Page-level mocks can't see requests made by a service worker.
