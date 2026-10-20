@@ -33,7 +33,7 @@ pnpm dev                      # http://localhost:3000
 | `API_PROXY_SECRET` | unset | Same value as the API's `API_PROXY_SECRET`. When set, `proxy.ts` handles the `/api/*` rewrite and forwards each visitor's IP (`x-sgw-client-ip`) with the secret, so the API rate-limits per phone rather than per Vercel proxy. Server-side only. |
 | `NEXT_PUBLIC_SITE_URL` | unset (falls back to `VERCEL_PROJECT_PRODUCTION_URL`, then localhost) | Public origin for canonical URLs, `sitemap.xml`, `robots.txt` and the Open Graph URLs. Set it to the final domain. Inlined at build time. |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | unset | Takedown/contact address shown on `/about` and `/privacy`; unset hides the email lines. Inlined at build time. |
-| `NEXT_PUBLIC_POSTHOG_KEY` | unset | PostHog EU project key. Unset = analytics off, nothing loads or is sent. Inlined at build time; traffic goes through the `/ingest` rewrite. |
+| `NEXT_PUBLIC_POSTHOG_KEY` | unset | PostHog US project key. Unset = analytics off, nothing loads or is sent. Inlined at build time; traffic goes through the `/ingest` rewrite. |
 | `NEXT_PUBLIC_DEV_LOGIN` | `true` locally | Shows the email-only dev login on `/login`. Pairs with `DEV_LOGIN_ENABLED=true` on the API. Leave unset in production. |
 
 Vercel also provides `VERCEL_DEPLOYMENT_ID`, `VERCEL_GIT_COMMIT_SHA` and `VERCEL_PROJECT_PRODUCTION_URL`;
@@ -112,7 +112,7 @@ Separate Vercel Hobby project from the API.
 | `API_PROXY_SECRET` | **recommended**: `openssl rand -hex 32`, identical in the API project | same | unset |
 | `NEXT_PUBLIC_SITE_URL` | **required once a domain exists**: `https://shitgowhere.com` | unset (previews then canonicalise to the production alias, which is fine) | unset |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | recommended: the takedown/contact alias | same or unset | unset |
-| `NEXT_PUBLIC_POSTHOG_KEY` | the EU project key | **unset** (keeps preview traffic out of the product data) | unset |
+| `NEXT_PUBLIC_POSTHOG_KEY` | the US project key | **unset** (keeps preview traffic out of the product data) | unset |
 | `NEXT_PUBLIC_DEV_LOGIN` | **unset** | unset | `true` |
 
 `API_ORIGIN` is also read while the build prerenders `sitemap.xml` and the area/station pages, so the API

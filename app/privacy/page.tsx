@@ -86,7 +86,7 @@ export default function PrivacyPage() {
         <a href="https://posthog.com" className="font-bold text-primary underline hover:decoration-[3px]">
           PostHog
         </a>
-        , hosted in the European Union. It records which pages you open and a few actions: starting a walk to a toilet, arriving,
+        , hosted in the United States. It records which pages you open and a few actions: starting a walk to a toilet, arriving,
         sharing, checking in, reporting, reviewing, adding and voting, and signing in. It also records how you found us when a link
         says so (for example &ldquo;from Reddit&rdquo;).
       </p>
@@ -177,7 +177,7 @@ export default function PrivacyPage() {
         <li>We never show your email or real name publicly.</li>
         <li>
           Data is stored with our hosting providers in or near Singapore (Vercel, Neon Postgres, Cloudflare R2). Usage analytics are
-          the one exception: they go to PostHog in the European Union, under its data processing terms.
+          the one exception: they go to PostHog in the United States, under its data processing terms.
         </li>
       </ul>
 

@@ -94,14 +94,14 @@ const nextConfig: NextConfig = {
         destination: `${API_ORIGIN}/:path*`,
       },
       // Product analytics (lib/analytics.ts) through our own origin, so ad blockers don't drop it.
-      // PostHog Cloud EU. The service worker never caches /ingest.
+      // PostHog Cloud US. The service worker never caches /ingest.
       {
         source: "/ingest/static/:path*",
-        destination: "https://eu-assets.i.posthog.com/static/:path*",
+        destination: "https://us-assets.i.posthog.com/static/:path*",
       },
       {
         source: "/ingest/:path*",
-        destination: "https://eu.i.posthog.com/:path*",
+        destination: "https://us.i.posthog.com/:path*",
       },
     ];
   },

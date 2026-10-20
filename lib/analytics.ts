@@ -5,7 +5,7 @@
  *   when the browser asks not to be tracked (Do Not Track or Global Privacy Control).
  * - posthog-js is imported lazily once the page is idle after load, so it never slows first paint
  *   or the urgent path. Anything tracked before then is queued.
- * - Requests go to same-origin /ingest (rewritten to PostHog Cloud EU in next.config.ts).
+ * - Requests go to same-origin /ingest (rewritten to PostHog Cloud US in next.config.ts).
  * - Only named events and pageviews. No autocapture, no session replay, no surveys or flags.
  * - Identity is the user id (no traits) or PostHog's random anonymous id. Never email, name or
  *   coordinates: URLs lose every query parameter except a short allowlist before they are sent,
@@ -224,7 +224,7 @@ async function load() {
     const { default: posthog } = await import("posthog-js");
     posthog.init(KEY!, {
       api_host: "/ingest",
-      ui_host: "https://eu.posthog.com",
+      ui_host: "https://us.posthog.com",
       defaults: "2026-08-30",
       // Named events and pageviews only.
       autocapture: false,
