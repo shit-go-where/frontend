@@ -47,6 +47,28 @@ export function rankOffline(items: ToiletSummary[], from: LatLng, n = 3): Toilet
   ).slice(0, n);
 }
 
+/** service-worker/sw.js `API`: the saved API answers, kept across deploys. Change both together. */
+const SW_API_CACHE = "sgw-api-1";
+/** The saved toilet lists (and their per-endpoint "last" copies): the same for everyone, so they stay. */
+const SHARED_SAVED = /^\/(?:__sgw_last\/)?api\/toilets\/(?:nearby|in-bounds)$/;
+
+/**
+ * Drops the service worker's saved copies of answers that can carry the signed-in person's own data
+ * (a toilet's `myReview`, `confirmedByMe` on status reports, earned badges, the leaderboard's `me`),
+ * so after signing out or deleting the account they can't be served offline to whoever uses the phone
+ * next. The saved nearby and in-bounds lists are public and stay for the offline map. Best effort.
+ */
+export async function forgetSignedInCopies(): Promise<void> {
+  try {
+    if (typeof caches === "undefined" || !(await caches.has(SW_API_CACHE))) return;
+    const c = await caches.open(SW_API_CACHE);
+    const keys = await c.keys();
+    await Promise.all(keys.filter((k) => !SHARED_SAVED.test(new URL(k.url).pathname)).map((k) => c.delete(k)));
+  } catch {
+    /* storage blocked or unavailable: nothing was saved */
+  }
+}
+
 function subscribe(cb: () => void) {
   window.addEventListener("online", cb);
   window.addEventListener("offline", cb);

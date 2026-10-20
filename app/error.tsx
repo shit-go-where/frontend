@@ -2,10 +2,12 @@
 
 import { Map as MapIcon, RefreshCw, Siren } from "lucide-react";
 import Link from "next/link";
+import { useEffect } from "react";
 import { Mascot } from "@/components/mascot";
 import { Button, buttonClass } from "@/components/ui";
 import { isNetworkError } from "@/lib/api/client";
 import { useOnline } from "@/lib/offline";
+import { reportError } from "@/lib/report-error";
 
 /**
  * A page whose code never arrived: the network dropped while loading a chunk, or a deploy
@@ -22,6 +24,8 @@ function isLoadFailure(error: unknown) {
 
 export default function ErrorPage({ error, retry }: { error: unknown; retry: () => void }) {
   const online = useOnline();
+  // Load failures (no signal, or a deploy replaced the chunk) are reported too: a spike after a deploy is a finding.
+  useEffect(() => reportError(error, "route"), [error]);
   const digest = error instanceof Error && "digest" in error ? (error as Error & { digest?: string }).digest : undefined;
 
   if (!online || isLoadFailure(error)) {

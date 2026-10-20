@@ -66,6 +66,7 @@ import type { ActivityItem, Badge, Me, Passport, PhotoRef, Role, SubmissionView,
 import { track } from "@/lib/analytics";
 import { ME_KEY, hasRole, useRequireAuth, useSignOut } from "@/lib/auth";
 import { MRT_LINES, formatDate, lineColor, lineTextColor, plural } from "@/lib/format";
+import { forgetSignedInCopies } from "@/lib/offline";
 import { PANEL_IN, PANEL_OUT, getMotionPref, reducedMotion, setMotionPref, type MotionPref } from "@/lib/motion";
 import { setThemePref, useThemePref, type ThemePref } from "@/lib/theme";
 
@@ -1164,6 +1165,7 @@ function SettingsTab({ me }: { me: Me }) {
   const del = useMutation({
     mutationFn: api.deleteMe,
     onSuccess: async () => {
+      await forgetSignedInCopies();
       qc.setQueryData(ME_KEY, null);
       await qc.invalidateQueries();
       router.push("/?deleted=1");
@@ -1275,8 +1277,16 @@ function SettingsTab({ me }: { me: Me }) {
       >
         <div className="flex flex-col gap-3">
           <p>
-            This removes your profile, email, points and badges. Toilets, reviews and photos you contributed stay on the map but are
-            no longer linked to you. This can&apos;t be undone.
+            This permanently deletes your profile, email, handle, profile picture link, points, badges, check-ins and Telegram link,
+            and signs you out everywhere.
+          </p>
+          <p>
+            Toilets, edits, reviews, photos, status reports, votes and reports you contributed stay so the map remains useful, no
+            longer linked to your name, email or handle. To have a particular review or photo removed, ask us first (see the{" "}
+            <Link href="/privacy" className="font-bold text-primary underline">
+              privacy notice
+            </Link>
+            ). This can&apos;t be undone.
           </p>
           <label htmlFor="confirm-delete" className="font-extrabold">
             Type DELETE to confirm
@@ -1558,6 +1568,11 @@ function MeFooter() {
           <li>
             <Link href="/privacy" className={link}>
               Privacy notice: how we handle your data
+            </Link>
+          </li>
+          <li>
+            <Link href="/terms" className={link}>
+              Terms of use
             </Link>
           </li>
         </ul>

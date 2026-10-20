@@ -6,6 +6,7 @@ import { ReviewClient } from "./review-client";
 export const metadata: Metadata = {
   title: "Review queue",
   description: "Approve or reject toilets and edits submitted near you.",
+  robots: { index: false },
 };
 
 export default function ReviewPage() {

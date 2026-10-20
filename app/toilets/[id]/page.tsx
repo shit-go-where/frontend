@@ -25,6 +25,8 @@ export async function generateMetadata({ params }: PageProps<"/toilets/[id]">): 
   return {
     title,
     description,
+    // One URL per toilet, whatever query (utm_source, ?do=) or trailing slash a shared link carries.
+    alternates: { canonical: `/toilets/${encodeURIComponent(t.id)}` },
     openGraph: {
       title: `${title} · Shit Go Where`,
       description,

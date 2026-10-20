@@ -6,6 +6,7 @@ import { isApiError, isNetworkError, setUnauthorizedHandler } from "@/lib/api/cl
 import { captureSourceFromUrl, initAnalytics } from "@/lib/analytics";
 import { ME_KEY, loginHref, useAnalyticsIdentity } from "@/lib/auth";
 import { LocationProvider } from "@/lib/location";
+import { forgetSignedInCopies } from "@/lib/offline";
 
 function makeClient() {
   const qc: QueryClient = new QueryClient({
@@ -33,6 +34,7 @@ function makeClient() {
         // A mutation that needed a session: the cached "me" is stale, go sign in.
         if (isApiError(err) && err.status === 401) {
           qc.setQueryData(ME_KEY, null);
+          void forgetSignedInCopies();
           window.location.assign(loginHref());
         }
       },
@@ -46,7 +48,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Any non-silent 401 means our session is gone.
-    setUnauthorizedHandler(() => client.setQueryData(ME_KEY, null));
+    // Also drop the worker's saved copies that can carry the signed-in person's own data.
+    setUnauthorizedHandler(() => {
+      client.setQueryData(ME_KEY, null);
+      void forgetSignedInCopies();
+    });
     return () => setUnauthorizedHandler(null);
   }, [client]);
 

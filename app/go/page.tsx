@@ -5,6 +5,7 @@ import { GoClient } from "./go-client";
 export const metadata: Metadata = {
   title: "I need to go",
   description: "The 3 best toilets near you right now, with walking time and directions.",
+  alternates: { canonical: "/go" },
 };
 
 function GoFallback() {

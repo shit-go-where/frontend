@@ -656,6 +656,14 @@ export function HomeClient() {
               How we rate toilets and where the data comes from
             </Link>
           </p>
+          <p className="mt-2 flex gap-4">
+            <Link href="/privacy" className="font-semibold underline">
+              Privacy
+            </Link>
+            <Link href="/terms" className="font-semibold underline">
+              Terms
+            </Link>
+          </p>
         </div>
       </BottomSheet>
     </div>
