@@ -16,6 +16,7 @@
  * and source as request headers, see lib/api/client.ts) so they line up with this funnel.
  */
 import type { CaptureResult, PostHogInterface as PostHog, Properties } from "posthog-js";
+import { doNotTrack } from "./do-not-track";
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
@@ -130,12 +131,6 @@ let forceReset = false;
 
 /** The API's rule for `x-sgw-distinct-id`. */
 const DISTINCT_RE = /^[A-Za-z0-9$:._-]{1,100}$/;
-
-function doNotTrack(): boolean {
-  const nav = navigator as Navigator & { globalPrivacyControl?: boolean; msDoNotTrack?: string };
-  const w = window as Window & { doNotTrack?: string };
-  return nav.doNotTrack === "1" || nav.doNotTrack === "yes" || nav.msDoNotTrack === "1" || w.doNotTrack === "1" || nav.globalPrivacyControl === true;
-}
 
 /** Query parameters that are safe to keep on a URL sent to PostHog. Everything else (lat, lng, redirect …) goes. */
 const KEEP_PARAMS = new Set([
