@@ -192,6 +192,31 @@ test.describe("lie-fi: connected, but nothing arrives", () => {
   });
 });
 
+test("photo reads, a redirect to an expiring presigned URL, are never stored by the worker", async ({ page }) => {
+  await page.goto("/about");
+  await secondVisit(page, false);
+
+  // /api/media/photos/<id> answers 302 to a signed URL (e2e/stub-api.mjs, like the API with R2).
+  const width = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth);
+        img.onerror = () => resolve(-1);
+        img.src = "/api/media/photos/photo-1/thumb";
+      }),
+  );
+  expect(width).toBe(1);
+  const stored = await page.evaluate(async () => {
+    const urls: string[] = [];
+    for (const name of await caches.keys()) {
+      for (const r of await (await caches.open(name)).keys()) urls.push(r.url);
+    }
+    return urls.filter((u) => /\/api\/media\/|stub-photo|X-Amz-/.test(u));
+  });
+  expect(stored).toEqual([]);
+});
+
 test.describe("airplane mode (context.setOffline)", () => {
   test("/ and /go?urgent=1 render from the worker, the list says it may be out of date", async ({ page, context }) => {
     await page.goto("/");

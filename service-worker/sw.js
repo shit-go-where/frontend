@@ -37,6 +37,12 @@
  * - Never cached: non-GET requests, /api/auth, /api/me (incl. /api/me/telegram), /api/admin,
  *   /api/submissions, /api/media, /api/integrations, /ingest (analytics), cross-origin requests,
  *   and any /api path not listed in SAVED_API or NETWORK_FIRST_API.
+ * - Photos: /api/media/photos/<id>[/thumb] answers with a redirect to a presigned R2 URL that expires
+ *   within hours (the bucket is private), so the worker must never store it: /api/media is in NEVER
+ *   and the R2 host is cross-origin, so both hops go straight to the network and the browser's HTTP
+ *   cache, which honours the API's Cache-Control (public until the signing window ends for approved
+ *   photos, no-store for unapproved ones). Saved API JSON only holds the stable /api/media/photos
+ *   paths, so a saved toilet page shows its photos again as soon as there is signal.
  */
 const BUILD = "__SGW_BUILD__";
 const VERSION = `sgw-${BUILD}`;
@@ -62,6 +68,7 @@ const NEVER = [
   /^\/api\/me(\/|$)/,
   /^\/api\/admin\//,
   /^\/api\/submissions/,
+  // Photo reads redirect to presigned R2 URLs that expire; uploads and confirms are writes.
   /^\/api\/media\//,
   /^\/api\/integrations\//,
   // Analytics proxy (PostHog, next.config.ts): straight to the network, never stored.

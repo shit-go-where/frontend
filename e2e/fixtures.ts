@@ -300,7 +300,7 @@ export const PRESIGN: PresignResponse = {
   headers: { "Content-Type": "image/jpeg" },
 };
 
-export const PHOTO: PhotoRef = { id: "photo-1", url: "/api/media/files/photo-1.jpg", thumbUrl: null };
+export const PHOTO: PhotoRef = { id: "photo-1", url: "/api/media/photos/photo-1", thumbUrl: null };
 
 export function submissionView(payload: SubmissionView["payload"]): SubmissionView {
   return {
