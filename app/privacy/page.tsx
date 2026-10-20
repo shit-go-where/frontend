@@ -109,6 +109,34 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
+      <h2 id="errors" className="scroll-mt-20">
+        Error reports
+      </h2>
+      <p>
+        When something breaks, the app sends an error report to{" "}
+        <a href="https://sentry.io" className="font-bold text-primary underline hover:decoration-[3px]">
+          Sentry
+        </a>
+        , hosted in the United States, so we can find and fix the problem. Nothing is sent while the app works normally.
+      </p>
+      <ul>
+        <li>
+          <strong>What a report holds:</strong> the type of error, its message and the lines of our code it came from, the page
+          address without anything after the &ldquo;?&rdquo;, your browser and operating system, and which version of the app you
+          had.
+        </li>
+        <li>
+          <strong>What it doesn&apos;t hold:</strong> your name, email, account, coordinates, search words or cookies. We strip
+          location and search text from page addresses and error messages before anything is sent, and we tell Sentry not to store
+          your IP address.
+        </li>
+        <li>
+          Reports from your browser go through our own website address. No session recordings and no tracking of what you do. If
+          your browser sends Do Not Track or Global Privacy Control, your browser sends no reports at all. Errors on our server are
+          still reported, with the same limits.
+        </li>
+      </ul>
+
       <h2 id="telegram" className="scroll-mt-20">
         Telegram bot
       </h2>
@@ -176,8 +204,8 @@ export default function PrivacyPage() {
         </li>
         <li>We never show your email or real name publicly.</li>
         <li>
-          Data is stored with our hosting providers in or near Singapore (Vercel, Neon Postgres, Cloudflare R2). Usage analytics are
-          the one exception: they go to PostHog in the United States, under its data processing terms.
+          Data is stored with our hosting providers in or near Singapore (Vercel, Neon Postgres, Cloudflare R2). Usage analytics and
+          error reports are the exceptions: they go to PostHog and Sentry in the United States, under their data processing terms.
         </li>
       </ul>
 
@@ -205,6 +233,7 @@ export default function PrivacyPage() {
           Status reports: shown while they are live, then removed from our database by a nightly clean-up about a week after they expire.
         </li>
         <li>Telegram chat record: until <code>/stop</code>, or the bot is removed from the chat or blocked.</li>
+        <li>Error reports: deleted by Sentry within 90 days.</li>
         <li>
           Backups: we keep nightly database backups for 30 days, so deleted data drops out of them within about a month.
         </li>
