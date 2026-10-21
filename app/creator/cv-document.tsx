@@ -6,6 +6,7 @@ import {
   EXPERIENCE,
   HEADLINE,
   LINKEDIN_URL,
+  MAJORS,
   NAME,
   PROJECTS,
   SHIT_GO_WHERE,
@@ -163,7 +164,7 @@ export function CvDocument() {
             </Text>
             <Text style={s.dates}>{EDUCATION.dates}</Text>
           </View>
-          <Text style={s.sub}>Majors: {EDUCATION.majors.join(" and ")}</Text>
+          <Text style={s.sub}>Majors: {MAJORS}</Text>
         </Section>
 
         <Section title="Skills">

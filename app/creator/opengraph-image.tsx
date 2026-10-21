@@ -56,7 +56,7 @@ export default function Image() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
           <OgLogo size={64} />
-          <div style={{ fontSize: 34, color: OG.cream }}>Made Shit Go Where?</div>
+          <div style={{ fontSize: 34, color: OG.cream }}>Creator of Shit Go Where</div>
         </div>
       </OgFrame>
     ),

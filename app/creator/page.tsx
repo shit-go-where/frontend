@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
 import Link from "next/link";
 import {
+  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   BriefcaseBusiness,
@@ -39,6 +40,7 @@ import {
   FACTS,
   FIRST_YEAR,
   LINKEDIN_URL,
+  MAJORS,
   NAME,
   PROJECTS,
   ROLE_COUNT,
@@ -46,6 +48,7 @@ import {
   SKILLS,
   SUMMARY,
   UPDATED_AT,
+  VERIFIED_HELP,
   liveNumbersLine,
   roleSince,
 } from "./content";
@@ -167,17 +170,19 @@ export default async function CreatorPage() {
               const Icon = style.icon;
               return (
                 <div key={g.group}>
-                  <h3 className="mb-1.5 text-sm font-bold text-muted">{g.group}</h3>
+                  <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-bold text-muted">
+                    <Icon className="size-4 shrink-0" aria-hidden />
+                    {g.group}
+                  </h3>
                   <ul className="flex flex-wrap gap-1.5">
                     {g.items.map((s) => (
                       <li
                         key={s}
                         className={cx(
-                          "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-bold",
+                          "inline-flex min-h-9 items-center rounded-full px-3.5 text-sm font-bold",
                           style.hue ? HUE_CHIP[style.hue] : "border border-border/70 bg-surface-2",
                         )}
                       >
-                        <Icon className="size-4 shrink-0" aria-hidden />
                         {s}
                       </li>
                     ))}
@@ -190,7 +195,7 @@ export default async function CreatorPage() {
 
         <section
           aria-labelledby="check-ins"
-          className="mt-10 lg:col-start-2 lg:row-start-1 lg:row-end-[-1] lg:mt-0 lg:pt-14"
+          className="mt-10 lg:col-start-2 lg:row-start-1 lg:row-end-[-1] lg:mt-0 lg:pt-2"
         >
           <StickyColumn className={cx(card, "p-5")}>
             <h2 id="check-ins" className="text-2xl leading-tight">
@@ -198,6 +203,7 @@ export default async function CreatorPage() {
             </h2>
             <p className="mt-0.5 text-sm font-medium text-muted">Where I&apos;ve been, newest first</p>
             <CheckIns roles={EXPERIENCE} />
+            {live ? <ProofTeaser live={live} /> : null}
           </StickyColumn>
         </section>
 
@@ -253,7 +259,7 @@ export default async function CreatorPage() {
               <h3 className="font-display text-lg leading-snug">{EDUCATION.school}</h3>
               <p className="font-extrabold">{EDUCATION.degree}</p>
               <p className="text-sm font-bold text-muted">{EDUCATION.dates}</p>
-              <p className="mt-2">Majors: {EDUCATION.majors.join(" and ")}</p>
+              <p className="mt-2">Majors: {MAJORS}</p>
             </div>
           </div>
         </section>
@@ -312,7 +318,7 @@ function Header() {
         <div className="min-w-0">
           <h1 className="text-[2.5rem] leading-none sm:text-5xl lg:text-6xl">{NAME}</h1>
           <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <TierBadge tier="VERIFIED" className="px-3! py-1! text-sm!" />
+            <TierBadge tier="VERIFIED" help={VERIFIED_HELP} className="px-3! py-1! text-sm!" />
             <span className="text-sm font-medium text-muted">
               Last verified: <time dateTime={UPDATED_AT}>{updated}</time>
             </span>
@@ -378,12 +384,47 @@ function Header() {
   );
 }
 
+/** The figures of the live-numbers sentence, emphasised. */
+function LiveNumbers({ live }: { live: LiveCounts }) {
+  return liveNumbersLine(live).map((part, i) =>
+    part.figure ? (
+      <strong key={i} className="font-extrabold whitespace-nowrap text-mint tabular-nums">
+        {part.text}
+      </strong>
+    ) : (
+      <span key={i}>{part.text}</span>
+    ),
+  );
+}
+
+/**
+ * The proof, in the desktop first screen: the sketch's mint teaser under the check-ins, pointing down to
+ * the case study. Phones reach the full section right after Check-ins, so it would only repeat there.
+ */
+function ProofTeaser({ live }: { live: LiveCounts }) {
+  return (
+    <div className="mt-4 hidden rounded-3xl bg-mint-soft px-4 py-3 lg:block">
+      <p className="font-display text-lg leading-snug">Also built here: {SHIT_GO_WHERE.name}</p>
+      <p className="mt-1 text-sm font-medium">
+        <LiveNumbers live={live} />
+      </p>
+      <a
+        href="#also-built"
+        className="-ml-2 mt-1 inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-sm font-extrabold text-primary hover:bg-surface-2"
+      >
+        {SHIT_GO_WHERE.teaserLink}
+        <ArrowDown className="size-4" aria-hidden />
+      </a>
+    </div>
+  );
+}
+
 /** The case study: what the app does, how trust works, what it's built on and what I run. Live numbers when the API answers. */
 function AlsoBuiltHere({ live }: { live: LiveCounts | null }) {
   const s = SHIT_GO_WHERE;
   return (
     <section aria-labelledby="also-built" className="mt-12 lg:col-start-1">
-      <h2 id="also-built" className={H2}>
+      <h2 id="also-built" className={cx(H2, "scroll-mt-24")}>
         Also built here: {s.name}
       </h2>
       <div className="mt-3 flex max-w-[65ch] flex-col gap-3">
@@ -402,15 +443,7 @@ function AlsoBuiltHere({ live }: { live: LiveCounts | null }) {
 
       {live ? (
         <p className="mt-4 rounded-3xl bg-mint-soft px-5 py-4 text-lg font-medium leading-relaxed text-pretty">
-          {liveNumbersLine(live).map((part, i) =>
-            part.figure ? (
-              <strong key={i} className="font-extrabold whitespace-nowrap text-mint tabular-nums">
-                {part.text}
-              </strong>
-            ) : (
-              <span key={i}>{part.text}</span>
-            ),
-          )}
+          <LiveNumbers live={live} />
         </p>
       ) : null}
 

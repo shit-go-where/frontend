@@ -141,13 +141,19 @@ export const EDUCATION = {
   majors: ["Smart City Management and Technology", "Digital Cloud Solutions"],
 };
 
+/** "Smart City Management and Technology; Digital Cloud Solutions": the majors contain "and", so never join them with it. */
+export const MAJORS = EDUCATION.majors.join("; ");
+
+/** What the Verified badge means here, for screen readers (the toilet meaning, "surveyed in person", would be false). */
+export const VERIFIED_HELP = "details checked against my CV";
+
 /** The Facts grid under the header. */
 export const FACTS: { label: string; value: string; detail?: string }[] = [
   { label: "Based in", value: "Singapore" },
   {
     label: "Degree",
     value: `BSc Information Systems, ${EDUCATION.short}`,
-    detail: `Majors in ${EDUCATION.majors[0]}, and ${EDUCATION.majors[1]}`,
+    detail: `Majors: ${MAJORS}`,
   },
   { label: "Works on", value: "Data, full-stack, cloud" },
 ];
@@ -169,6 +175,8 @@ export const SHIT_GO_WHERE = {
     href: "https://t.me/ShitGoWhereBot",
     after: "your location for the top three nearby.",
   },
+  /** The teaser under Check-ins on desktop and phone, linking down to the full section. */
+  teaserLink: "How I built it",
   tiersIntro: "Every toilet wears a trust tier, so open data never passes for a toilet somebody actually visited.",
   stack: [
     { label: "App", value: "Next.js progressive web app" },
