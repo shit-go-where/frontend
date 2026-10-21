@@ -1,18 +1,36 @@
 /*
- * Everything /creator says about Dylan, kept out of the JSX so a bullet can change without touching
- * the page. Newest first in every list. Never add a phone number, GPA or the school email.
+ * Everything /creator and its CV PDF say about Dylan, kept out of the JSX so a bullet can change without
+ * touching the page. Newest first in every list. Never add a phone number, GPA or the school email.
  */
 
 export const NAME = "Dylan Chua";
+
+/**
+ * When this file was last checked against reality: the page's "Last verified" date. Bump it whenever
+ * the copy changes. A date only (YYYY-MM-DD), formatted by lib/format.ts formatDate.
+ */
+export const UPDATED_AT = "2026-10-22";
 
 /** /creator is the one page that links to GitHub; the rest of the app does not. */
 export const GITHUB_URL = "https://github.com/DylanChua2001";
 export const LINKEDIN_URL = "https://www.linkedin.com/in/dylan-chua-heok-kang-a2955a152";
 
+/** Prefilled on the page's Email button. */
+export const EMAIL_SUBJECT = "Hi Dylan, from your Shit Go Where page";
+
+/** The one-liner under the current role. */
+export const SUMMARY = "I build full-stack apps, data pipelines and the cloud they run on, and I made this toilet finder on the side.";
+
+/** Under the name on the CV. */
+export const HEADLINE = "Software engineer in Singapore";
+
 export interface Role {
   title: string;
   company: string;
-  dates: string;
+  /** YYYY-MM. */
+  start: string;
+  /** YYYY-MM, or null while it's the current role. */
+  end: string | null;
   location?: string;
   bullets: string[];
 }
@@ -38,11 +56,11 @@ export interface SkillGroup {
 }
 
 export const EXPERIENCE: Role[] = [
-  // Draft bullets for the full-time role: Dylan still to confirm the wording.
   {
     title: "Associate Software Engineer",
     company: "Ensign InfoSecurity",
-    dates: "Jun 2026 – present",
+    start: "2026-06",
+    end: null,
     location: "Singapore",
     bullets: [
       "Build and ship products into client environments as a forward-deployed engineer, from data pipelines to full-stack features",
@@ -54,7 +72,8 @@ export const EXPERIENCE: Role[] = [
   {
     title: "Software Engineer Intern",
     company: "Ensign InfoSecurity",
-    dates: "Jan 2026 – May 2026",
+    start: "2026-01",
+    end: "2026-05",
     bullets: [
       "Implemented an AI-powered cybersecurity website to automate threat detection, making detection of fake news easier",
       "Developed and optimised a data pipeline for seamless integration and processing of security data",
@@ -65,7 +84,8 @@ export const EXPERIENCE: Role[] = [
   {
     title: "Software Engineer Intern",
     company: "Nested AI",
-    dates: "May 2025 – Aug 2025",
+    start: "2025-05",
+    end: "2025-08",
     bullets: [
       "Engineered a production feature enabling users to mass-craft personalised emails using context-aware templates and GPT-powered automation, resulting in a 40% reduction in manual effort for client outreach",
       "Designed and implemented an interactive chatbot UI that lets users ask about company products and auto-generates detailed price quotations",
@@ -76,7 +96,8 @@ export const EXPERIENCE: Role[] = [
   {
     title: "Project Management Intern",
     company: "Synapxe",
-    dates: "May 2024 – Aug 2024",
+    start: "2024-05",
+    end: "2024-08",
     bullets: [
       "Provided operational support for the Electronic Queue Management System (EQMS) and self-service kiosks at NUHS clinics, helping increase patient throughput by 10% and reduce average waiting times",
       "Engaged in all phases of the SDLC: gathering requirements, coordinating with 3+ stakeholders, and executing testing",
@@ -85,6 +106,117 @@ export const EXPERIENCE: Role[] = [
     ],
   },
 ];
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monthYear(ym: string): { month: string; year: string } {
+  const [year, month] = ym.split("-");
+  return { month: MONTHS[Number(month) - 1] ?? "", year };
+}
+
+/** "Jun 2026 – present", "Jan – May 2026", "Dec 2025 – Feb 2026". */
+export function roleDates(r: Pick<Role, "start" | "end">): string {
+  const s = monthYear(r.start);
+  if (!r.end) return `${s.month} ${s.year} – present`;
+  const e = monthYear(r.end);
+  return s.year === e.year ? `${s.month} – ${e.month} ${e.year}` : `${s.month} ${s.year} – ${e.month} ${e.year}`;
+}
+
+/** "since Jun 2026": the current role's start. */
+export function roleSince(r: Pick<Role, "start">): string {
+  const s = monthYear(r.start);
+  return `since ${s.month} ${s.year}`;
+}
+
+/** The mint block's numbers, counted from EXPERIENCE rather than typed in. */
+export const ROLE_COUNT = EXPERIENCE.length;
+export const FIRST_YEAR = Math.min(...EXPERIENCE.map((r) => Number(r.start.slice(0, 4))));
+export const CURRENT_ROLE = EXPERIENCE.find((r) => r.end === null) ?? EXPERIENCE[0];
+
+export const EDUCATION = {
+  school: "Singapore Management University",
+  short: "SMU",
+  degree: "BSc (Information Systems)",
+  dates: "Jan 2022 – Jan 2026",
+  majors: ["Smart City Management and Technology", "Digital Cloud Solutions"],
+};
+
+/** The Facts grid under the header. */
+export const FACTS: { label: string; value: string; detail?: string }[] = [
+  { label: "Based in", value: "Singapore" },
+  {
+    label: "Degree",
+    value: `BSc Information Systems, ${EDUCATION.short}`,
+    detail: `Majors in ${EDUCATION.majors[0]}, and ${EDUCATION.majors[1]}`,
+  },
+  { label: "Works on", value: "Data, full-stack, cloud" },
+];
+
+/**
+ * The case study for the app itself, in first person. Live numbers are added by the page from the
+ * public API and left out when it can't be reached; never type a count in here.
+ */
+export const SHIT_GO_WHERE = {
+  name: "Shit Go Where",
+  /** The page's paragraphs on what it does. */
+  what: [
+    "I built Shit Go Where on my own, on free tiers. It finds the nearest clean toilet, how far a walk it is and whether it has what you need. Tap I need to go and it picks the closest good one and walks you there.",
+    "People check in, review and report what they find, so the map stays honest.",
+  ],
+  bot: {
+    before: "Rather stay in Telegram? Send",
+    handle: "@ShitGoWhereBot",
+    href: "https://t.me/ShitGoWhereBot",
+    after: "your location for the top three nearby.",
+  },
+  tiersIntro: "Every toilet wears a trust tier, so open data never passes for a toilet somebody actually visited.",
+  stack: [
+    { label: "App", value: "Next.js progressive web app" },
+    { label: "API", value: "NestJS" },
+    { label: "Data", value: "Prisma and Postgres on Neon" },
+    { label: "Map", value: "MapLibre with OneMap tiles" },
+    { label: "Photos", value: "Cloudflare R2" },
+    { label: "Hosting", value: "Vercel" },
+  ],
+  runs: [
+    "The shitgowhere.com domain",
+    "GitHub Actions for CI and scheduled jobs",
+    "Sentry error reporting",
+    "PostHog product analytics",
+    "The Telegram bot",
+  ],
+  /** On the CV, where it leads the projects. */
+  cv: {
+    context: "Solo project",
+    dates: "Live since Oct 2026",
+    bullets: [
+      "Built and run a public toilet finder for Singapore alone, on free tiers: nearest clean toilet, an urgent one-tap route, and check-ins and reviews that keep the map current",
+      "Next.js progressive web app and NestJS API with Prisma and Postgres on Neon, MapLibre with OneMap tiles, photos on Cloudflare R2, hosted on Vercel",
+      "Trust tiers separate toilets surveyed in person from community and open-data entries; a Telegram bot (@ShitGoWhereBot) answers with the nearest three",
+      "Operate the domain, GitHub Actions CI and scheduled jobs, Sentry error reporting and PostHog analytics",
+    ],
+    tags: ["Next.js", "NestJS", "Prisma", "PostgreSQL", "MapLibre", "Vercel"],
+  },
+};
+
+/** Live counts from the public API, as a sentence with its figures marked for emphasis. */
+export function liveNumbersLine(n: { toilets: number; verified: number; areas: number; stations: number }): {
+  text: string;
+  figure?: boolean;
+}[] {
+  const f = (x: number) => x.toLocaleString("en-SG");
+  return [
+    { text: "Right now the map holds " },
+    { text: `${f(n.toilets)} toilets`, figure: true },
+    { text: " across " },
+    { text: `${f(n.areas)} planning areas`, figure: true },
+    { text: ", " },
+    { text: `${f(n.verified)} of them surveyed in person`, figure: true },
+    { text: ", and answers for " },
+    { text: `${f(n.stations)} MRT and LRT stations`, figure: true },
+    { text: "." },
+  ];
+}
 
 /** Shit Go Where itself is the page's story, not a card here. */
 export const PROJECTS: Project[] = [
@@ -138,13 +270,6 @@ export const PROJECTS: Project[] = [
     tags: ["PERN", "GPT-4", "LangChain", "RAG", "Vercel"],
   },
 ];
-
-export const EDUCATION = {
-  school: "Singapore Management University",
-  degree: "BSc (Information Systems)",
-  dates: "Jan 2022 – Jan 2026",
-  majors: ["Smart City Management and Technology", "Digital Cloud Solutions"],
-};
 
 export const SKILLS: SkillGroup[] = [
   { group: "Languages", items: ["TypeScript", "JavaScript", "Python", "Go", "SQL"] },
