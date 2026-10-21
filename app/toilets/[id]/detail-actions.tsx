@@ -26,11 +26,29 @@ import { BAD_STATUS, STATUS_LABELS, formatDate, timeAgo } from "@/lib/format";
 import { INTENT_PARAM, loginWithIntent, useGuard, useMe, useResumeIntent } from "@/lib/auth";
 import { getCurrentPosition } from "@/lib/location";
 import { track } from "@/lib/analytics";
+import { TELEGRAM_BOT_URL } from "@/lib/site";
 import { FactsThanks, useFactsForm, type FactsOutcome } from "./facts-form";
 
 // ---------------------------------------------------------------------------
 // Check-in → points / badges → "what's inside?" form (facts-form.tsx)
 // ---------------------------------------------------------------------------
+
+const TG_NUDGE_KEY = "sgw:tg-checkin-nudge";
+
+/**
+ * After a signed-in check-in from an account with no Telegram linked, the bot gets one mention, once per
+ * device: true the first time (and marks it shown), false after. Storage blocked reads as already shown.
+ */
+function claimTelegramNudge(): boolean {
+  if (!TELEGRAM_BOT_URL) return false;
+  try {
+    if (localStorage.getItem(TG_NUDGE_KEY)) return false;
+    localStorage.setItem(TG_NUDGE_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** The "Been here?" tiles: icon over label, three to a row on a phone. */
 const TILE =
@@ -55,6 +73,7 @@ export function CheckInButton({ toilet, className }: { toilet: ToiletDetail; cla
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<"locating" | "result" | "recent" | "verify" | "done" | "error">("locating");
   const [result, setResult] = useState<CheckInResult | null>(null);
+  const [tgNudge, setTgNudge] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Signed out past the anonymous daily limit: the way on is signing in, so the error offers it.
@@ -80,6 +99,7 @@ export function CheckInButton({ toilet, className }: { toilet: ToiletDetail; cla
     setError(null);
     setErrorNeedsSignIn(false);
     setResult(null);
+    setTgNudge(false);
     facts.reset();
     try {
       const pos = await getCurrentPosition(15000);
@@ -87,6 +107,7 @@ export function CheckInButton({ toilet, className }: { toilet: ToiletDetail; cla
       setCoords(c);
       const r = await api.checkIn(toilet.id, c);
       setResult(r);
+      setTgNudge(!!me && !me.telegramLinked && claimTelegramNudge());
       setStage("result");
       void qc.invalidateQueries({ queryKey: ["me"] });
       // A confirmation can put a pending toilet live: show the page as it is now.
@@ -232,6 +253,18 @@ export function CheckInButton({ toilet, className }: { toilet: ToiletDetail; cla
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {me && tgNudge ? (
+              <p className="text-sm font-medium text-muted">
+                Check in from Telegram next time.{" "}
+                <Link
+                  href="/me#telegram"
+                  className="-my-3 inline-flex min-h-11 items-center font-bold text-primary underline underline-offset-2"
+                >
+                  Connect it in Me
+                </Link>
+                .
+              </p>
             ) : null}
             {!me ? (
               // Signed out: the points wait on this phone and "What's inside?" edits need an account, so one

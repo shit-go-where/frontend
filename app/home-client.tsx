@@ -7,6 +7,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { BottomSheet, SHEET_PEEK, SHEET_TOP } from "@/components/bottom-sheet";
 import { LocateFailed, LocationNotice, LocationSearch, nearestStationName } from "@/components/location-search";
 import { ToiletMap, type Bounds, type MapFocus, type MapView } from "@/components/map";
+import { TelegramStrip, useTelegramStrip } from "@/components/telegram-strip";
 import { FilterChipLabel, TierLegend, ToiletCard } from "@/components/toilet-bits";
 import { Button, Chip, Dialog, EmptyState, ErrorState, Skeleton, buttonClass, cx } from "@/components/ui";
 import { NetworkError, api, errorMessage } from "@/lib/api/client";
@@ -16,6 +17,7 @@ import { FILTERS, FILTER_LABEL, MUST_HAVE_GROUPS, toFilterQuery } from "@/lib/fi
 import { formatDistance, isClosedNow, savedAge } from "@/lib/format";
 import { estimateWalkSeconds, haversineM, roundCoord, useLocation, type LatLng } from "@/lib/location";
 import { remeasure, useOnline, type SavedFrom } from "@/lib/offline";
+import { TELEGRAM_BOT_URL } from "@/lib/site";
 import { useStoredFilters } from "@/lib/use-filters";
 import { useFlipList } from "@/lib/use-flip";
 import { useTopCard } from "@/lib/use-top-card";
@@ -291,6 +293,8 @@ export function HomeClient() {
   };
   // Flying back to your spot puts it on the open map again, which brings back the near-you list.
   const backToNear = () => setRecenter((n) => n + 1);
+  // Opened from a Telegram chat: the sheet points back to the bot.
+  const tgStrip = useTelegramStrip();
   // Phones: search and chips cover the top, the sheet the bottom. Desktop: the sheet is a side panel.
   const [phone, setPhone] = useState(true);
   useEffect(() => {
@@ -569,7 +573,9 @@ export function HomeClient() {
                 </span>
               </p>
             ) : null}
-            <LocationNotice className="mt-2" />
+            {/* Opened from a Telegram chat, the bot tip stands in for the notice's own Telegram line. */}
+            <TelegramStrip className="mt-2" />
+            <LocationNotice className="mt-2" telegram={!tgStrip} />
             {/* Phones: the key and "Help me choose" open with the list and fold away at the peek. */}
             <div
               data-sheet-reveal
@@ -754,6 +760,11 @@ export function HomeClient() {
             <Link href="/terms" className="inline-flex min-h-11 min-w-11 items-center font-semibold underline">
               Terms
             </Link>
+            {TELEGRAM_BOT_URL ? (
+              <Link href="/about#telegram" className="inline-flex min-h-11 min-w-11 items-center font-semibold underline">
+                Telegram bot
+              </Link>
+            ) : null}
           </p>
         </div>
       </BottomSheet>

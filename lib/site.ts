@@ -12,3 +12,23 @@ export const SITE_URL = (
  * inbox). Unset means the pages fall back to in-app reporting only.
  */
 export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || null;
+
+/**
+ * The Telegram bot (BOT.md), linked from /about, the map sheet and a few contextual moments. Defaults to the
+ * live @ShitGoWhereBot so production shows it with no extra env; set NEXT_PUBLIC_TELEGRAM_BOT_URL to "off" to
+ * hide every mention, or to another t.me link for a test bot. Inlined at build time.
+ */
+const TELEGRAM_ENV = process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL?.trim().replace(/\/+$/, "");
+export const TELEGRAM_BOT_URL =
+  TELEGRAM_ENV?.toLowerCase() === "off" ? null : TELEGRAM_ENV || "https://t.me/ShitGoWhereBot";
+
+/** "@ShitGoWhereBot", read off the link so a test bot names itself. */
+export const TELEGRAM_BOT_HANDLE = TELEGRAM_BOT_URL ? `@${TELEGRAM_BOT_URL.split("/").pop()}` : null;
+
+/**
+ * Opens the bot asking for a location straight away (its /start handler reads the `near` payload; anything
+ * it doesn't know falls through to the normal welcome).
+ */
+export function telegramStartUrl(payload: "near"): string | null {
+  return TELEGRAM_BOT_URL ? `${TELEGRAM_BOT_URL}?start=${payload}` : null;
+}
