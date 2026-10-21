@@ -268,14 +268,21 @@ export default async function CreatorPage() {
           <h2 id="certifications" className={H2}>
             Certifications
           </h2>
-          <div className={cx(card, "mt-3 px-5 py-4")}>
-            <h3 className="font-extrabold">{CERTIFICATIONS.issuer}</h3>
-            <ul className={bullets}>
-              {CERTIFICATIONS.courses.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          </div>
+          <ul className={cx(card, "mt-3 px-5 py-1")}>
+            {CERTIFICATIONS.map((c) => (
+              <li key={c.name} className="border-t border-border/70 py-4 first:border-t-0">
+                <h3 className="font-extrabold">{c.name}</h3>
+                <p className="text-sm font-bold text-muted">{c.issuer}</p>
+                {c.items ? (
+                  <ul className={bullets}>
+                    {c.items.map((i) => (
+                      <li key={i}>{i}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
     </article>

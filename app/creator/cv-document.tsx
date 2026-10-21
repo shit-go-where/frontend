@@ -177,10 +177,12 @@ export function CvDocument() {
         </Section>
 
         <Section title="Certifications">
-          <Text>
-            <Text style={s.strong}>{CERTIFICATIONS.issuer}: </Text>
-            {CERTIFICATIONS.courses.join("; ")}
-          </Text>
+          {CERTIFICATIONS.map((c) => (
+            <Text key={c.name} style={{ marginTop: 1 }}>
+              <Text style={s.strong}>{c.name}</Text>
+              {c.items ? `: ${c.items.join("; ")}` : `, ${c.issuer}`}
+            </Text>
+          ))}
         </Section>
       </Page>
     </Document>

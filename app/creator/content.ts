@@ -301,12 +301,24 @@ export const SKILLS: SkillGroup[] = [
   },
 ];
 
-export const CERTIFICATIONS = {
-  issuer: "Google Data Analytics",
-  courses: [
-    "Foundations: Data, Data, Everywhere",
-    "Ask Questions to Make Data-Driven Decisions",
-    "Data Analysis with R Programming",
-    "Share Data Through the Art of Visualization",
-  ],
-};
+export interface Certification {
+  name: string;
+  issuer: string;
+  /** Courses that make up a programme; omitted for a single exam. */
+  items?: string[];
+}
+
+/** Most important first: the page and the CV keep this order. */
+export const CERTIFICATIONS: Certification[] = [
+  { name: "AWS Certified Solutions Architect – Associate", issuer: "Amazon Web Services" },
+  {
+    name: "Google Data Analytics courses",
+    issuer: "Google",
+    items: [
+      "Foundations: Data, Data, Everywhere",
+      "Ask Questions to Make Data-Driven Decisions",
+      "Data Analysis with R Programming",
+      "Share Data Through the Art of Visualization",
+    ],
+  },
+];
