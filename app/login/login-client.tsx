@@ -4,12 +4,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, ExternalLink, FlaskConical, Map as MapIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { Mascot } from "@/components/mascot";
 import { Button, Card, buttonClass, cx, inputClass } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { ME_KEY, useMe } from "@/lib/auth";
 import { safeRedirect } from "@/lib/format";
+import { useInAppBrowser, type InAppPlatform } from "@/lib/in-app-browser";
 
 const DEV_LOGIN = process.env.NEXT_PUBLIC_DEV_LOGIN === "true";
 
@@ -25,29 +26,6 @@ const AUTH_ERRORS: Record<string, string> = {
   no_code: "Google didn't let us finish signing you in. Please try again.",
 };
 const AUTH_ERROR_FALLBACK = "Sign-in didn't work. Please try again.";
-
-type InAppPlatform = "android" | "ios" | "other";
-
-/**
- * Social and chat apps open links in their own embedded browser, where Google refuses to sign anyone in
- * ("disallowed_useragent"). Facebook, Instagram, LINE, TikTok, Telegram, WeChat, and any Android WebView.
- */
-const IN_APP_UA = /FBAN|FBAV|FB_IAB|Instagram|\bLine\/|TikTok|musical_ly|BytedanceWebview|Telegram|MicroMessenger|; wv\)/;
-
-function inAppPlatform(): InAppPlatform | null {
-  const ua = navigator.userAgent;
-  if (!IN_APP_UA.test(ua)) return null;
-  if (/Android/.test(ua)) return "android";
-  if (/iPhone|iPad|iPod/.test(ua)) return "ios";
-  return "other";
-}
-
-const noSubscribe = () => () => {};
-
-/** Null on the server and while hydrating; the browser can't change under the page, so nothing to subscribe to. */
-function useInAppBrowser(): InAppPlatform | null {
-  return useSyncExternalStore(noSubscribe, inAppPlatform, () => null);
-}
 
 function GoogleMark() {
   return (

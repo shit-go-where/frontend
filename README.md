@@ -33,6 +33,7 @@ pnpm dev                      # http://localhost:3000
 | `API_PROXY_SECRET` | unset | Same value as the API's `API_PROXY_SECRET`. When set, `proxy.ts` handles the `/api/*` rewrite and forwards each visitor's IP (`x-sgw-client-ip`) with the secret, so the API rate-limits per phone rather than per Vercel proxy. Server-side only. |
 | `NEXT_PUBLIC_SITE_URL` | unset (falls back to `VERCEL_PROJECT_PRODUCTION_URL`, then localhost) | Public origin for canonical URLs, `sitemap.xml`, `robots.txt` and the Open Graph URLs. Set it to the final domain. Inlined at build time. |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | unset | Takedown/contact address shown on `/about` and `/privacy`; unset hides the email lines. Inlined at build time. |
+| `NEXT_PUBLIC_TELEGRAM_BOT_URL` | `https://t.me/ShitGoWhereBot` | The Telegram bot linked from `/about`, the map sheet and a few contextual tips. `off` hides every mention; another t.me link points them at a test bot (the `/about` QR code then hides, since it encodes the live bot). Inlined at build time. |
 | `NEXT_PUBLIC_POSTHOG_KEY` | unset | PostHog US project key. Unset = analytics off, nothing loads or is sent. Inlined at build time; traffic goes through the `/ingest` rewrite. |
 | `NEXT_PUBLIC_SENTRY_DSN` | unset | Sentry DSN (US region) for error reporting. Unset = off: the SDK never loads in the browser or on the server and nothing is sent. Browser reports go through the same-origin `/monitoring` tunnel. Inlined at build time. See [Error reporting](#error-reporting-sentry). |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | unset | Build-time only, for uploading source maps. Without `SENTRY_AUTH_TOKEN` no source maps are generated or uploaded and the build is unchanged. Never set the token locally. |
@@ -115,6 +116,7 @@ Separate Vercel Hobby project from the API.
 | `API_PROXY_SECRET` | **recommended**: `openssl rand -hex 32`, identical in the API project | same | unset |
 | `NEXT_PUBLIC_SITE_URL` | **required once a domain exists**: `https://shitgowhere.com` | unset (previews then canonicalise to the production alias, which is fine) | unset |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | recommended: the takedown/contact alias | same or unset | unset |
+| `NEXT_PUBLIC_TELEGRAM_BOT_URL` | unset (the live bot) | unset | unset |
 | `NEXT_PUBLIC_POSTHOG_KEY` | the US project key | **unset** (keeps preview traffic out of the product data) | unset |
 | `NEXT_PUBLIC_SENTRY_DSN` | the `sgw-frontend` DSN (US) | same (events are tagged `environment: preview`) | unset |
 | `SENTRY_ORG` / `SENTRY_PROJECT` | `shit-go-where` / `sgw-frontend` | same | unset |

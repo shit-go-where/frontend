@@ -7,6 +7,7 @@ import { api } from "@/lib/api/client";
 import { tidyPlaceAddress, tidyPlaceName } from "@/lib/format";
 import { haversineM, useFixAge, useLocation, type LatLng } from "@/lib/location";
 import { useOnline } from "@/lib/offline";
+import { telegramStartUrl } from "@/lib/site";
 import { STATIONS, searchStations, type Station } from "@/lib/stations";
 import { buttonClass, cx } from "./ui";
 
@@ -191,7 +192,11 @@ export function LocationSearch({
  * Says where results are measured from whenever it isn't a fresh fix of where you are: a searched place,
  * the fallback (never presented as "you"), or a GPS fix old enough to have its age shown.
  */
-export function LocationNotice({ className }: { className?: string }) {
+/**
+ * `telegram` (the home map only) adds the bot as a second way round a blocked location: it takes a
+ * location shared in the chat, which needs no browser permission. Place search stays the first fix.
+ */
+export function LocationNotice({ className, telegram = false }: { className?: string; telegram?: boolean }) {
   const { status, source, placeName } = useLocation();
   const age = useFixAge();
   if (source === "gps") {
@@ -212,11 +217,29 @@ export function LocationNotice({ className }: { className?: string }) {
         : status === "locating" && source === "default"
           ? "Still finding you"
           : null;
+  const bot = telegram && (status === "denied" || status === "unavailable") ? telegramStartUrl("near") : null;
   return (
-    <p role="status" className={cx("rounded-2xl bg-warn-soft px-4 py-2.5 text-sm font-bold text-fg", className)}>
-      {why ? `${why}. ` : ""}
-      Showing toilets near <strong>{placeName ?? "Raffles Place"}</strong>. Search above to change.
-    </p>
+    <div role="status" className={cx("rounded-2xl bg-warn-soft px-4 py-2.5 text-sm font-bold text-fg", className)}>
+      <p>
+        {why ? `${why}. ` : ""}
+        Showing toilets near <strong>{placeName ?? "Raffles Place"}</strong>. Search above to change.
+      </p>
+      {bot ? (
+        <p className="mt-1 font-medium text-muted">
+          Or{" "}
+          {/* A 44 px target that keeps the line its own height. */}
+          <a
+            href={bot}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="-my-3 inline-flex min-h-11 items-center font-bold text-primary underline underline-offset-2"
+          >
+            send your location to the Telegram bot
+          </a>
+          .
+        </p>
+      ) : null}
+    </div>
   );
 }
 

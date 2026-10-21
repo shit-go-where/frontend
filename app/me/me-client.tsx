@@ -80,10 +80,12 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 /** Old links point at the leaderboard switch by hash; it now lives under Settings. */
 const OPTIN_HASH = "#leaderboard-optin";
+/** /about and the check-in dialog link the Connect Telegram row, also under Settings. */
+const TELEGRAM_HASH = "#telegram";
 
 /** `?tab=settings`, so a tab can be linked to and survives a reload. Read after hydration. */
 function readTab(): Tab {
-  if (window.location.hash === OPTIN_HASH) return "settings";
+  if (window.location.hash === OPTIN_HASH || window.location.hash === TELEGRAM_HASH) return "settings";
   const t = new URLSearchParams(window.location.search).get("tab");
   return TABS.some((x) => x.value === t) ? (t as Tab) : "progress";
 }
@@ -1483,6 +1485,11 @@ function VerifierCredit({ me }: { me: Me }) {
  */
 function TelegramLink({ me }: { me: Me }) {
   const qc = useQueryClient();
+  const ref = useRef<HTMLDivElement>(null);
+  // Linked as /me#telegram, which opens this tab after /me loads.
+  useEffect(() => {
+    if (window.location.hash === TELEGRAM_HASH) ref.current?.scrollIntoView({ block: "center" });
+  }, []);
   const [opened, setOpened] = useState(false);
   const connect = useMutation({
     mutationFn: api.telegramLinkToken,
@@ -1510,7 +1517,7 @@ function TelegramLink({ me }: { me: Me }) {
   const failed = connect.error ?? unlink.error;
 
   return (
-    <div className={row}>
+    <div ref={ref} id="telegram" className={cx(row, "scroll-mt-20")}>
       <div className="flex min-h-11 items-center justify-between gap-4">
         <span>
           <span className="block font-extrabold">{me.telegramLinked ? "Telegram: linked" : "Connect Telegram"}</span>

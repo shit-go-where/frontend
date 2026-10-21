@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
+import { Send } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { PinGlyph, type PinVariant } from "@/components/pin";
+import { buttonClass } from "@/components/styles";
+import { TELEGRAM_QR_URL, TelegramQr } from "@/components/telegram-qr";
 import { LineBadge } from "@/components/toilet-bits";
 import { MRT_LINES, TIER_LEGEND } from "@/lib/format";
-import { CONTACT_EMAIL } from "@/lib/site";
+import { CONTACT_EMAIL, TELEGRAM_BOT_HANDLE, TELEGRAM_BOT_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Why Shit Go Where exists, how to read the map, words you'll see in the app, data licences, and how to contact us.",
+    "Why Shit Go Where exists, how to read the map, words you'll see in the app, data licences, the Telegram bot, and how to contact us.",
 };
 
 const TIER_PIN: Record<(typeof TIER_LEGEND)[number]["tier"], PinVariant> = {
@@ -175,6 +178,54 @@ export default function AboutPage() {
         </Link>
         . Every check-in keeps the map fresh.
       </p>
+
+      {TELEGRAM_BOT_URL ? (
+        <section aria-labelledby="telegram">
+          {/* Clear of the sticky 64 px header from md up. */}
+          <h2 id="telegram" className={`${h2} scroll-mt-6 md:scroll-mt-24`}>
+            On Telegram also can
+          </h2>
+          <div className="md:flex md:items-start md:gap-8">
+            <div className="min-w-0 flex-1">
+              <p className="mt-3">
+                Send {TELEGRAM_BOT_HANDLE} your location and it replies with the top 3 toilets nearby, or type a place name
+                instead. You can check in and report how a toilet is from the chat, no account needed. In a group chat,{" "}
+                <code className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.9em]">/toilet Bishan</code> finds toilets near a
+                place for everyone.
+              </p>
+              <a
+                href={TELEGRAM_BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClass("secondary", "md", "mt-5")}
+              >
+                <Send className="size-5" aria-hidden /> Open {TELEGRAM_BOT_HANDLE}
+              </a>
+              <p className="mt-5">
+                Have an account?{" "}
+                <Link href="/me#telegram" className={link}>
+                  Connect it in Me
+                </Link>{" "}
+                so points from the bot land there.
+              </p>
+              <p className="mt-3 text-muted">
+                The bot uses your location for that one search and never keeps it. See the{" "}
+                <Link href="/privacy#telegram" className={link}>
+                  privacy notice
+                </Link>{" "}
+                for what it does keep.
+              </p>
+            </div>
+            {/* Desktop only: on a phone you are already where the button goes. */}
+            {TELEGRAM_BOT_URL === TELEGRAM_QR_URL ? (
+              <figure className="mt-4 hidden w-40 shrink-0 -rotate-2 rounded-3xl border border-border bg-rim p-2 text-center shadow-rest md:block">
+                <TelegramQr label={`QR code that opens ${TELEGRAM_BOT_HANDLE} in Telegram`} className="w-full rounded-2xl" />
+                <figcaption className="px-1 pb-1 text-sm font-bold leading-snug text-poo-ink">Scan to open on your phone</figcaption>
+              </figure>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       <h2 id="contact" className={`${h2} scroll-mt-6`}>
         Contact
