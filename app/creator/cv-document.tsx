@@ -180,7 +180,8 @@ export function CvDocument() {
           {CERTIFICATIONS.map((c) => (
             <Text key={c.name} style={{ marginTop: 1 }}>
               <Text style={s.strong}>{c.name}</Text>
-              {c.items ? `: ${c.items.join("; ")}` : `, ${c.issuer}`}
+              {`, ${c.issuer}`}
+              {c.detail ? <Text style={s.sub}>{` · ${c.detail}`}</Text> : null}
             </Text>
           ))}
         </Section>

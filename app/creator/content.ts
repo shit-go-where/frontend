@@ -164,20 +164,19 @@ export const FACTS: { label: string; value: string; detail?: string }[] = [
  */
 export const SHIT_GO_WHERE = {
   name: "Shit Go Where",
-  /** The page's paragraphs on what it does. */
-  what: [
-    "I built Shit Go Where on my own, on free tiers. It finds the nearest clean toilet, how far a walk it is and whether it has what you need. Tap I need to go and it picks the closest good one and walks you there.",
-    "People check in, review and report what they find, so the map stays honest.",
-  ],
+  /** The page's first paragraph: what it does, then the bot. */
+  what: "I built Shit Go Where on my own, on free tiers. It finds the nearest clean toilet, and I need to go walks you to the closest good one.",
   bot: {
-    before: "Rather stay in Telegram? Send",
+    before: "On Telegram, send",
     handle: "@ShitGoWhereBot",
     href: "https://t.me/ShitGoWhereBot",
-    after: "your location for the top three nearby.",
+    after: "your location for the three nearest.",
   },
-  /** The teaser under Check-ins on desktop and phone, linking down to the full section. */
+  /** The second paragraph: how it stays honest, with a link to the tier explainer on /about. */
+  honest: "Check-ins keep the map honest, and every toilet carries a trust tier, so open data never passes for a toilet somebody visited.",
+  honestLink: "How tiers work",
+  /** The teaser under Check-ins on desktop, linking down to the full section. */
   teaserLink: "How I built it",
-  tiersIntro: "Every toilet wears a trust tier, so open data never passes for a toilet somebody actually visited.",
   stack: [
     { label: "App", value: "Next.js progressive web app" },
     { label: "API", value: "NestJS" },
@@ -225,6 +224,12 @@ export function liveNumbersLine(n: { toilets: number; verified: number; areas: n
     { text: "." },
   ];
 }
+
+/**
+ * How many bullets each project shows on the page; the CV prints them all. Bullets are ordered
+ * strongest first (impact, ownership, hard tech), so the page shows the best of each.
+ */
+export const PAGE_BULLETS = 2;
 
 /** Shit Go Where itself is the page's story, not a card here. */
 export const PROJECTS: Project[] = [
@@ -304,21 +309,16 @@ export const SKILLS: SkillGroup[] = [
 export interface Certification {
   name: string;
   issuer: string;
-  /** Courses that make up a programme; omitted for a single exam. */
-  items?: string[];
+  /** One plain line after the issuer (a programme's scope); omitted for a single exam. */
+  detail?: string;
 }
 
 /** Most important first: the page and the CV keep this order. */
 export const CERTIFICATIONS: Certification[] = [
   { name: "AWS Certified Solutions Architect – Associate", issuer: "Amazon Web Services" },
   {
-    name: "Google Data Analytics courses",
+    name: "Google Data Analytics",
     issuer: "Google",
-    items: [
-      "Foundations: Data, Data, Everywhere",
-      "Ask Questions to Make Data-Driven Decisions",
-      "Data Analysis with R Programming",
-      "Share Data Through the Art of Visualization",
-    ],
+    detail: "4 courses, from data foundations to R and visualisation",
   },
 ];
