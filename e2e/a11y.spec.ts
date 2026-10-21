@@ -36,6 +36,7 @@ const ROUTES: Route[] = [
   { path: "/me", who: "user", ready: "h1" },
   { path: "/login", ready: "h1" },
   { path: "/about", ready: "h1" },
+  { path: "/creator", ready: "h1" },
   { path: "/privacy", ready: "h1" },
   { path: "/stations", ready: "h1" },
   { path: "/stations/dhoby-ghaut", ready: "h1" },

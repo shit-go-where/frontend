@@ -70,6 +70,7 @@ const STATES: State[] = [
   { name: "me", path: "/me", who: "user", ready: "h1" },
   { name: "login", path: "/login", ready: "h1" },
   { name: "about", path: "/about", ready: "h1" },
+  { name: "creator", path: "/creator", ready: "h1" },
   { name: "privacy", path: "/privacy", ready: "h1" },
   { name: "stations", path: "/stations", ready: "h1" },
   { name: "station", path: "/stations/dhoby-ghaut", ready: "h1" },
