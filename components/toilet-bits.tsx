@@ -54,6 +54,7 @@ export function TierBadge({
   unconfirmed,
   age,
   seenBy,
+  help,
   className,
 }: {
   tier: ToiletTier;
@@ -67,6 +68,8 @@ export function TierBadge({
   age?: string;
   /** Different people who've confirmed a Community toilet; said on the badge from two up. */
   seenBy?: number;
+  /** What the tier means, for screen readers. Defaults to the tier's own help text. */
+  help?: string;
   className?: string;
 }) {
   if (pending) {
@@ -99,7 +102,7 @@ export function TierBadge({
     >
       <Icon className="size-3.5 shrink-0" aria-hidden />
       {TIER_LABELS[tier]}
-      <span className="sr-only">: {TIER_HELP[tier].toLowerCase()}</span>
+      <span className="sr-only">: {help ?? TIER_HELP[tier].toLowerCase()}</span>
       {seen !== null ? <span className="font-bold">· seen by {seen}</span> : null}
       {age ? (
         <span className="font-bold" aria-hidden>
