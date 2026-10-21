@@ -221,6 +221,13 @@ export default function AboutPage() {
           </>
         ) : null}
       </ul>
+      <p className="mt-6">
+        <strong className="font-extrabold">Who made this?</strong>{" "}
+        <Link href="/creator" className={link}>
+          Meet the creator
+        </Link>
+        .
+      </p>
 
       {/* Standalone links, so each is a 44 px tap target. */}
       <p className="mt-12 flex flex-wrap items-center gap-x-3 border-t border-border/70 pt-2 text-sm text-muted">
