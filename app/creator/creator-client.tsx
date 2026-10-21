@@ -35,6 +35,83 @@ export function StickyColumn({ children, className }: { children: React.ReactNod
   );
 }
 
+/**
+ * Phones only: the rest of a list behind a "Show n more" button, placed before what it reveals so the
+ * reading order follows the toggle. From lg everything shows and the button goes away.
+ */
+export function PhoneMore({
+  show,
+  hide,
+  flush,
+  children,
+}: {
+  show: string;
+  hide: string;
+  /** No top margin from lg, for a body that sits in a grid cell beside other content. */
+  flush?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((o) => !o)}
+        className="-mx-2 mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2 lg:hidden"
+      >
+        {open ? hide : show}
+        <ChevronDown className={cx("size-5 transition-transform duration-200", open && "rotate-180")} aria-hidden />
+      </button>
+      <div id={id} className={cx(open ? "mt-3" : "hidden lg:block", flush ? "lg:mt-0" : "lg:mt-3")}>
+        {children}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Phones only: a list whose later items carry `max-lg:hidden max-lg:group-data-open/fold:block` (set by
+ * the server-rendered items themselves), shown when the button below opens the group. One list, so the
+ * desktop grid stays whole. Opening moves focus to the first item it revealed, since that sits above
+ * the button.
+ */
+export function PhoneFoldGroup({
+  show,
+  hide,
+  firstHiddenId,
+  children,
+}: {
+  show: string;
+  hide: string;
+  /** The id of the first item the button reveals. */
+  firstHiddenId: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  return (
+    <div className="group/fold" data-open={open || undefined}>
+      <div id={listId}>{children}</div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => {
+          setOpen((o) => !o);
+          if (!open) requestAnimationFrame(() => document.getElementById(firstHiddenId)?.focus());
+        }}
+        className="-mx-2 mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 font-extrabold text-primary hover:bg-surface-2 lg:hidden"
+      >
+        {open ? hide : show}
+        <ChevronDown className={cx("size-5 transition-transform duration-200", open && "rotate-180")} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 /** Shown on phones; the rest fold behind "Show earlier check-ins". Desktop shows them all. */
 const SHOWN_ON_PHONE = 2;
 

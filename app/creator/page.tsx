@@ -25,13 +25,13 @@ import {
   Wrench,
 } from "lucide-react";
 import { buttonClass, cx } from "@/components/styles";
-import { PinGlyph, tierPinVariant } from "@/components/pin";
 import { TierBadge } from "@/components/toilet-bits";
 import { getAreasServer, getStationsServer } from "@/lib/api/server";
 import { HUE_CHIP, type Hue } from "@/lib/feature-hues";
-import { TIER_LEGEND, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { CONTACT_EMAIL } from "@/lib/site";
 import {
+  type Project,
   CERTIFICATIONS,
   CURRENT_ROLE,
   EDUCATION,
@@ -42,6 +42,7 @@ import {
   LINKEDIN_URL,
   MAJORS,
   NAME,
+  PAGE_BULLETS,
   PROJECTS,
   ROLE_COUNT,
   SHIT_GO_WHERE,
@@ -52,7 +53,7 @@ import {
   liveNumbersLine,
   roleSince,
 } from "./content";
-import { CheckIns, StickyColumn } from "./creator-client";
+import { CheckIns, PhoneFoldGroup, PhoneMore, StickyColumn } from "./creator-client";
 
 const description =
   "Dylan Chua, a software engineer in Singapore and the creator of Shit Go Where: where I've worked, what I've built, my CV and how to reach me.";
@@ -133,10 +134,11 @@ export default async function CreatorPage() {
   return (
     <article className="mx-auto w-full max-w-3xl px-4 pb-12 pt-3 leading-relaxed lg:max-w-7xl">
       {/*
-       * One grid, sections in phone reading order. From lg, Check-ins moves into the right column across
-       * every row (the last row absorbs any height difference), so the list is never rendered twice.
+       * One grid, sections in phone reading order. From lg, Check-ins sits in the right column beside the
+       * first three rows (header, Facts, Features; the third absorbs any height difference), so the list
+       * is never rendered twice. Everything after spans both columns.
        */}
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:grid-rows-[repeat(6,auto)_1fr] lg:gap-x-12 xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] xl:gap-x-16">
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:grid-rows-[auto_auto_1fr] lg:gap-x-12 xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] xl:gap-x-16">
         <Header />
 
         <section aria-labelledby="facts" className="mt-10 lg:col-start-1">
@@ -160,7 +162,7 @@ export default async function CreatorPage() {
           </dl>
         </section>
 
-        <section aria-labelledby="features" className="mt-10 lg:col-start-1">
+        <section aria-labelledby="features" className="mt-8 lg:col-start-1 lg:mt-10">
           <h2 id="features" className={H2}>
             Features <span className={PLAIN}>· Skills</span>
           </h2>
@@ -179,7 +181,7 @@ export default async function CreatorPage() {
                       <li
                         key={s}
                         className={cx(
-                          "inline-flex min-h-9 items-center rounded-full px-3.5 text-sm font-bold",
+                          "inline-flex min-h-8 items-center rounded-full px-3 text-sm font-bold lg:min-h-9 lg:px-3.5",
                           style.hue ? HUE_CHIP[style.hue] : "border border-border/70 bg-surface-2",
                         )}
                       >
@@ -195,7 +197,7 @@ export default async function CreatorPage() {
 
         <section
           aria-labelledby="check-ins"
-          className="mt-10 lg:col-start-2 lg:row-start-1 lg:row-end-[-1] lg:mt-0 lg:pt-2"
+          className="mt-8 lg:col-start-2 lg:row-start-1 lg:row-end-4 lg:mt-0 lg:pt-2"
         >
           <StickyColumn className={cx(card, "p-5")}>
             <h2 id="check-ins" className="text-2xl leading-tight">
@@ -209,83 +211,107 @@ export default async function CreatorPage() {
 
         <AlsoBuiltHere live={live} />
 
-        <section aria-labelledby="projects" className="mt-12 lg:col-start-1">
+        <section aria-labelledby="projects" className="mt-10 lg:col-span-full lg:mt-12">
           <h2 id="projects" className={H2}>
             Other projects
           </h2>
-          <ul className="mt-3 flex flex-col gap-3">
-            {PROJECTS.map((p) => (
-              <li key={p.name} className={cx(card, "px-5 py-4")}>
-                <h3 className="font-display text-lg leading-snug">{p.name}</h3>
-                <p className="text-sm font-bold text-muted">
-                  {p.context ? `${p.context} · ` : null}
-                  {p.dates}
-                </p>
-                <ul className={bullets}>
-                  {p.bullets.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
-                <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Built with">
-                  {p.tags.map((t) => (
-                    <li key={t} className="rounded-full border border-border/70 bg-surface-2 px-2.5 py-0.5 text-xs font-bold">
-                      {t}
-                    </li>
-                  ))}
-                </ul>
-                {p.links.length ? (
-                  <p className="mt-1 flex flex-wrap gap-x-5">
-                    {p.links.map((l) => (
-                      <a key={l.href} href={l.href} className={cx(link, "inline-flex min-h-11 items-center gap-1")} {...external}>
-                        {l.label}
-                        <ArrowUpRight className="size-4" aria-hidden />
-                        <span className="sr-only"> (opens in a new tab)</span>
-                      </a>
-                    ))}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section aria-labelledby="education" className="mt-12 lg:col-start-1">
-          <h2 id="education" className={H2}>
-            Education
-          </h2>
-          <div className={cx(card, "mt-3 flex gap-3 px-5 py-4")}>
-            <GraduationCap className="mt-1 size-5 shrink-0 text-muted" aria-hidden />
-            <div>
-              <h3 className="font-display text-lg leading-snug">{EDUCATION.school}</h3>
-              <p className="font-extrabold">{EDUCATION.degree}</p>
-              <p className="text-sm font-bold text-muted">{EDUCATION.dates}</p>
-              <p className="mt-2">Majors: {MAJORS}</p>
-            </div>
+          <div className="mt-3">
+            <PhoneFoldGroup
+              show={`Show ${PROJECTS.length - PROJECTS_ON_PHONE} more projects`}
+              hide="Show fewer projects"
+              firstHiddenId={projectId(PROJECTS[PROJECTS_ON_PHONE]?.name ?? "")}
+            >
+              <ul className="grid items-start gap-3 lg:grid-cols-2">
+                {PROJECTS.map((p, i) => (
+                  <ProjectCard key={p.name} p={p} folded={i >= PROJECTS_ON_PHONE} />
+                ))}
+              </ul>
+            </PhoneFoldGroup>
           </div>
         </section>
 
-        <section aria-labelledby="certifications" className="mt-12 lg:col-start-1">
-          <h2 id="certifications" className={H2}>
-            Certifications
-          </h2>
-          <ul className={cx(card, "mt-3 px-5 py-1")}>
-            {CERTIFICATIONS.map((c) => (
-              <li key={c.name} className="border-t border-border/70 py-4 first:border-t-0">
-                <h3 className="font-extrabold">{c.name}</h3>
-                <p className="text-sm font-bold text-muted">{c.issuer}</p>
-                {c.items ? (
-                  <ul className={bullets}>
-                    {c.items.map((i) => (
-                      <li key={i}>{i}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+        {/* Side by side from lg: two short cards don't need a row each. */}
+        <div className="lg:col-span-full lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-12 xl:gap-x-16">
+          <section aria-labelledby="education" className="mt-10 lg:mt-12">
+            <h2 id="education" className={H2}>
+              Education
+            </h2>
+            <div className={cx(card, "mt-3 flex gap-3 px-5 py-4")}>
+              <GraduationCap className="mt-1 size-5 shrink-0 text-muted" aria-hidden />
+              <div>
+                <h3 className="font-display text-lg leading-snug">{EDUCATION.school}</h3>
+                <p className="font-extrabold">{EDUCATION.degree}</p>
+                <p className="text-sm font-bold text-muted">{EDUCATION.dates}</p>
+                <p className="mt-2">Majors: {MAJORS}</p>
+              </div>
+            </div>
+          </section>
+
+          <section aria-labelledby="certifications" className="mt-10 lg:mt-12">
+            <h2 id="certifications" className={H2}>
+              Certifications
+            </h2>
+            <ul className={cx(card, "mt-3 px-5 py-1")}>
+              {CERTIFICATIONS.map((c) => (
+                <li key={c.name} className="border-t border-border/70 py-4 first:border-t-0">
+                  <h3 className="font-extrabold">{c.name}</h3>
+                  <p className="text-sm font-bold text-muted">
+                    {c.issuer}
+                    {c.detail ? ` · ${c.detail}` : null}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
       </div>
     </article>
+  );
+}
+
+/** Projects shown on phones before "Show n more projects"; desktop shows them all, two to a row. */
+const PROJECTS_ON_PHONE = 1;
+
+const projectId = (name: string) => `project-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+/** `folded`: hidden on phones until "Show n more projects" opens the group (PhoneFoldGroup). */
+function ProjectCard({ p, folded }: { p: Project; folded?: boolean }) {
+  return (
+    <li
+      id={projectId(p.name)}
+      tabIndex={folded ? -1 : undefined}
+      className={cx(card, "px-5 py-4", folded && "max-lg:hidden max-lg:group-data-open/fold:block")}
+    >
+      <h3 className="font-display text-lg leading-snug">{p.name}</h3>
+      <p className="text-sm font-bold text-muted">
+        {p.context ? `${p.context} · ` : null}
+        {p.dates}
+      </p>
+      {/* The strongest bullets only; the CV prints every one. */}
+      <ul className={bullets}>
+        {p.bullets.slice(0, PAGE_BULLETS).map((b) => (
+          <li key={b}>{b}</li>
+        ))}
+      </ul>
+      <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Built with">
+        {p.tags.map((t) => (
+          <li key={t} className="rounded-full border border-border/70 bg-surface-2 px-2.5 py-0.5 text-xs font-bold">
+            {t}
+          </li>
+        ))}
+      </ul>
+      {p.links.length ? (
+        <p className="mt-1 flex flex-wrap gap-x-5">
+          {p.links.map((l) => (
+            <a key={l.href} href={l.href} className={cx(link, "inline-flex min-h-11 items-center gap-1")} {...external}>
+              {l.label}
+              <ArrowUpRight className="size-4" aria-hidden />
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          ))}
+        </p>
+      ) : null}
+    </li>
   );
 }
 
@@ -426,89 +452,76 @@ function ProofTeaser({ live }: { live: LiveCounts }) {
   );
 }
 
-/** The case study: what the app does, how trust works, what it's built on and what I run. Live numbers when the API answers. */
+/**
+ * The case study: what the app does, how it stays honest, what it's built on and what I run. The live
+ * numbers show here only below lg; from lg the teaser under the check-ins carries them, so they appear
+ * once per layout.
+ */
 function AlsoBuiltHere({ live }: { live: LiveCounts | null }) {
   const s = SHIT_GO_WHERE;
   return (
-    <section aria-labelledby="also-built" className="mt-12 lg:col-start-1">
+    <section aria-labelledby="also-built" className="mt-10 lg:col-span-full lg:mt-12">
       <h2 id="also-built" className={cx(H2, "scroll-mt-24")}>
         Also built here: {s.name}
       </h2>
-      <div className="mt-3 flex max-w-[65ch] flex-col gap-3">
-        {s.what.map((p) => (
-          <p key={p}>{p}</p>
-        ))}
-        <p>
-          {s.bot.before}{" "}
-          <a href={s.bot.href} className={link} {...external}>
-            {s.bot.handle}
-            <span className="sr-only"> (opens in a new tab)</span>
-          </a>{" "}
-          {s.bot.after}
-        </p>
-      </div>
-
-      {live ? (
-        <p className="mt-4 rounded-3xl bg-mint-soft px-5 py-4 text-lg font-medium leading-relaxed text-pretty">
-          <LiveNumbers live={live} />
-        </p>
-      ) : null}
-
-      <div className={cx(card, "mt-4 divide-y divide-border/70")}>
-        <div className="px-5 py-4">
-          <h3 className="font-display text-lg leading-snug">How the map stays honest</h3>
-          <p className="mt-1 text-pretty">{s.tiersIntro}</p>
-          <ul className="mt-3 flex flex-col gap-3">
-            {TIER_LEGEND.map((l) => (
-              <li key={l.tier} className="flex items-start gap-3">
-                <PinGlyph
-                  variant={l.tier === "PENDING" ? tierPinVariant("IMPORTED", true) : tierPinVariant(l.tier)}
-                  className="size-8"
-                />
-                <p>
-                  <span className="font-extrabold">{l.label}</span>
-                  <span className="block text-sm font-medium text-muted">{l.help}</span>
-                </p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2">
-            <Link href="/about" className={cx(link, "inline-flex min-h-11 items-center gap-1")}>
-              Where the data comes from
-              <ArrowRight className="size-4" aria-hidden />
+      <div className="mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-start lg:gap-x-12 xl:gap-x-16">
+        <div className="flex max-w-[65ch] flex-col gap-3">
+          <p>
+            {s.what} {s.bot.before}{" "}
+            <a href={s.bot.href} className={link} {...external}>
+              {s.bot.handle}
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>{" "}
+            {s.bot.after}
+          </p>
+          <p>
+            {s.honest}{" "}
+            <Link href="/about" className={cx(link, "whitespace-nowrap")}>
+              {s.honestLink}
+              <ArrowRight className="ml-1 inline size-4 align-[-0.15em]" aria-hidden />
             </Link>
           </p>
+          {live ? (
+            <p className="rounded-3xl bg-mint-soft px-5 py-4 font-medium text-pretty lg:hidden">
+              <LiveNumbers live={live} />
+            </p>
+          ) : null}
         </div>
 
-        <div className="px-5 py-4">
-          <h3 className="font-display text-lg leading-snug">How I built it</h3>
-          <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
-            {s.stack.map((x) => {
-              const Icon = STACK_ICONS[x.label] ?? Server;
-              return (
-                <div key={x.label}>
-                  <dt className="flex items-center gap-1.5 text-sm font-bold text-muted">
-                    <Icon className="size-4" aria-hidden />
-                    {x.label}
-                  </dt>
-                  <dd className="mt-0.5 font-bold">{x.value}</dd>
-                </div>
-              );
-            })}
-          </dl>
-        </div>
+        {/* Phones fold the stack and the ops list away to keep the page short; desktop shows them beside the story. */}
+        <PhoneMore show="How I built it and what I run" hide="Hide how I built it" flush>
+          <div className={cx(card, "grid divide-y divide-border/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0")}>
+            <div className="px-5 py-4">
+              <h3 className="font-display text-lg leading-snug">How I built it</h3>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-1">
+                {s.stack.map((x) => {
+                  const Icon = STACK_ICONS[x.label] ?? Server;
+                  return (
+                    <div key={x.label}>
+                      <dt className="flex items-center gap-1.5 text-sm font-bold text-muted">
+                        <Icon className="size-4" aria-hidden />
+                        {x.label}
+                      </dt>
+                      <dd className="font-bold">{x.value}</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </div>
 
-        <div className="px-5 py-4">
-          <h3 className="font-display text-lg leading-snug">What I run myself</h3>
-          <ul className="mt-3 flex flex-col gap-2">
-            {s.runs.map((r) => (
-              <li key={r} className="flex items-start gap-2 font-bold">
-                <ServerCog className="mt-1 size-4 shrink-0 text-muted" aria-hidden />
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
+            <div className="px-5 py-4">
+              <h3 className="font-display text-lg leading-snug">What I run myself</h3>
+              <ul className="mt-3 flex flex-col gap-2">
+                {s.runs.map((r) => (
+                  <li key={r} className="flex items-start gap-2 font-bold">
+                    <ServerCog className="mt-1 size-4 shrink-0 text-muted" aria-hidden />
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </PhoneMore>
       </div>
     </section>
   );
