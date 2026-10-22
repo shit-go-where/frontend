@@ -176,6 +176,8 @@ export interface ToiletMapProps {
   /** Initial centre, and where to fly when `recenterKey` changes. */
   center: LatLng;
   recenterKey?: number | string;
+  /** The least zoom a re-centre lands at (the add page's pin picker wants building level, not street level). */
+  recenterZoom?: number;
   zoom?: number;
   user?: LatLng | null;
   /** How far off the user's fix may be, in metres: drawn as a ring around the dot. */
@@ -284,6 +286,7 @@ function circlePolygon(c: LatLng, radiusM: number) {
 export default function ToiletMap({
   center,
   recenterKey,
+  recenterZoom = 15,
   zoom = 16,
   user,
   accuracy,
@@ -610,7 +613,7 @@ export default function ToiletMap({
       firstCenter.current = false;
       return;
     }
-    mapRef.current?.flyTo({ center: [center.lng, center.lat], zoom: Math.max(mapRef.current.getZoom(), 15), duration: 800, ...cameraMotion() });
+    mapRef.current?.flyTo({ center: [center.lng, center.lat], zoom: Math.max(mapRef.current.getZoom(), recenterZoom), duration: 800, ...cameraMotion() });
     flown();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when asked to re-centre (recenterKey), not on every new fix.
   }, [recenterKey]);

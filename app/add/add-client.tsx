@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,14 +9,16 @@ import {
   ChevronDown,
   Coins,
   LocateFixed,
+  MapPin,
   MapPinCheck,
   Plus,
   RotateCcw,
   Search,
   Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ToiletMap } from "@/components/map";
 import { LevelPicker } from "@/components/level-picker";
 import { Mascot } from "@/components/mascot";
@@ -39,7 +41,15 @@ import {
   type VenueType,
 } from "@/lib/api/types";
 import { useRequireAuth } from "@/lib/auth";
-import { AREA_TYPE_LABELS, CONTRIBUTOR_FEATURE_GROUPS, FEATURE_LABELS, VENUE_TYPE_LABELS, formatDistance } from "@/lib/format";
+import {
+  AREA_TYPE_LABELS,
+  CONTRIBUTOR_FEATURE_GROUPS,
+  FEATURE_LABELS,
+  VENUE_TYPE_LABELS,
+  formatDistance,
+  tidyPlaceAddress,
+  tidyPlaceName,
+} from "@/lib/format";
 import { levelShort, levelText, normalizeLevel } from "@/lib/level";
 import { haversineM, useLocation, type LatLng } from "@/lib/location";
 
@@ -164,6 +174,15 @@ function fromYouText(pin: LatLng, user: LatLng | null): string | null {
   return m < 8 ? "Pin is right where you are" : `Pin is ${formatDistance(m)} from you`;
 }
 
+/** A place picked in the pin step's search: where the map went, and a name the place step can match. */
+type Searched = LatLng & { name: string };
+
+/** The pin still sits within this of a searched place: the map took it there and nobody has fine-tuned it yet. */
+const UNTOUCHED_M = 5;
+
+/** Names compared loosely (case, spaces, punctuation): OneMap's "PLAZA SINGAPURA" is our Plaza Singapura. */
+const placeKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 /** The API's 400 for a place that already has a toilet listed and no level given (API_CONTRACT.md, Submissions). */
 function levelNeededError(e: unknown): string | null {
   if (!isApiError(e) || e.status !== 400) return null;
@@ -200,9 +219,45 @@ export function AddClient() {
     [dupes],
   );
   const [recenter, setRecenter] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState<Searched | null>(null);
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const qc = useQueryClient();
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const pin = d.pin ?? loc.coords;
+  /*
+   * The pin is the map centre, so flying the map to a search result puts the pin there too. A building's
+   * coordinates are its middle, not the toilet's door, so until the map has been moved off that spot the
+   * step asks for the last few metres by hand.
+   */
+  const nudge = searched && haversineM(pin, searched) <= UNTOUCHED_M ? searched : null;
+
+  function closeSearch() {
+    setSearching(false);
+    // Back to the button that opened it, once it's on screen again.
+    requestAnimationFrame(() => searchButton.current?.focus());
+  }
+
+  function goToPlace(p: Searched) {
+    setSearched(p);
+    set("pin", { lat: p.lat, lng: p.lng });
+    setRecenter((n) => n + 1);
+    closeSearch();
+  }
+
+  /** Leaving the pin step after a search: a place we list under the searched name starts out chosen. */
+  function preselectSearched() {
+    if (!searched || d.venue || d.newVenue) return;
+    // The place step's own query (same key), already loaded by the pin step's "Near …" line.
+    const near = qc.getQueryData<Awaited<ReturnType<typeof api.nearbyVenues>>>([
+      "venues-nearby",
+      pin.lat.toFixed(4),
+      pin.lng.toFixed(4),
+    ]);
+    const match = near?.items.find((v) => placeKey(v.name) === placeKey(searched.name));
+    if (match) set("venue", match);
+  }
 
   /*
    * A place that already has a toilet listed needs the new one's level, or nobody (the map, the duplicate
@@ -242,6 +297,7 @@ export function AddClient() {
   function startOver() {
     clearDraft();
     setD(initialDraft());
+    setSearched(null);
     setStepDir(-1);
     setStep(0);
     setDupes(null);
@@ -268,6 +324,7 @@ export function AddClient() {
 
   /** Steps slide in the way you're going (globals.css "Wizard steps"). */
   function goStep(dir: 1 | -1) {
+    setSearching(false);
     setStepDir(dir);
     setStep((s) => s + dir);
   }
@@ -424,6 +481,7 @@ export function AddClient() {
             variant="ghost"
             onClick={() => {
               setD(EMPTY);
+              setSearched(null);
               setStep(0);
               setDone(null);
               setDupes(null);
@@ -505,35 +563,64 @@ export function AddClient() {
 
         {step === 0 ? (
           <div className="flex flex-col gap-3">
-            <p className="text-muted">Drag the map so the pin sits on the toilet entrance.</p>
+            {/* The same line turns into the ask after a search (see `nudge`), so it stays where people read it. */}
+            <p
+              aria-live="polite"
+              className={cx(nudge ? "rounded-2xl bg-primary-soft px-4 py-2.5 font-bold text-fg" : "text-muted")}
+              data-testid="pin-instruction"
+            >
+              {nudge
+                ? `Showing ${nudge.name}. Now drag the map so the pin sits on the toilet's entrance.`
+                : "Drag the map so the pin sits on the toilet entrance."}
+            </p>
             {/* Sized so the whole step fits above the action bar on a typical phone and laptop. */}
             <div className="relative h-[max(15rem,38dvh)] overflow-hidden rounded-3xl border border-border/70 shadow-rest md:h-[max(15rem,42dvh)]">
               <ToiletMap
                 className="size-full"
                 center={pin}
                 recenterKey={recenter}
+                // Locating or a search result lands at building level, close enough to place the pin.
+                recenterZoom={18}
                 zoom={18}
                 showPins
                 user={user}
                 onCenterChange={(c) => set("pin", c)}
                 label="Pick the toilet location"
               />
-              {/* On the map, where the eyes already are; top left, clear of the zoom buttons. */}
-              <Button
-                variant="secondary"
-                size="sm"
-                className="absolute left-3 top-3 border-2 border-border bg-surface shadow-card active:scale-[0.96]"
-                onClick={async () => {
-                  const c = await loc.locate();
-                  if (c) {
-                    set("pin", c);
-                    setRecenter((n) => n + 1);
-                  }
-                }}
-              >
-                <LocateFixed className={cx("size-4 text-primary", loc.status === "locating" && "animate-pulse")} aria-hidden />{" "}
-                Use my location
-              </Button>
+              {searching ? (
+                <PinSearch onPick={goToPlace} onClose={closeSearch} />
+              ) : (
+                // On the map, where the eyes already are; top left, clear of the zoom buttons. Where you
+                // stand comes first: search is for adding one you're not at.
+                <div className="absolute left-3 top-3 flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="border-2 border-border bg-surface shadow-card active:scale-[0.96]"
+                    onClick={async () => {
+                      const c = await loc.locate();
+                      if (c) {
+                        setSearched(null);
+                        set("pin", c);
+                        setRecenter((n) => n + 1);
+                      }
+                    }}
+                  >
+                    <LocateFixed className={cx("size-4 text-primary", loc.status === "locating" && "animate-pulse")} aria-hidden />{" "}
+                    Use my location
+                  </Button>
+                  <Button
+                    ref={searchButton}
+                    variant="secondary"
+                    size="sm"
+                    className="border-2 border-border bg-surface shadow-card active:scale-[0.96]"
+                    aria-label="Search a place, building or postal code"
+                    onClick={() => setSearching(true)}
+                  >
+                    <Search className="size-4 text-primary" aria-hidden /> Search
+                  </Button>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 rounded-3xl border border-border/70 bg-surface px-4 py-3 shadow-rest">
               <PinGlyph variant="picker" className="size-8 shrink-0" />
@@ -542,6 +629,14 @@ export function AddClient() {
                 <span className="block text-sm text-muted">
                   {fromYouText(pin, user) ?? "Tap “Use my location” to see how far it is from you."}
                 </span>
+                {/* Said before the details: away from the pin, it can't go live on your say-so (the API's on-site rule). */}
+                {!onSite && (user || loc.settled) ? (
+                  <span className="mt-1 block text-sm font-bold text-fg" data-testid="off-site-note">
+                    {user
+                      ? "You're not near it, so it goes up as a pending pin until a couple of people nearby confirm it."
+                      : "If you're not there, it goes up as a pending pin until a couple of people nearby confirm it."}
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>
@@ -726,7 +821,10 @@ export function AddClient() {
               className="flex-1"
               disabled={!canNext}
               loading={step === 2 && photoBusy}
-              onClick={() => goStep(1)}
+              onClick={() => {
+                if (step === 0) preselectSearched();
+                goStep(1);
+              }}
               data-testid="add-next"
             >
               Next <ArrowRight className="size-5" aria-hidden />
@@ -769,6 +867,133 @@ function PinPlaceText({ place }: { place: ReturnType<typeof useNearestPlace> }) 
     <span className="block font-extrabold">
       {formatDistance(n.distanceM)} from {n.name}
     </span>
+  );
+}
+
+/**
+ * The pin step's place search, over the top of its map: OneMap through GET /geo/search, the same query as
+ * the map page's (so they share a cache), but a pick only moves this map, never the app's location. A
+ * combobox: arrows move through the results, Enter picks one, Escape closes.
+ */
+function PinSearch({ onPick, onClose }: { onPick: (p: Searched) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const dq = useDebounced(q.trim(), 300);
+  const [active, setActive] = useState(-1);
+  const listId = useId();
+  const res = useQuery({
+    queryKey: ["geo-search", dq],
+    queryFn: ({ signal }) => api.geoSearch(dq, signal),
+    enabled: dq.length >= 2,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const items = useMemo(
+    () =>
+      (res.data?.items ?? [])
+        .slice(0, 6)
+        .map((it) => ({ ...it, name: tidyPlaceName(it.name), address: tidyPlaceAddress(it.address, it.name) })),
+    [res.data],
+  );
+  // What the panel says when there's no list to show.
+  const status =
+    dq.length < 2
+      ? null
+      : res.isLoading
+        ? "Searching…"
+        : res.isError
+          ? "Place search isn't answering. Drag the map there instead."
+          : items.length === 0
+            ? "No places found. Try the building's name or postal code."
+            : null;
+  const pick = (i: number) => onPick({ name: items[i].name, lat: items[i].lat, lng: items[i].lng });
+  // The map is short, so the list scrolls: keep the arrowed-to result in view.
+  useEffect(() => {
+    if (active >= 0) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active, listId]);
+
+  return (
+    // Over the top of the map, kept inside it; the map below the results can still be dragged.
+    <div className="pointer-events-none absolute inset-3 z-10 flex flex-col gap-2 md:right-14">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-border-strong bg-surface pl-4 pr-1 shadow-card focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring">
+        <Search className="size-5 shrink-0 text-muted" aria-hidden />
+        <label htmlFor={`${listId}-input`} className="sr-only">
+          Search a place, building or postal code
+        </label>
+        <input
+          id={`${listId}-input`}
+          type="search"
+          inputMode="search"
+          autoComplete="off"
+          // Opened by a tap on "Search", so typing is the next thing they'll do.
+          autoFocus
+          placeholder="Place, building or postal code"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setActive(-1);
+          }}
+          onKeyDown={(e) => {
+            if ((e.key === "ArrowDown" || e.key === "ArrowUp") && items.length) {
+              e.preventDefault();
+              const down = e.key === "ArrowDown";
+              setActive((i) => (i < 0 ? (down ? 0 : items.length - 1) : (i + (down ? 1 : -1) + items.length) % items.length));
+            } else if (e.key === "Enter" && items[active]) {
+              e.preventDefault();
+              pick(active);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={items.length > 0}
+          aria-controls={items.length ? listId : undefined}
+          aria-activedescendant={items[active] ? `${listId}-${active}` : undefined}
+          // The pill has its own close button, so the browser's search-field "x" is hidden.
+          className="min-h-11 w-full bg-transparent text-base text-fg placeholder:text-muted focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
+        />
+        <button type="button" onClick={onClose} className="tap flex items-center justify-center rounded-full text-muted" aria-label="Close search">
+          <X className="size-5" aria-hidden />
+        </button>
+      </div>
+      <p className="sr-only" aria-live="polite">
+        {status ?? (items.length ? `${items.length} ${items.length === 1 ? "place" : "places"} found` : "")}
+      </p>
+      {status ? (
+        <p className="pointer-events-auto rounded-3xl border border-border bg-surface px-4 py-3 text-sm text-muted shadow-card" aria-hidden>
+          {status}
+        </p>
+      ) : null}
+      {items.length ? (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="Places"
+          className="pointer-events-auto min-h-0 overflow-y-auto overscroll-contain rounded-3xl border border-border bg-surface py-1.5 shadow-card"
+        >
+          {items.map((it, i) => (
+            <li
+              key={`${it.lat},${it.lng},${i}`}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === active}
+              onClick={() => pick(i)}
+              className={cx(
+                "flex min-h-11 cursor-pointer items-start gap-2 px-4 py-2.5 hover:bg-surface-2 active:bg-surface-2",
+                i === active && "bg-surface-2",
+              )}
+            >
+              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+              <span className="min-w-0">
+                <span className="block font-semibold">{it.name}</span>
+                {it.address ? <span className="block text-sm text-muted">{it.address}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
