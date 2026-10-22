@@ -576,13 +576,31 @@ export default function ToiletMap({
     // Not moving: it was instant (reduced motion), so it is already over. (MapLibre 6 keeps isEasing on its
     // internal camera; isMoving is the public equivalent and is set as soon as easeTo/flyTo starts.)
     if (!m?.isMoving()) return;
+    // Already waiting for this map to settle (a move of ours cut short by another).
+    if (flying.current) return;
     flying.current = true;
-    m.once("moveend", () => {
-      flying.current = false;
-      const pad = padPending.current;
-      padPending.current = null;
-      pad?.();
-    });
+    /*
+     * moveend also fires when a new move stops this one, from inside that move's easeTo. Easing there leaves
+     * MapLibre two frame loops for one animation, and the next stop (a touch) crashes the orphan with
+     * "_onEaseFrame is not a function" (SGW-FRONTEND-5). So look after the caller is done, and if the map is
+     * moving again, wait for that move instead.
+     */
+    const settle = () =>
+      queueMicrotask(() => {
+        if (mapRef.current?.getMap() !== m) {
+          flying.current = false;
+          return;
+        }
+        if (m.isMoving()) {
+          m.once("moveend", settle);
+          return;
+        }
+        flying.current = false;
+        const pad = padPending.current;
+        padPending.current = null;
+        pad?.();
+      });
+    m.once("moveend", settle);
   }, []);
 
   // Re-centre when asked (locate-me, search result).
