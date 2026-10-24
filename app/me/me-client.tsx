@@ -554,7 +554,7 @@ function TrustProgress({ me }: { me: Me }) {
               <p className="shrink-0 text-sm text-muted tabular-nums">
                 <strong className="text-base font-extrabold text-fg">{Math.min(score, threshold)}</strong> of {threshold} points
               </p>
-              <ProgressBar value={Math.min(score, threshold)} max={threshold} color="var(--primary)" thick />
+              <ProgressBar value={Math.min(score, threshold)} max={threshold} color="var(--primary)" thick className="flex-1" />
             </div>
             <p className="text-sm">
               <strong className="font-extrabold">What counts:</strong> points other people back up. A toilet or edit you sent
@@ -580,7 +580,7 @@ function BadgeDetail({ b, got, lines }: { b: Badge; got: Badge | undefined; line
           <p className="mt-1 text-xs font-bold text-accent">Earned {got.awardedAt ? formatDate(got.awardedAt) : ""}</p>
         ) : line && pr ? (
           <div className="mt-2 flex items-center gap-2">
-            <ProgressBar value={pr.stamped} max={pr.total} color={lineColor(line)} />
+            <ProgressBar value={pr.stamped} max={pr.total} color={lineColor(line)} className="flex-1" />
             <span className="shrink-0 text-xs font-bold text-muted tabular-nums">
               {pr.stamped} of {pr.total} stations
             </span>
@@ -657,8 +657,8 @@ function BadgeShelf({
 /* ─────────────── progress: passport ─────────────── */
 
 /** Passport progress as unrolling toilet paper; the roll's core wears the MRT line's colour (mint overall). */
-function ProgressBar({ value, max, color, thick }: { value: number; max: number; color?: string; thick?: boolean }) {
-  return <TpBar value={value} max={max} core={color ?? "var(--mint)"} size={thick ? "md" : "sm"} className="flex-1" aria-hidden />;
+function ProgressBar({ value, max, color, thick, className }: { value: number; max: number; color?: string; thick?: boolean; className?: string }) {
+  return <TpBar value={value} max={max} core={color ?? "var(--mint)"} size={thick ? "md" : "sm"} className={className} aria-hidden />;
 }
 
 function PassportSection({ q }: { q: ReturnType<typeof useQuery<Passport>> }) {
@@ -697,7 +697,8 @@ function PassportView({ p }: { p: Passport }) {
         <p className="shrink-0 text-sm text-muted tabular-nums">
           <strong className="text-base font-extrabold text-mint">{p.stamped}</strong> of {p.total} stations stamped
         </p>
-        <ProgressBar value={p.stamped} max={p.total} thick />
+        {/* flex-1 only along this row: in a column it zeroes the bar's height and the roll spills out. */}
+        <ProgressBar value={p.stamped} max={p.total} thick className="flex-1" />
       </div>
       {started.length ? (
         <ul className="flex flex-col divide-y divide-border/70 overflow-hidden rounded-3xl border border-border/70 bg-surface shadow-rest">

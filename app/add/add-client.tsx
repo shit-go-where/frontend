@@ -52,6 +52,7 @@ import {
 } from "@/lib/format";
 import { levelShort, levelText, normalizeLevel } from "@/lib/level";
 import { haversineM, useLocation, type LatLng } from "@/lib/location";
+import { reducedMotion } from "@/lib/motion";
 
 const STEPS = ["Pin", "Place", "Details", "Inside"] as const;
 /** The API's "on site" distance: a submitter this close to the pin, with a photo, puts it live straight away. */
@@ -574,7 +575,7 @@ export function AddClient() {
                 : "Drag the map so the pin sits on the toilet entrance."}
             </p>
             {/* Sized so the whole step fits above the action bar on a typical phone and laptop. */}
-            <div className="relative h-[max(15rem,38dvh)] overflow-hidden rounded-3xl border border-border/70 shadow-rest md:h-[max(15rem,42dvh)]">
+            <div className="relative h-[max(15rem,38dvh)] scroll-mt-[calc(env(safe-area-inset-top)+0.75rem)] overflow-hidden rounded-3xl border border-border/70 shadow-rest md:h-[max(15rem,42dvh)]">
               <ToiletMap
                 className="size-full"
                 center={pin}
@@ -804,7 +805,7 @@ export function AddClient() {
       */}
       <div
         className={cx(
-          "fixed inset-x-0 bottom-0 z-30 rounded-t-[28px] border-t border-border bg-surface px-4 pt-3 shadow-card",
+          "docked-bar fixed inset-x-0 bottom-0 z-30 rounded-t-[28px] border-t border-border bg-surface px-4 pt-3 shadow-card",
           "pb-[calc(var(--nav-h)+var(--nav-crown)+0.75rem+env(safe-area-inset-bottom))]",
           "md:sticky md:inset-x-auto md:-mx-4 md:mt-6 md:rounded-none md:bg-bg md:pb-6 md:pt-4 md:shadow-none",
         )}
@@ -910,10 +911,28 @@ function PinSearch({ onPick, onClose }: { onPick: (p: Searched) => void; onClose
   useEffect(() => {
     if (active >= 0) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [active, listId]);
+  const root = useRef<HTMLDivElement>(null);
+  // On a phone the keyboard takes the bottom half and the map sits mid-page, under the docked bars. Those
+  // step aside (globals.css, data-map-search) and the map rises to the top of the screen, so the field and
+  // its results stay in the part the keys leave. Again once the keyboard is up: that's when the space shrinks.
+  useEffect(() => {
+    const html = document.documentElement;
+    html.toggleAttribute("data-map-search", true);
+    const box = root.current?.parentElement;
+    const vv = window.visualViewport;
+    if (!box || !window.matchMedia("(max-width: 767px)").matches) return () => html.removeAttribute("data-map-search");
+    const lift = () => box.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+    lift();
+    vv?.addEventListener("resize", lift);
+    return () => {
+      vv?.removeEventListener("resize", lift);
+      html.removeAttribute("data-map-search");
+    };
+  }, []);
 
   return (
     // Over the top of the map, kept inside it; the map below the results can still be dragged.
-    <div className="pointer-events-none absolute inset-3 z-10 flex flex-col gap-2 md:right-14">
+    <div ref={root} className="pointer-events-none absolute inset-3 z-10 flex flex-col gap-2 md:right-14">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-border-strong bg-surface pl-4 pr-1 shadow-card focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring">
         <Search className="size-5 shrink-0 text-muted" aria-hidden />
         <label htmlFor={`${listId}-input`} className="sr-only">

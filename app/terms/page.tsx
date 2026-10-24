@@ -35,7 +35,7 @@ export default function TermsPage() {
       <h2>Information can be wrong</h2>
       <ul>
         <li>
-          Toilet details come from a fieldwork survey, public data sets, OpenStreetMap and people like you. Toilets close, move and run
+          Toilet details come from two in-person surveys done in 2024, public data sets, OpenStreetMap and people like you. Toilets close, move and run
           out of soap. Opening hours, walking times and routes are best guesses.
         </li>
         <li>

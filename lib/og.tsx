@@ -28,11 +28,11 @@ export const OG = {
 /*
  * The share card's verdict word, from the 0-10 cleanliness score (the same scale the toilet page
  * shows as "8.5/10"). Framing only: the score itself is always printed beside it in plain numbers.
- * Thresholds, picked against the surveyed scores (median about 8) and the review mapping
- * (1-5 stars become 2-10, so 4 stars = 8 and 3 stars = 6):
- *   8 and up   "Shiok!"   (4-5 star territory; about half the surveyed toilets)
- *   6 to < 8   "Can lah"  (fine, nothing to write home about)
- *   below 6    "Aiyo"     (bring your own tissue; under a tenth of the survey)
+ * Thresholds, picked against the March 2024 pilot's scores (median about 8) and the review mapping
+ * (1-5 stars become 2-10, so 4 stars = 8 and 3 stars = 6). With both 2024 surveys in (median 6.7):
+ *   8 and up   "Shiok!"   (4-5 star territory; about 46% of surveyed toilets)
+ *   6 to < 8   "Can lah"  (fine, nothing to write home about; about 20%)
+ *   below 6    "Aiyo"     (bring your own tissue; about 34%, was under a tenth of the pilot)
  * No score, no verdict: we never guess.
  */
 export function ogVerdict(score: number | null | undefined): string | null {

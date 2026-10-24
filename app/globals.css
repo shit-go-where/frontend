@@ -431,6 +431,13 @@ h3 {
   .maplibregl-ctrl-top-right {
     display: none;
   }
+  /*
+   * While the add flow's place search is open (data-map-search, add-client.tsx), the tab bar and the Next bar
+   * would stack on top of the keyboard and cover the field and its results, so they step aside until it closes.
+   */
+  :root[data-map-search] .docked-bar {
+    display: none;
+  }
 }
 .maplibregl-canvas:focus-visible {
   outline: 3px solid var(--ring);

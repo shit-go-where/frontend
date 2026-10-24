@@ -96,7 +96,7 @@ function BottomNavInner({ pathname }: { pathname: string | null }) {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 rounded-t-[28px] border-t border-border bg-surface safe-bottom shadow-card vt-tab-bar md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 rounded-t-[28px] border-t border-border bg-surface safe-bottom shadow-card vt-tab-bar docked-bar md:hidden"
     >
       {/*
         The bar's own bump, cradling the seated disc: one continuous edge, so nothing behind shows beside it.
