@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, BriefcaseBusiness, Mail } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BriefcaseBusiness, ChevronRight, Mail } from "lucide-react";
 import { Mascot } from "@/components/mascot";
 import { buttonClass } from "@/components/styles";
 import { getAreasServer } from "@/lib/api/server";
@@ -61,8 +61,20 @@ export default async function CreatorPage() {
   const s = SHIT_GO_WHERE;
   return (
     <article className="mx-auto w-full max-w-[calc(56ch+2rem)] px-4 pb-12 pt-6 leading-relaxed">
-      <p className="text-sm font-bold text-muted">Who made this?</p>
-      <header className="mt-3 flex items-center gap-4 sm:gap-5">
+      <nav aria-label="Breadcrumb">
+        <ol className="flex flex-wrap items-center gap-x-1 text-sm font-bold text-muted">
+          <li className="inline-flex items-center gap-1">
+            <Link href="/about" className="-ml-2 inline-flex min-h-11 items-center rounded-full px-2 hover:bg-surface-2 hover:text-fg">
+              About
+            </Link>
+            <ChevronRight className="size-4" aria-hidden />
+          </li>
+          <li aria-current="page" className="text-fg">
+            Who made this?
+          </li>
+        </ol>
+      </nav>
+      <header className="mt-2 flex items-center gap-4 sm:gap-5">
         {/* The app's mascot stands in for a photo: the personal site carries that. */}
         <span className="grid size-20 shrink-0 place-items-center rounded-[28px] bg-surface-2 shadow-rest ring-4 ring-rim sm:size-24">
           <Mascot mood="happy" className="size-14 sm:size-16" />
@@ -137,13 +149,6 @@ export default async function CreatorPage() {
           </li>
         ) : null}
       </ul>
-
-      {/* A standalone link, so it is a 44 px tap target. */}
-      <p className="mt-12 border-t border-border/70 pt-2 text-sm text-muted">
-        <Link href="/about" className={`${link} inline-flex min-h-11 items-center`}>
-          Back to About
-        </Link>
-      </p>
     </article>
   );
 }
