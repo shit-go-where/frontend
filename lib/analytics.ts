@@ -20,7 +20,7 @@ import { doNotTrack } from "./do-not-track";
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
-export type AnalyticsEvent = "route_started" | "route_completed" | "share" | "install_prompt";
+export type AnalyticsEvent = "route_started" | "route_completed" | "share" | "install_prompt" | "location_ask";
 export type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 
 // ---------------------------------------------------------------------------

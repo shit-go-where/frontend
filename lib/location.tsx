@@ -30,6 +30,12 @@ interface LocationState {
    * minutes the UI shows ("from where you were 4 min ago") while a fresh fix comes in.
    */
   fixAt: number | null;
+  /**
+   * True when locating would put the browser's permission prompt in front of someone who has never let us
+   * locate them: the map page explains why first and waits for a tap (a prompt on arrival gets declined by
+   * reflex). False once locating can't surprise anyone, or the browser can't tell us; null until it has said.
+   */
+  askFirst: boolean | null;
   locate: (opts?: LocateOptions) => Promise<LatLng | null>;
   setManual: (p: LatLng & { name: string }) => void;
   /** Hands a position from elsewhere (the route screen's watch) to the shared location. Use `useWatchPosition`. */
@@ -94,6 +100,15 @@ function readStoredFix(): StoredFix | null {
   }
 }
 
+/** Any fix ever saved, however old: they have let us locate them on this browser before. */
+function locatedBefore(): boolean {
+  try {
+    return localStorage.getItem(FIX_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 function readStoredPlace(): (LatLng & { name: string }) | null {
   try {
     const raw = sessionStorage.getItem(STORE_KEY);
@@ -111,6 +126,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [settled, setSettled] = useState(false);
   const [fixAt, setFixAt] = useState<number | null>(null);
+  const [askFirst, setAskFirst] = useState<boolean | null>(null);
   const inflight = useRef<Promise<LatLng | null> | null>(null);
   /** The fix in use, read by the async callbacks without waiting for a render. */
   const fixRef = useRef<StoredFix | null>(null);
@@ -209,7 +225,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   /*
    * On first mount, start from what we already know: a place searched earlier in this tab (an explicit
    * choice wins), else the last GPS fix if it's under 30 minutes old. Then locate only if the permission is
-   * already granted. Otherwise wait: the pages that need a location (/ and /go) ask for it themselves, and
+   * already granted. Otherwise wait: the pages that need a location (/ and /go) ask for it themselves (the map
+   * page only once `askFirst` says the prompt won't come out of nowhere), and
    * every other page settles on what it has without a prompt. A page's own locate() runs before this effect
    * (child effects first), so `inflight` tells us someone already asked.
    */
@@ -239,7 +256,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     const settleWithoutAsking = () => {
       if (!cancelled && !inflight.current) setSettled(true);
     };
+    // Safari answers "prompt" again some time after an Allow; someone who allowed before isn't surprised by it.
+    const needsAsk = (state: PermissionState) => state === "prompt" && !locatedBefore();
     const onPerm = (state: PermissionState) => {
+      setAskFirst(needsAsk(state));
       if (state === "granted") {
         allowed.current = true;
         if (!inflight.current) void locate();
@@ -259,10 +279,16 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
           // Turned on in the browser's settings while the app is open: locate straight away.
           s.onchange = () => {
             if (s.state === "granted") onPerm(s.state);
+            else setAskFirst(needsAsk(s.state));
           };
         })
-        .catch(settleWithoutAsking);
+        .catch(() => {
+          if (cancelled) return;
+          setAskFirst(false);
+          settleWithoutAsking();
+        });
     } else {
+      setAskFirst(false);
       settleWithoutAsking();
     }
     return () => {
@@ -284,8 +310,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, [locate]);
 
   const value = useMemo<LocationState>(
-    () => ({ coords, source, placeName, status, accuracy, settled, fixAt, locate, setManual, ingest }),
-    [coords, source, placeName, status, accuracy, settled, fixAt, locate, setManual, ingest],
+    () => ({ coords, source, placeName, status, accuracy, settled, fixAt, askFirst, locate, setManual, ingest }),
+    [coords, source, placeName, status, accuracy, settled, fixAt, askFirst, locate, setManual, ingest],
   );
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }

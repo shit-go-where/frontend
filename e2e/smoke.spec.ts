@@ -83,6 +83,44 @@ test.describe("find", () => {
   });
 });
 
+test.describe("first visit, location never asked", () => {
+  // Playwright refuses what it wasn't given, like "Don't allow". Headless Chromium reports that as "denied"
+  // up front, so the permission says "prompt" here, as it does for someone the browser has never asked.
+  test.use({ permissions: [] });
+
+  test("the map explains before the browser asks, and a refusal offers a way back", async ({ page }) => {
+    const api = await mockApi(page);
+    await page.addInitScript(() => {
+      const query = navigator.permissions.query.bind(navigator.permissions);
+      navigator.permissions.query = (d: PermissionDescriptor) =>
+        d.name === "geolocation" ? Promise.resolve({ state: "prompt", onchange: null } as PermissionStatus) : query(d);
+    });
+    await page.goto("/");
+
+    const ask = page.getByRole("group", { name: "Your location" });
+    await expect(ask.getByText("See the toilets nearest you")).toBeVisible();
+    // No prompt on arrival: the list starts around the fallback place.
+    await expect.poll(() => api.find("GET", "/toilets/nearby").length).toBeGreaterThan(0);
+    expect(api.find("GET", "/toilets/nearby")[0].search).toContain("lat=1.2839");
+
+    await ask.getByRole("button", { name: "Use my location" }).click();
+    await expect(ask).toBeHidden();
+    const failed = page.getByRole("alert");
+    await expect(failed.getByText("Location is off for this site.")).toBeVisible();
+    // Chromium 144+ offers its own location button, which can ask again.
+    await expect(failed.locator("geolocation")).toBeVisible();
+  });
+
+  test("refused before: the sheet offers the browser's location button", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/");
+    const sheet = page.getByRole("region", { name: "Nearby toilets" });
+    await expect(sheet.getByText("Location permission is off.")).toBeVisible();
+    await expect(sheet.locator("geolocation")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Your location" })).toHaveCount(0);
+  });
+});
+
 test.describe("route", () => {
   test("urgent mode shows 3 results immediately and routes", async ({ page }) => {
     const api = await mockApi(page);
