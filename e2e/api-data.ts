@@ -6,7 +6,9 @@
  */
 import {
   CHECK_IN,
+  COFFEESHOP_TOILETS,
   EXPANDED_DETAIL,
+  HAWKER_TOILETS,
   ME,
   NEARBY_VENUES,
   PHOTO,
@@ -39,6 +41,9 @@ export interface Reply {
   status?: number;
   body?: unknown;
 }
+
+/** Toilets the near list doesn't hold, but which specs show and open (a hawker centre's pair, a block's coffee shops). */
+const EXTRA_TOILETS = [...HAWKER_TOILETS, ...COFFEESHOP_TOILETS];
 
 const AREAS: AreaSummary[] = [
   { slug: "museum", name: "Museum", region: "CENTRAL", toiletCount: 14, verifiedCount: 9, venueCount: 8, indexable: true },
@@ -247,7 +252,7 @@ export function fixtureReply(method: string, path: string, url: URL, who: Who, b
   }
   let m: RegExpMatchArray | null;
   if (method === "GET" && (m = path.match(/^\/toilets\/([^/]+)$/))) {
-    const t = TOILETS.find((x) => x.id === m![1]);
+    const t = [...TOILETS, ...EXTRA_TOILETS].find((x) => x.id === m![1]);
     if (m[1] === TOILET_DETAIL.id) return { body: TOILET_DETAIL };
     if (m[1] === EXPANDED_DETAIL.id) return { body: EXPANDED_DETAIL };
     return t ? { body: { ...TOILET_DETAIL, ...t, venue: TOILET_DETAIL.venue } } : { status: 404, body: { statusCode: 404, message: "Not found" } };
@@ -261,10 +266,11 @@ export function fixtureReply(method: string, path: string, url: URL, who: Who, b
   if (method === "GET" && /^\/toilets\/[^/]+\/status$/.test(path)) return { body: { items: STATUS } };
   if (method === "GET" && /^\/toilets\/[^/]+\/reviews$/.test(path)) return { body: { items: [], nextCursor: null } };
   if (method === "GET" && (m = path.match(/^\/venues\/([^/]+)$/))) {
-    const v = NEARBY_VENUES.find((x) => x.id === m![1]) ?? TOILETS.find((t) => t.venue.id === m![1])?.venue;
+    const all = [...TOILETS, ...EXTRA_TOILETS];
+    const v = NEARBY_VENUES.find((x) => x.id === m![1]) ?? all.find((t) => t.venue.id === m![1])?.venue;
     if (!v) return { status: 404, body: { statusCode: 404, message: "Venue not found" } };
     const { id, name, type, lines, lat, lng, toiletStatus, note } = v;
-    const toilets = TOILETS.filter((t) => t.venue.id === id);
+    const toilets = all.filter((t) => t.venue.id === id);
     return { body: { id, name, type, lines, lat, lng, toiletStatus, note, address: null, planningArea: null, toilets } };
   }
   if (method === "GET" && (m = path.match(/^\/areas\/([^/]+)$/))) {

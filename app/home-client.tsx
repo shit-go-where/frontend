@@ -9,11 +9,13 @@ import { LocateFailed, LocationAsk, LocationNotice, LocationSearch, nearestStati
 import { ToiletMap, type Bounds, type MapFocus, type MapView } from "@/components/map";
 import { SexAsk, SexPrefChip, SexPrefRow, SexSegmented } from "@/components/sex-pref";
 import { TelegramStrip, useTelegramStrip } from "@/components/telegram-strip";
-import { FilterChipLabel, TierLegend, ToiletCard } from "@/components/toilet-bits";
+import { FilterChipLabel, TierHelpButton, TierLegend, ToiletCard } from "@/components/toilet-bits";
 import { Button, Chip, Dialog, EmptyState, ErrorState, Skeleton, buttonClass, cx } from "@/components/ui";
 import { NetworkError, api, errorMessage } from "@/lib/api/client";
 import type { ToiletSummary } from "@/lib/api/types";
-import { levelShort } from "@/lib/level";
+import { floorGroups, levelShort, levelText, onFloor } from "@/lib/level";
+import { sexRank } from "@/lib/sex-order";
+import { groupToilets, type ToiletGroup } from "@/lib/toilet-groups";
 import { FILTERS, FILTER_LABEL, MUST_HAVE_GROUPS, toFilterQuery } from "@/lib/filters";
 import { formatDistance, isClosedNow, savedAge } from "@/lib/format";
 import { estimateWalkSeconds, haversineM, roundCoord, useLocation, type LatLng } from "@/lib/location";
@@ -80,10 +82,14 @@ export function HomeClient() {
   // Which toilets they use (asked once, in the sheet): the list, the pins and "Walk there" only offer those.
   const pref = useSexPreference();
   const sex = pref.sex ?? undefined;
+  // The "Filters on" chip stays while its picker is open, even once the choice is "Show all toilets".
+  const [sexPicking, setSexPicking] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** A tapped building (or spot) on the map: its toilets, lowest level first, and the building when it is one. */
   const [tapped, setTapped] = useState<{ ids: string[]; venueId: string | null } | null>(null);
   const groupIds = tapped?.ids ?? null;
+  /** The map's floor picker (null is All): the list of a tapped building shows only that floor. */
+  const [mapFloor, setMapFloor] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [recenter, setRecenter] = useState(0);
   const [sheetPx, setSheetPx] = useState(330);
@@ -99,6 +105,8 @@ export function HomeClient() {
     return () => window.clearTimeout(t);
   }, [active, queryFilters]);
   const fq = useMemo(() => toFilterQuery(queryFilters), [queryFilters]);
+  // With the Accessible filter on, a place's accessible toilet leads its card (lib/toilet-groups.ts).
+  const accessibleOn = queryFilters.has("ACCESSIBLE");
   const lat = roundCoord(loc.coords.lat);
   const lng = roundCoord(loc.coords.lng);
   const user = loc.source === "gps" ? loc.coords : null;
@@ -215,16 +223,55 @@ export function HomeClient() {
   const groupMore = groupTotal - (shownIds?.length ?? 0);
   const groupVenue = group?.find((g) => g.t)?.t?.venue ?? null;
   const oneBuilding = !!group && group.every((g) => !g.t || g.t.venue.id === groupVenue?.id);
+  /*
+   * A building's list follows the map's floor picker: only the picked floor, else under floor headers, top
+   * floor first, "Floor unknown" last. Several places at one spot are listed place by place, then by floor.
+   * Each floor of a place is one card (lib/toilet-groups.ts): the toilet they use first leads, the others are
+   * "here too" rows inside it. Rows still loading wait at the end as skeletons.
+   */
+  const groupView = useMemo(() => {
+    if (!group) return null;
+    const loaded = group.flatMap(({ t }) => (t ? [t] : []));
+    const rows = mapFloor ? loaded.filter((t) => onFloor(t.level, mapFloor)) : loaded;
+    const bySex = (list: ToiletSummary[]) => [...list].sort((a, b) => sexRank(a.sex, pref.sex) - sexRank(b.sex, pref.sex));
+    const cardsOf = (list: ToiletSummary[]) => groupToilets(bySex(list), pref.sex, accessibleOn);
+    type Section = { key: string; title: string | null; cards: ToiletGroup<ToiletSummary>[] };
+    let sections: Section[];
+    if (oneBuilding) {
+      const floors = mapFloor ? [] : floorGroups(rows);
+      sections =
+        floors.length >= 2
+          ? floors.map((f) => ({ key: f.level ?? "unknown", title: levelText(f.level) ?? "Floor unknown", cards: cardsOf(f.items) }))
+          : [{ key: "all", title: null, cards: cardsOf(rows) }];
+    } else {
+      // Several places at one spot (a block's coffee shops, a bus interchange in a mall): by place, then by floor.
+      const places = new Map<string, ToiletSummary[]>();
+      for (const t of rows) places.set(t.venue.id, [...(places.get(t.venue.id) ?? []), t]);
+      // A spot has no order of its own: places go by name.
+      sections = [...places.values()]
+        .sort((a, b) => a[0].venue.name.localeCompare(b[0].venue.name))
+        .map((list) => ({
+          key: list[0].venue.id,
+          title: list[0].venue.name,
+          cards: floorGroups(list).flatMap((f) => cardsOf(f.items)),
+        }));
+    }
+    return { sections, count: rows.length, loading: group.filter((g) => !g.t).map((g) => g.id) };
+  }, [group, mapFloor, oneBuilding, pref.sex, accessibleOn]);
   // The selected toilet sits in its own card above the list, so leave it out of the list.
   const listItems = useMemo(
     () => items.filter((t) => t.id !== selectedId && !groupIds?.includes(t.id)),
     [items, selectedId, groupIds],
   );
-  // "Walk there" goes on the nearest one you can actually use, so it never routes to a shut door or the wrong
+  // One card per place and floor, at its lead's place in the walking order (lib/toilet-groups.ts).
+  const listGroups = useMemo(() => groupToilets(listItems, pref.sex, accessibleOn), [listItems, pref.sex, accessibleOn]);
+  // "Walk there" goes on the nearest lead you can actually use, so it never routes to a shut door or the wrong
   // one. The list itself stays in walking order (the preference filters it, never re-sorts it).
-  const walkId = listItems.find((t) => t.status !== "PENDING" && !isClosedNow(t) && usableBy(t.sex, pref.sex))?.id;
+  const walkId = listGroups.find(
+    ({ lead: t }) => t.status !== "PENDING" && !isClosedNow(t) && usableBy(t.sex, pref.sex),
+  )?.lead.id;
   const listRef = useRef<HTMLUListElement>(null);
-  const itemKeys = useMemo(() => listItems.map((t) => t.id), [listItems]);
+  const itemKeys = useMemo(() => listGroups.map((g) => g.lead.id), [listGroups]);
   useFlipList(listRef, itemKeys);
   // A full page of results means the area holds more than the list can: say which ones these are.
   const crowded = !!listArea && (listArea.capped || (nearby.data?.items.length ?? 0) >= LIST_LIMIT);
@@ -281,9 +328,10 @@ export function HomeClient() {
     setSnapRequest({ index: SHEET_PEEK, key: Date.now() });
   }, []);
   // A building's floors open the sheet halfway, with room for a few of them.
-  const onSelectGroup = useCallback((ids: string[], venueId: string | null) => {
+  const onSelectGroup = useCallback((ids: string[], venueId: string | null, floor: string | null) => {
     setSelectedId(null);
     setTapped({ ids, venueId });
+    setMapFloor(floor);
     setSnapRequest({ index: SHEET_PEEK + 1, key: Date.now() });
   }, []);
   // The map keeps its framing at the top snap: the sheet covers it, and padding taller than the map makes the camera jump.
@@ -358,8 +406,6 @@ export function HomeClient() {
   // The off-screen pill also keeps clear of the locate button (above the sheet on phones, bottom-right on desktop).
   const hintInset = useMemo(() => ({ bottom: phone ? 64 : 88 }), [phone]);
 
-  // The sheet's extra header rows show once the list is open (always, on desktop).
-  const revealed = !phone || sheetSnap > SHEET_PEEK;
 
   const locateButton = (
     <button
@@ -372,24 +418,13 @@ export function HomeClient() {
     </button>
   );
   // Rides beside the locate button: both bring the map back to you, and the sheet's peek has no room to spare.
-  // Standing at a toilet swaps in the check-in pill: the moment people would otherwise forget.
+  // (Standing at a toilet, the check-in offer heads the list instead: out here it covered the map's credit.)
   const mapControls = (
     <div className="flex flex-col items-end gap-2">
       {locateFailed ? (
         <LocateFailed onDismiss={() => setLocateFailed(false)} className="rise-in w-[min(20rem,calc(100vw-2rem))]" />
       ) : null}
       <div className="flex items-center gap-2">
-        {atToilet ? (
-          <Link
-            href={`/toilets/${atToilet.id}?do=checkin`}
-            className="rise-in flex min-h-12 min-w-0 max-w-[min(16rem,calc(100vw-6rem))] items-center gap-2 rounded-full border-2 border-primary bg-primary-soft pl-3.5 pr-4 text-sm font-extrabold text-fg shadow-card transition-transform duration-100 active:scale-95"
-            data-testid="checkin-here"
-          >
-            <MapPinCheck className="size-4 shrink-0 text-primary" aria-hidden />
-            <span className="truncate">At {atToilet.venue.name}?</span>
-            <span className="shrink-0 text-primary">Check in</span>
-          </Link>
-        ) : null}
         {area ? (
           <button
             type="button"
@@ -432,6 +467,8 @@ export function HomeClient() {
           openNow={fq.openNow}
           areaType={fq.areaType}
           sex={sex}
+          floor={mapFloor}
+          onFloorChange={setMapFloor}
           onViewChange={onViewChange}
           selectedId={selectedId}
           focus={focus}
@@ -478,14 +515,14 @@ export function HomeClient() {
             />
           </div>
           {/* Phones: only the filters that are on, each one tap to drop. */}
-          {active.size || pref.sex ? (
+          {active.size || pref.sex || sexPicking ? (
             <div
               className="no-scrollbar pointer-events-auto flex gap-2 overflow-x-auto pb-1 md:hidden"
               role="group"
               aria-label="Filters on"
             >
               {/* The toilets they use narrows the map like a filter, so it rides here too (a tap changes it). */}
-              {pref.sex ? <SexPrefChip className="shadow-card" /> : null}
+              {pref.sex || sexPicking ? <SexPrefChip className="shadow-card" onOpenChange={setSexPicking} /> : null}
               {FILTERS.filter((f) => active.has(f.key)).map((f) => (
                 <Chip key={f.key} active onClick={() => toggle(f.key)} className="shadow-card">
                   <FilterChipLabel k={f.key} label={f.label} active />
@@ -561,8 +598,9 @@ export function HomeClient() {
         busy={updating}
         header={
           <div className="flex flex-col">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-xl leading-tight">
+            {/* Phones pin only this row: the list below is what the sheet is for. */}
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="min-w-0 text-xl leading-tight">
                 {/* Keyed so a new count rises in rather than snapping. */}
                 <span key={sheetTitle} className="rise-in">
                   {sheetTitle}
@@ -577,6 +615,8 @@ export function HomeClient() {
               >
                 Help me choose
               </Link>
+              {/* Each card already says its tier, so phones keep the key one tap away instead of two lines tall. */}
+              <TierHelpButton className="-my-3 -mr-2 md:hidden" />
             </div>
             {/*
               Where the list is measured from, and whether it's a saved copy, stay up even at the peek: a list
@@ -596,25 +636,13 @@ export function HomeClient() {
             <TelegramStrip className="mt-2" />
             <LocationAsk onLocate={locateMe} className="mt-2" />
             <LocationNotice className="mt-2" telegram={!tgStrip} />
-            {/* Phones: the key and "Help me choose" open with the list and fold away at the peek. */}
-            <div
-              data-sheet-reveal
-              className="grid transition-[grid-template-rows] duration-[380ms] ease-[var(--ease-sheet)] motion-reduce:transition-none"
-              style={{ gridTemplateRows: revealed ? "1fr" : "0fr" }}
-              inert={!revealed}
-            >
-              <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
-                {/* Which toilets the list holds, a tap from changing (the first visit asks above). */}
-                <SexPrefRow className="pt-2" />
-                <TierLegend />
-                <Link
-                  href="/go"
-                  className="-mt-1 inline-flex min-h-11 items-center gap-0.5 self-start text-sm font-semibold text-primary underline-offset-2 hover:underline md:hidden"
-                >
-                  Not sure which? Help me choose
-                  <ChevronRight className="size-4" aria-hidden />
-                </Link>
-              </div>
+            {/*
+              Desktop has the room: which toilets the list holds and the full pin key. Phones carry the first as a
+              chip in the map's "Filters on" row (and in Filters) and the second behind the "?".
+            */}
+            <div className="hidden flex-col gap-2 md:flex">
+              <SexPrefRow className="pt-2" />
+              <TierLegend />
             </div>
           </div>
         }
@@ -623,6 +651,19 @@ export function HomeClient() {
           First visit: "Which toilets do you use?" takes the peek until answered; the nearest card waits under it.
           A picked pin or building takes the peek instead (the question comes back once it's closed).
         */}
+        {/* Standing at a toilet: the check-in, in the list where the eye already is, not over the map's credit. */}
+        {atToilet ? (
+          <Link
+            href={`/toilets/${atToilet.id}?do=checkin`}
+            className="rise-in mb-3 flex min-h-11 items-center gap-2 rounded-2xl border-2 border-primary/60 bg-primary-soft px-3.5 text-sm font-extrabold text-fg transition-transform duration-100 active:scale-[0.98]"
+            data-testid="checkin-here"
+          >
+            <MapPinCheck className="size-4 shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">At {atToilet.venue.name}?</span>
+            <span className="shrink-0 text-primary">Check in</span>
+            <ChevronRight className="-mr-1 size-4 shrink-0 text-primary" aria-hidden />
+          </Link>
+        ) : null}
         {selected || group ? null : <SexAsk className="mb-3" peek />}
 
         {selected ? (
@@ -642,10 +683,12 @@ export function HomeClient() {
           </div>
         ) : null}
 
-        {group ? (
+        {group && groupView ? (
           <section key={groupIds?.join()} className="rise-in mb-3" data-sheet-peek aria-labelledby="map-group-title" data-testid="map-group">
             <div className="-mt-1 flex items-center justify-between gap-2">
               <h3 id="map-group-title" className="min-w-0 truncate text-sm font-semibold text-muted">
+                {/* A floor picked: "4 of 13 toilets in Waterway Point". */}
+                {mapFloor ? `${groupView.count} of ` : ""}
                 {oneBuilding && groupVenue
                   ? `${toilets(groupTotal)} in ${groupVenue.name}`
                   : `${toilets(groupTotal)} at this spot`}
@@ -659,20 +702,66 @@ export function HomeClient() {
                 <X className="size-4" aria-hidden />
               </button>
             </div>
-            {/* Lowest level first, as the map stacks them. */}
-            <ul className="flex flex-col gap-3" aria-label={oneBuilding ? "Toilets in this building, by level" : "Toilets at this spot"}>
-              {group.map(({ id, t }) => (
-                <li key={id}>
-                  {t ? (
-                    <ToiletCard t={t} distanceFrom={distanceFrom} />
-                  ) : (
-                    <Skeleton className="h-24" />
-                  )}
-                </li>
-              ))}
-            </ul>
+            {mapFloor ? (
+              // The map's floor picker narrowed the list; one tap puts every floor back, on the map too.
+              <p className="-mt-2 mb-1 flex items-center gap-1.5 text-sm text-muted" data-testid="map-group-floor">
+                <span>Showing {levelShort(mapFloor) ?? mapFloor}</span>
+                <span aria-hidden>·</span>
+                <button
+                  type="button"
+                  onClick={() => setMapFloor(null)}
+                  className="inline-flex min-h-11 items-center font-semibold text-primary underline-offset-2 hover:underline"
+                >
+                  Show all floors
+                </button>
+              </p>
+            ) : null}
+            {mapFloor && !groupView.count && !groupView.loading.length ? (
+              <p className="text-sm text-muted">None of these are on {levelShort(mapFloor) ?? mapFloor}.</p>
+            ) : null}
+            <div className="flex flex-col gap-4">
+              {groupView.sections.map((s) =>
+                s.cards.length ? (
+                  <div key={s.key} className="flex flex-col gap-2">
+                    {s.title ? (
+                      <h4 id={`map-group-floor-${s.key}`} className="text-sm font-extrabold text-muted">
+                        {s.title}
+                      </h4>
+                    ) : null}
+                    <ul
+                      className="flex flex-col gap-3"
+                      aria-labelledby={s.title ? `map-group-floor-${s.key}` : undefined}
+                      aria-label={
+                        s.title
+                          ? undefined
+                          : !oneBuilding
+                            ? "Toilets at this spot"
+                            : mapFloor
+                              ? `Toilets on ${levelShort(mapFloor) ?? mapFloor} in this building`
+                              : "Toilets in this building, by level"
+                      }
+                    >
+                      {s.cards.map((g) => (
+                        <li key={g.lead.id}>
+                          <ToiletCard t={g.lead} also={g.others} distanceFrom={distanceFrom} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null,
+              )}
+              {groupView.loading.length ? (
+                <ul className="flex flex-col gap-3" aria-hidden>
+                  {groupView.loading.map((id) => (
+                    <li key={id}>
+                      <Skeleton className="h-24" />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             {groupMore > 0 ? <p className="mt-2 text-xs text-muted">And {groupMore} more at this spot.</p> : null}
-            {group.some((g) => g.t && !levelShort(g.t.level)) ? (
+            {groupView.sections.some((s) => s.cards.some((g) => [g.lead, ...g.others].some((t) => !levelShort(t.level)))) ? (
               <p className="mt-2 text-xs text-muted">Some of these have no level yet. Been there? Check in and add it.</p>
             ) : null}
           </section>
@@ -763,18 +852,34 @@ export function HomeClient() {
           </EmptyState>
           </div>
         ) : (
-          <ul
-            ref={listRef}
-            className="flex flex-col gap-3"
-            aria-label={listArea ? "Toilets in this map area, nearest the centre first" : "Toilets sorted by walking time"}
-          >
-            {listItems.map((t, i) => (
-              <li key={t.id} data-flip-key={t.id} data-sheet-peek={i === 0 ? "" : undefined}>
-                {/* The nearest usable card (or the picked one above) gets "Walk there": one tap from the map to the route. */}
-                <ToiletCard t={t} onHover={setHoverId} walk={t.id === walkId && !selected} distanceFrom={distanceFrom} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul
+              ref={listRef}
+              className="flex flex-col gap-3"
+              aria-label={listArea ? "Toilets in this map area, nearest the centre first" : "Toilets sorted by walking time"}
+            >
+              {listGroups.map(({ lead: t, others }, i) => (
+                <li key={t.id} data-flip-key={t.id} data-sheet-peek={i === 0 ? "" : undefined}>
+                  {/* The nearest usable card (or the picked one above) gets "Walk there": one tap from the map to the route. */}
+                  <ToiletCard
+                    t={t}
+                    also={others}
+                    onHover={setHoverId}
+                    walk={t.id === walkId && !selected}
+                    distanceFrom={distanceFrom}
+                  />
+                </li>
+              ))}
+            </ul>
+            {/* Phones: under the list, for whoever read it all and still can't pick (desktop has it by the title). */}
+            <Link
+              href="/go"
+              className="mt-3 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold text-primary underline-offset-2 hover:underline md:hidden"
+            >
+              Not sure which? Help me choose
+              <ChevronRight className="size-4" aria-hidden />
+            </Link>
+          </>
         )}
         <div className="mt-4 text-xs text-muted">
           <p>

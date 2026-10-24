@@ -25,7 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BackButton } from "@/components/back-button";
 import { FoldMotion, Reveal, Tick, usePresence } from "@/components/presence";
 import { SexPrefRow } from "@/components/sex-pref";
-import { FeatureChips, FilterChipLabel, LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
+import { AlsoHere, FeatureChips, FilterChipLabel, LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
 import { Button, Chip, EmptyState, Skeleton, buttonClass, cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import type { AreaDetail, AreaVenue, Feature, SexPreference, ToiletSummary, ToiletTier, VenueType } from "@/lib/api/types";
@@ -49,6 +49,7 @@ import { useLocation } from "@/lib/location";
 import { EASE_OUT, reducedMotion } from "@/lib/motion";
 import { usableBy, usePrefData } from "@/lib/sex-pref";
 import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
+import { groupToilets, toiletCount, type ToiletGroup } from "@/lib/toilet-groups";
 
 /**
  * Must-haves someone can plan around. "Outside fare gates" is left out until toilets carry a known
@@ -174,7 +175,7 @@ function narrowArea(a: AreaDetail, sex: SexPreference): AreaDetail {
 
 export function AreaView({ area: server }: { area: AreaDetail }) {
   // Rendered for everyone on the server; narrowed here to the toilets this person uses, if they said.
-  const { data: area } = usePrefData(
+  const { data: area, sex } = usePrefData(
     ["area", server.slug],
     server,
     (sex, signal) => api.area(server.slug, sex, signal),
@@ -203,18 +204,20 @@ export function AreaView({ area: server }: { area: AreaDetail }) {
   };
   return (
     <FoldMotion value={folding}>
-      <AreaBody area={area} active={active} toggle={toggle} clear={clear} />
+      <AreaBody area={area} sex={sex} active={active} toggle={toggle} clear={clear} />
     </FoldMotion>
   );
 }
 
 function AreaBody({
   area,
+  sex,
   active,
   toggle,
   clear,
 }: {
   area: AreaDetail;
+  sex: SexPreference | null;
   active: Set<FilterKey>;
   toggle: (k: FilterKey) => void;
   clear: () => void;
@@ -239,9 +242,15 @@ function AreaBody({
       })).filter((s) => s.venues.length),
     [venues],
   );
+  // One row per floor of a place: the toilet they use first leads (the accessible one with Accessible on), the
+  // others are "here too" rows under it (lib/toilet-groups.ts).
+  const accessible = required.includes("ACCESSIBLE");
   const openData = useMemo(
-    () => venues.filter((v) => !isChecked(v)).flatMap((v) => v.toilets.map((t) => ({ venue: v, toilet: t }))),
-    [venues],
+    () =>
+      venues
+        .filter((v) => !isChecked(v))
+        .flatMap((v) => groupToilets(v.toilets, sex, accessible).map((group) => ({ venue: v, group }))),
+    [venues, sex, accessible],
   );
   const shown = venues.reduce((n, v) => n + v.toilets.length, 0);
   const bests = useMemo(() => {
@@ -363,7 +372,7 @@ function AreaBody({
           >
             <div className="pt-10">
               <SectionHeading id={`${s.id}-h`} icon={Icon} title={s.title} count={plural(s.venues.length, "place")} />
-              <PlaceList venues={s.venues} />
+              <PlaceList venues={s.venues} sex={sex} accessible={accessible} />
             </div>
           </Reveal>
         );
@@ -382,7 +391,12 @@ function AreaBody({
           onExited={() => open.exited(e.key)}
         >
           <div className="pt-10">
-            <SectionHeading id="open-data-h" icon={Globe} title="From open data" count={plural(e.item.length, "toilet")} />
+            <SectionHeading
+              id="open-data-h"
+              icon={Globe}
+              title="From open data"
+              count={plural(toiletCount(e.item.map((r) => r.group)), "toilet")}
+            />
             <p className="mt-2 text-sm text-muted">
               Nobody has checked these in person yet, so what they list, or whether they&apos;re still there, may be out of date.
               Been to one? Check in from its page and it moves up.
@@ -554,40 +568,47 @@ function BestBet({ venue, toilet }: { venue: AreaVenue; toilet: ToiletSummary })
 const LIST_CARD = "mt-3 divide-y divide-border/70 overflow-hidden rounded-3xl border border-border/70 bg-surface shadow-rest";
 
 /** A section's places. Ones a filter rules out fold shut and the rest close up; clearing it folds them back. */
-function PlaceList({ venues }: { venues: AreaVenue[] }) {
+function PlaceList({ venues, sex, accessible }: { venues: AreaVenue[]; sex: SexPreference | null; accessible: boolean }) {
   const { entries, exited } = usePresence(venues, (v) => v.id);
   return (
     <ul className={LIST_CARD}>
       {entries.map((e) => (
         <Reveal key={e.key} as="li" entering={e.entering} leaving={e.leaving} onExited={() => exited(e.key)}>
-          <PlaceGroup v={e.item} />
+          <PlaceGroup v={e.item} sex={sex} accessible={accessible} />
         </Reveal>
       ))}
     </ul>
   );
 }
 
-function OpenDataList({ rows }: { rows: { venue: AreaVenue; toilet: ToiletSummary }[] }) {
-  const { entries, exited } = usePresence(rows, (r) => r.toilet.id);
+function OpenDataList({ rows }: { rows: { venue: AreaVenue; group: ToiletGroup<ToiletSummary> }[] }) {
+  const { entries, exited } = usePresence(rows, (r) => r.group.key);
   return (
     <ul className={LIST_CARD}>
       {entries.map((e) => (
         <Reveal key={e.key} as="li" entering={e.entering} leaving={e.leaving} onExited={() => exited(e.key)}>
-          <OpenDataRow v={e.item.venue} t={e.item.toilet} />
+          <OpenDataRow v={e.item.venue} t={e.item.group.lead} />
+          {e.item.group.others.map((o) => (
+            <AlsoHere key={o.id} t={o} lead={e.item.group.lead} className={ALSO_ROW} />
+          ))}
         </Reveal>
       ))}
     </ul>
   );
 }
 
+/** A "here too" row under its floor's lead, set in a little so it reads as part of that row. */
+const ALSO_ROW = "pl-8 pr-4";
+
 /** One place: name and lines, then its tier and age said once, then a fact line per toilet. */
-function PlaceGroup({ v }: { v: AreaVenue }) {
+function PlaceGroup({ v, sex, accessible }: { v: AreaVenue; sex: SexPreference | null; accessible: boolean }) {
   const lead = v.toilets[0].tier;
   const latest = v.toilets.reduce<string | null>(
     (m, t) => (t.lastVerifiedAt && (!m || t.lastVerifiedAt > m) ? t.lastVerifiedAt : m),
     null,
   );
-  const toilets = usePresence(v.toilets, (t) => t.id);
+  const groups = useMemo(() => groupToilets(v.toilets, sex, accessible), [v.toilets, sex, accessible]);
+  const toilets = usePresence(groups, (g) => g.key);
   return (
     <div className="pb-1.5">
       <div className="px-4 pt-3.5">
@@ -607,7 +628,10 @@ function PlaceGroup({ v }: { v: AreaVenue }) {
       <ul className="mt-1">
         {toilets.entries.map((e) => (
           <Reveal key={e.key} as="li" entering={e.entering} leaving={e.leaving} onExited={() => toilets.exited(e.key)}>
-            <ToiletLine t={e.item} venueName={v.name} lead={lead} only={v.toilets.length === 1} />
+            <ToiletLine t={e.item.lead} venueName={v.name} lead={lead} only={v.toilets.length === 1} />
+            {e.item.others.map((o) => (
+              <AlsoHere key={o.id} t={o} lead={e.item.lead} className={ALSO_ROW} />
+            ))}
           </Reveal>
         ))}
       </ul>

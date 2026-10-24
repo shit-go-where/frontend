@@ -4,16 +4,20 @@
  * A building's toilets on the map. Malls and stations list toilets on several floors at (nearly) one
  * coordinate, so past clustering their pins would sit on top of each other with only the top one
  * reachable. Here they become a stack of rolls, one per floor; a tall stack folds into one roll that
- * fans out on tap. The floor picker dims every pin not on the chosen floor.
+ * fans out on tap, by floor when it spans several. The floor picker narrows a stack to the chosen floor
+ * and dims every other pin not on it.
  */
 import { useEffect, useRef } from "react";
-import type { ToiletPin } from "@/lib/api/types";
+import type { SexPreference, ToiletPin } from "@/lib/api/types";
 import { sexLabel } from "@/lib/format";
-import { compareLevelOrder, distinctLevels, levelOrder, levelParts, levelShort } from "@/lib/level";
+import { compareLevelOrder, distinctLevels, floorGroups, floorsKey, levelShort, onFloor } from "@/lib/level";
+import { sexRank } from "@/lib/sex-order";
 import { PinGlyph, tierPinVariant } from "../pin";
 import { cx } from "../ui";
 
-/** Same venue and this close together: one stack. Matches the duplicate guard's radius. */
+export { floorsKey, onFloor };
+
+/** This close together: one stack, whichever places they belong to. Matches the duplicate guard's radius. */
 export const STACK_RADIUS_M = 15;
 /** Rolls in a stack, in css px: the glyph, and how far each roll sits above the one below. */
 const ROLL_PX = 34;
@@ -21,7 +25,7 @@ const ROLL_PX = 34;
 const TARGET_PX = 44;
 const STEP_PX = TARGET_PX;
 /** More rolls than this and the stack folds into one roll that fans out (four would stand 176 px tall). */
-const MAX_STACK_ROLLS = 3;
+export const MAX_STACK_ROLLS = 3;
 /** A fan of more than this many doesn't fit on a phone: the stack opens as a list instead. */
 export const MAX_SPIDER_LEGS = 12;
 /** Dimmed by the floor picker: a little fainter than the filters' stale-pins dim. */
@@ -33,6 +37,8 @@ export interface PinStack {
   lng: number;
   /** Bottom to top: lowest level first, unknown levels last (on top). */
   pins: ToiletPin[];
+  /** The place they're all at; null when the stack spans several (a block's coffee shops, a mall's interchange). */
+  venueId: string | null;
 }
 
 /** Flat-earth metres, fine over a few dozen metres. */
@@ -42,58 +48,77 @@ function metres(a: { lat: number; lng: number }, b: { lat: number; lng: number }
   return Math.hypot(dx, dy);
 }
 
-/** Men's, women's, then unisex on the same floor, the way they usually sit side by side. */
-const SEX_ORDER = { MALE: 0, FEMALE: 1, UNISEX: 2 } as const;
-const sexOrder = (p: ToiletPin) => (p.sex ? SEX_ORDER[p.sex] : 3);
+const toilets = (n: number) => `${n} toilet${n === 1 ? "" : "s"}`;
 
-const byLevel = (a: ToiletPin, b: ToiletPin) =>
+/**
+ * Lowest floor first; on one floor, a place's toilets together, then the toilets they use first, then unisex
+ * (lib/sex-order.ts). No preference: men's, women's, then unisex, the way they usually sit side by side.
+ */
+const byLevel = (pref: SexPreference | null) => (a: ToiletPin, b: ToiletPin) =>
   compareLevelOrder(a.levelOrder, b.levelOrder) ||
   (a.level ?? "").localeCompare(b.level ?? "") ||
-  sexOrder(a) - sexOrder(b) ||
+  (a.venueId ?? "").localeCompare(b.venueId ?? "") ||
+  sexRank(a.sex, pref) - sexRank(b.sex, pref) ||
   a.id.localeCompare(b.id);
 
 /**
- * ACTIVE pins of one venue within 15 m of each other (chained, so three toilets 10 m apart are one
- * stack). Pins at the same venue but further apart stay separate pins. Pins without a venueId (saved
- * offline before levels came in) never stack.
+ * ACTIVE pins within 15 m of each other (chained, so three toilets 10 m apart are one stack), whichever places
+ * they belong to: two coffee shops in one HDB block share a postcode and so a coordinate, and a bus interchange
+ * sits inside its mall. Pins further apart stay separate pins. Pins without a venueId (saved offline before
+ * levels came in) never stack.
  */
-export function stacksOf(pins: ToiletPin[]): PinStack[] {
-  const byVenue = new Map<string, ToiletPin[]>();
-  for (const p of pins) {
-    if (p.status !== "ACTIVE" || !p.venueId) continue;
-    const list = byVenue.get(p.venueId);
-    if (list) list.push(p);
-    else byVenue.set(p.venueId, [p]);
-  }
-  const out: PinStack[] = [];
-  for (const [venueId, list] of byVenue) {
-    if (list.length < 2) continue;
-    // Union-find over pairs within the radius; a venue holds a handful of toilets.
-    const parent = list.map((_, i) => i);
-    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        if (metres(list[i], list[j]) <= STACK_RADIUS_M) parent[find(i)] = find(j);
+export function stacksOf(pins: ToiletPin[], pref: SexPreference | null = null): PinStack[] {
+  const list = pins.filter((p) => p.status === "ACTIVE" && !!p.venueId);
+  if (list.length < 2) return [];
+  // A grid of cells one radius across, so each pin is only measured against its neighbours' cells.
+  const latCell = STACK_RADIUS_M / 111_320;
+  const lngCell = latCell / Math.cos((list[0].lat * Math.PI) / 180);
+  const cellKey = (a: number, b: number) => `${a},${b}`;
+  const cells = new Map<string, number[]>();
+  const at = list.map((p, i) => {
+    const c = [Math.floor(p.lat / latCell), Math.floor(p.lng / lngCell)] as const;
+    const k = cellKey(c[0], c[1]);
+    cells.set(k, [...(cells.get(k) ?? []), i]);
+    return c;
+  });
+  // Union-find over pairs within the radius.
+  const parent = list.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  list.forEach((p, i) => {
+    for (let da = -1; da <= 1; da++) {
+      for (let db = -1; db <= 1; db++) {
+        for (const j of cells.get(cellKey(at[i][0] + da, at[i][1] + db)) ?? []) {
+          if (j > i && metres(p, list[j]) <= STACK_RADIUS_M) parent[find(i)] = find(j);
+        }
       }
     }
-    const groups = new Map<number, ToiletPin[]>();
-    list.forEach((p, i) => {
-      const root = find(i);
-      groups.set(root, [...(groups.get(root) ?? []), p]);
+  });
+  const groups = new Map<number, ToiletPin[]>();
+  list.forEach((p, i) => {
+    const root = find(i);
+    groups.set(root, [...(groups.get(root) ?? []), p]);
+  });
+  const out: PinStack[] = [];
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const sorted = [...g].sort(byLevel(pref));
+    // The lowest toilet's own spot, whoever it's for, so a new preference never moves the stack.
+    const anchor = pref ? [...g].sort(byLevel(null))[0] : sorted[0];
+    const venues = [...new Set(g.map((p) => p.venueId))].sort();
+    out.push({
+      key: `${venues.join("+")}:${sorted.map((p) => p.id).sort()[0]}`,
+      lat: anchor.lat,
+      lng: anchor.lng,
+      pins: sorted,
+      venueId: venues.length === 1 ? venues[0] : null,
     });
-    for (const g of groups.values()) {
-      if (g.length < 2) continue;
-      const sorted = [...g].sort(byLevel);
-      out.push({
-        key: `${venueId}:${sorted.map((p) => p.id).sort()[0]}`,
-        // The bottom roll's own spot, so the stack stands where the lowest toilet is.
-        lat: sorted[0].lat,
-        lng: sorted[0].lng,
-        pins: sorted,
-      });
-    }
   }
   return out;
+}
+
+/** How many places a stack's toilets belong to. */
+export function placesIn(stack: Pick<PinStack, "pins">): number {
+  return new Set(stack.pins.map((p) => p.venueId)).size;
 }
 
 /** Whether a stack is drawn folded (one roll with a count) rather than as its rolls. */
@@ -101,25 +126,52 @@ export function folds(stack: PinStack): boolean {
   return stack.pins.length > MAX_STACK_ROLLS;
 }
 
-/** ";B1;L3;" for "B1; L3": what the floor picker's opacity expression looks a floor up in. */
-export function floorsKey(level: string | null | undefined): string {
-  const parts = levelParts(level).filter((p) => levelOrder(p) !== null);
-  return parts.length ? `;${parts.join(";")};` : "";
-}
-
-/** Whether a pin is on the picked floor ("B1; L3" is on both). No floor picked: every pin is. */
-export function onFloor(level: string | null | undefined, floor: string | null): boolean {
-  return !floor || floorsKey(level).includes(`;${floor};`);
-}
-
 /** The distinct floors of some pins, top floor first, for the picker. */
 export function floorsOf(pins: ToiletPin[]): { level: string; order: number }[] {
   return distinctLevels(pins).reverse();
 }
 
-/** How far from its spot a fanned-out stack reaches, in css px: the ring plus a leg's roll and tag. */
-export function spiderReach(stack: PinStack): number {
-  return spiderRadius(stack.pins.length) + TARGET_PX / 2 + 12;
+/** A leg of a fanned-out stack: one toilet, or every toilet on one floor. */
+export interface FanLeg {
+  key: string;
+  /** The floor ("B1"); for a one-toilet leg, that toilet's level; null when not known. */
+  level: string | null;
+  pins: ToiletPin[];
+}
+
+export interface Fan {
+  /** The legs are floors (the stack spans two or more), not toilets. */
+  byFloor: boolean;
+  legs: FanLeg[];
+}
+
+/**
+ * How a folded stack fans out. Spanning two floors or more (and no floor picked), one leg per floor, top
+ * floor first, those with no floor last: a 13-toilet mall is six legs, not a list. On one floor (or
+ * narrowed to one by the picker), one leg per toilet in the stack's order: the toilets they use first.
+ */
+export function fanOf(stack: PinStack, floor: string | null): Fan {
+  if (!floor && floorsOf(stack.pins).length >= 2) {
+    // Several places: each place's floors, place by place, so a leg never mixes two places' toilets.
+    const places = new Map<string, ToiletPin[]>();
+    for (const p of stack.pins) places.set(p.venueId, [...(places.get(p.venueId) ?? []), p]);
+    return {
+      byFloor: true,
+      legs: [...places].flatMap(([venueId, pins]) =>
+        floorGroups(pins, true).map((g) => ({
+          key: `${stack.venueId ? "" : `${venueId}:`}floor:${g.level ?? "?"}`,
+          level: g.level,
+          pins: g.items,
+        })),
+      ),
+    };
+  }
+  return { byFloor: false, legs: stack.pins.map((p) => ({ key: p.id, level: p.level, pins: [p] })) };
+}
+
+/** How far from its spot a fan of `legs` reaches, in css px: the ring plus a leg's roll and tag. */
+export function spiderReach(legs: number): number {
+  return spiderRadius(legs) + TARGET_PX / 2 + 12;
 }
 
 function spiderRadius(n: number): number {
@@ -130,13 +182,20 @@ function spiderRadius(n: number): number {
   return Math.max(68, (TARGET_PX * Math.SQRT2) / (2 * Math.sin(Math.PI / n)));
 }
 
-/** What a roll says out loud, naming its floor and who it's for ("Women's toilet on L3"). */
-export function rollLabel(p: Pick<ToiletPin, "level" | "sex">): string {
+/**
+ * What a roll says out loud, naming its floor and who it's for ("Women's toilet on L3"), and in a stack of
+ * several places, which place ("Men's toilet at Kopi Corner, Blk 101").
+ */
+export function rollLabel(p: Pick<ToiletPin, "level" | "sex">, place?: string | null): string {
   const short = levelShort(p.level);
   const who = sexLabel(p.sex);
   const noun = who ? `${who} toilet` : "Toilet";
+  if (place) return short ? `${noun} on ${short} at ${place}` : `${noun} at ${place}`;
   return short ? `${noun} on ${short}` : `${noun}, level unknown`;
 }
+
+/** In a stack of several places, the place of a toilet: its name once loaded, else what kind of place it is. */
+export type PlaceOf = (p: ToiletPin) => string;
 
 function IssueDot({ className }: { className?: string }) {
   return (
@@ -148,48 +207,70 @@ function IssueDot({ className }: { className?: string }) {
 }
 
 /**
- * A roll's tag: its floor, and who it's for when known ("Men's · L3"), since a men's and a women's toilet on
- * one floor would otherwise read the same.
+ * A roll's tag: its floor, and who it's for when known ("Men's · L3"), since a men's and a unisex toilet on
+ * one floor would otherwise read the same. A floor's leg says how many it holds instead ("B1 · 4").
  */
-function LevelTag({ level, sex, className }: { level: string | null; sex?: ToiletPin["sex"]; className?: string }) {
-  const who = sexLabel(sex);
+function LevelTag({ text, className }: { text: string; className?: string }) {
   return (
     <span
       className={cx(
-        "pointer-events-none whitespace-nowrap rounded-full border border-border bg-surface px-1.5 text-[11px] font-extrabold leading-4 text-fg shadow-sm tabular-nums",
+        // A place's name can be long ("Coffee shop, Blk 101 Yishun Ave 5"): cut short on the map, said in full aloud.
+        "pointer-events-none max-w-44 truncate whitespace-nowrap rounded-full border border-border bg-surface px-1.5 text-[11px] font-extrabold leading-4 text-fg shadow-sm tabular-nums",
         className,
       )}
       aria-hidden
     >
-      {who ? `${who} · ` : null}
-      {levelShort(level) ?? "?"}
+      {text}
     </span>
   );
 }
 
+const rollTag = (p: Pick<ToiletPin, "level" | "sex">, place?: string | null) => {
+  const who = sexLabel(p.sex);
+  // Several places: who it's for and where ("Men's · Kopi Corner"), its floor between them when known.
+  if (place) return [who, levelShort(p.level), place].filter(Boolean).join(" · ");
+  return `${who ? `${who} · ` : ""}${levelShort(p.level) ?? "?"}`;
+};
+
 /**
  * A stack drawn as its rolls, lowest floor at the bottom: each roll is its own button, so the toilet
  * underneath is one tap away instead of hidden under its neighbour. Each button is a full 44 px band
- * holding the roll and its level tag, so no roll's target is a sliver under the one above.
+ * holding the roll and its level tag, so no roll's target is a sliver under the one above. `only` is the
+ * floor the picker narrowed it to (the rolls are that floor's toilets).
  */
 export function StackRolls({
   stack,
+  only = null,
   dim,
   floor,
   selectedId,
   onSelect,
+  placeOf,
 }: {
   stack: PinStack;
+  only?: string | null;
   dim: boolean;
   floor: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Set for a stack of several places (stack.venueId null): each roll names its place. */
+  placeOf?: PlaceOf;
 }) {
-  const height = stack.pins.length * STEP_PX;
+  const n = stack.pins.length;
+  const height = n * STEP_PX;
+  const place = (p: ToiletPin) => (stack.venueId ? null : (placeOf?.(p) ?? null));
+  // A picked floor can narrow a stack of several places to one place's toilets.
+  const places = stack.venueId ? 1 : placesIn(stack);
   return (
     <div
       role="group"
-      aria-label={`${stack.pins.length} toilets stacked here, one per level`}
+      aria-label={
+        places === 1
+          ? only
+            ? `${toilets(n)} on ${only}`
+            : `${n} toilets stacked here, one per level`
+          : `${toilets(n)}${only ? ` on ${only}` : ""} stacked here at ${places} places`
+      }
       className="pin-pop relative"
       style={{ width: ROLL_PX, height }}
       data-testid="pin-stack"
@@ -201,7 +282,7 @@ export function StackRolls({
             key={p.id}
             type="button"
             onClick={() => onSelect(p.id)}
-            aria-label={rollLabel(p)}
+            aria-label={rollLabel(p, place(p))}
             aria-pressed={p.id === selectedId}
             className={cx(
               "group absolute left-0 flex items-end transition-[scale,opacity] duration-200 active:scale-95",
@@ -222,7 +303,7 @@ export function StackRolls({
               {/* Low on the roll's left (the tag takes the right). */}
               {p.hasIssue ? <IssueDot className="-left-1 top-[15px]" /> : null}
             </span>
-            <LevelTag level={p.level} sex={p.sex} className="-ml-0.5 mb-[18px]" />
+            <LevelTag text={rollTag(p, place(p))} className="-ml-0.5 mb-[18px]" />
           </button>
         );
       })}
@@ -230,31 +311,52 @@ export function StackRolls({
   );
 }
 
+/** What a floor's leg says out loud: "4 toilets on B1" (in a stack of several places, "… at Bedok Mall"). */
+function legLabel(leg: FanLeg, place: string | null): string {
+  if (leg.pins.length === 1) return rollLabel(leg.pins[0], place);
+  const short = levelShort(leg.level);
+  const at = place ? ` at ${place}` : "";
+  return short ? `${toilets(leg.pins.length)} on ${short}${at}` : `${toilets(leg.pins.length)}${at}, floor unknown`;
+}
+
 /**
- * A stack too tall to draw: one roll with a count. Tapping it fans the floors out in a ring around
- * the spot, each joined to it by a short line. Escape, a tap elsewhere or moving the map folds it.
+ * A stack too tall to draw: one roll with a count. Tapping it fans out in a ring around the spot, each leg
+ * joined to it by a short line: one leg per floor when it spans several (`fan`, from fanOf), else one per
+ * toilet. A one-toilet leg picks that toilet; a floor's leg is handed to `onLeg`. Escape, a tap elsewhere
+ * or moving the map folds it. `only` is the floor the picker narrowed it to.
  */
 export function FoldedStack({
   stack,
+  fan,
+  only = null,
   open,
   dim,
   floor,
   selectedId,
   onToggle,
   onSelect,
+  onLeg,
+  placeOf,
 }: {
   stack: PinStack;
+  fan: Fan;
+  only?: string | null;
   open: boolean;
   dim: boolean;
   floor: string | null;
   selectedId: string | null;
   onToggle: (open: boolean) => void;
   onSelect: (id: string) => void;
+  onLeg: (leg: FanLeg) => void;
+  /** Set for a stack of several places (stack.venueId null): each leg names its place. */
+  placeOf?: PlaceOf;
 }) {
   const n = stack.pins.length;
+  const places = stack.venueId ? 1 : placesIn(stack);
+  const place = (p: ToiletPin) => (stack.venueId ? null : (placeOf?.(p) ?? null));
   const toggleRef = useRef<HTMLButtonElement>(null);
   const levels = new Set(stack.pins.map((p) => levelShort(p.level)).filter(Boolean)).size;
-  const radius = spiderRadius(n);
+  const radius = spiderRadius(fan.legs.length);
   const lead = stack.pins.find((p) => p.tier === "VERIFIED") ?? stack.pins[0];
   const anyIssue = stack.pins.some((p) => p.hasIssue);
   const faded = dim || !stack.pins.some((p) => onFloor(p.level, floor));
@@ -270,10 +372,10 @@ export function FoldedStack({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onToggle]);
 
-  // Legs start at the top and go round clockwise, lowest floor first.
-  const legs = stack.pins.map((p, i) => {
-    const a = -Math.PI / 2 + (i / n) * 2 * Math.PI;
-    return { p, x: Math.cos(a) * radius, y: Math.sin(a) * radius };
+  // Legs start at the top and go round clockwise: top floor first, or the toilets they use first.
+  const legs = fan.legs.map((leg, i) => {
+    const a = -Math.PI / 2 + (i / fan.legs.length) * 2 * Math.PI;
+    return { leg, x: Math.cos(a) * radius, y: Math.sin(a) * radius };
   });
 
   return (
@@ -286,7 +388,9 @@ export function FoldedStack({
         aria-label={
           open
             ? `Hide the ${n} toilets stacked here`
-            : `${n} toilets stacked here${levels > 1 ? ` on ${levels} levels` : ""}, show them`
+            : only
+              ? `${toilets(n)} on ${only} stacked here${places > 1 ? ` at ${places} places` : ""}, show them`
+              : `${n} toilets stacked here${places > 1 ? ` at ${places} places` : levels > 1 ? ` on ${levels} levels` : ""}, show them`
         }
         className={cx(
           "pin-pop relative flex size-11 items-end justify-center transition-[scale,opacity] duration-200 active:scale-95",
@@ -303,7 +407,17 @@ export function FoldedStack({
       </button>
       {open ? (
         // The ring is centred on the spot itself: the bottom of the folded roll.
-        <div className="absolute left-1/2 top-full" role="group" aria-label={`${n} toilets at this spot, by level`}>
+        <div
+          className="absolute left-1/2 top-full"
+          role="group"
+          aria-label={
+            only && !fan.byFloor
+              ? `${toilets(n)} on ${only}`
+              : places > 1
+                ? `${n} toilets at this spot, at ${places} places`
+                : `${n} toilets at this spot, by level`
+          }
+        >
           <svg
             className="pointer-events-none absolute overflow-visible"
             width="1"
@@ -311,20 +425,22 @@ export function FoldedStack({
             aria-hidden
             focusable="false"
           >
-            {legs.map(({ p, x, y }) => (
-              <line key={p.id} x1={0} y1={0} x2={x} y2={y} stroke="var(--fg)" strokeOpacity={0.55} strokeWidth={1.5} />
+            {legs.map(({ leg, x, y }) => (
+              <line key={leg.key} x1={0} y1={0} x2={x} y2={y} stroke="var(--fg)" strokeOpacity={0.55} strokeWidth={1.5} />
             ))}
             <circle r={3.5} fill="var(--fg)" />
           </svg>
-          {legs.map(({ p, x, y }) => {
-            const off = dim || !onFloor(p.level, floor);
+          {legs.map(({ leg, x, y }) => {
+            const one = leg.pins.length === 1 ? leg.pins[0] : null;
+            const legLead = leg.pins.find((p) => p.tier === "VERIFIED") ?? leg.pins[0];
+            const off = dim || !leg.pins.some((p) => onFloor(p.level, floor));
             return (
               <button
-                key={p.id}
+                key={leg.key}
                 type="button"
-                onClick={() => onSelect(p.id)}
-                aria-label={rollLabel(p)}
-                aria-pressed={p.id === selectedId}
+                onClick={() => (one ? onSelect(one.id) : onLeg(leg))}
+                aria-label={legLabel(leg, place(leg.pins[0]))}
+                aria-pressed={one ? one.id === selectedId : undefined}
                 className={cx(
                   "rise-in absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center transition-opacity duration-200 active:scale-95",
                   off && "opacity-35",
@@ -333,10 +449,17 @@ export function FoldedStack({
                 data-testid="spider-leg"
               >
                 <span className="relative flex">
-                  <PinGlyph variant={tierPinVariant(p.tier)} className="size-8 drop-shadow-[0_2px_2px_rgb(10_5_2/0.5)]" />
-                  {p.hasIssue ? <IssueDot className="-right-0.5 top-0" /> : null}
+                  <PinGlyph variant={tierPinVariant(legLead.tier)} className="size-8 drop-shadow-[0_2px_2px_rgb(10_5_2/0.5)]" />
+                  {leg.pins.some((p) => p.hasIssue) ? <IssueDot className="-right-0.5 top-0" /> : null}
                 </span>
-                <LevelTag level={p.level} sex={p.sex} className="-mt-1" />
+                <LevelTag
+                  text={
+                    one
+                      ? rollTag(one, place(one))
+                      : [`${levelShort(leg.level) ?? "?"} · ${leg.pins.length}`, place(leg.pins[0])].filter(Boolean).join(" · ")
+                  }
+                  className="-mt-1"
+                />
               </button>
             );
           })}
@@ -348,7 +471,8 @@ export function FoldedStack({
 
 /**
  * Google Maps' indoor floor control: the floors of the buildings in view, top floor first, and All.
- * Choosing a floor dims the pins on the others (they stay tappable). Arrow keys move between floors.
+ * Choosing a floor narrows a building's stacks (and the sheet's list of it) to that floor, and dims the
+ * other single pins (they stay tappable). Arrow keys move between floors.
  */
 export function FloorPicker({
   floors,

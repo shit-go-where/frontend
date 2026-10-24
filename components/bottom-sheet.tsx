@@ -16,7 +16,10 @@ export const SHEET_PEEK = 1;
 export const SHEET_TOP = SNAPS.length - 1;
 /** Until the peek has been measured: about a one-line header and one compact card. */
 const PEEK_FALLBACK_PX = 210;
-/** Room under the peek's card (and the strip's count) for the tab bar's bump, which rises into the sheet's bottom edge. */
+/**
+ * Room under the peek's card (and the strip's count) for the tab bar's bump, which rises into the sheet's bottom edge.
+ * At least this; on phones the list's own bottom margin (the bump's height, `--nav-crown`) is measured instead.
+ */
 const PEEK_CLEARANCE_PX = 12;
 /** Breathing room between the sheet's top edge and whatever it must stay below. */
 const TOP_GAP_PX = 8;
@@ -89,6 +92,7 @@ export function BottomSheet({
   const ref = useRef<HTMLElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const listBoxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const raf = useRef(0);
@@ -134,8 +138,10 @@ export function BottomSheet({
       // where it is mid-animation, and nothing re-measures once the transform ends.
       const below = peek ? peek.offsetTop + peek.offsetHeight - content.offsetTop : 0;
       const resting = head.offsetHeight - (reveal?.offsetHeight ?? 0);
-      setStripPx(Math.round(resting + PEEK_CLEARANCE_PX));
-      setPeekPx(Math.round(resting + below + PEEK_CLEARANCE_PX));
+      const box = listBoxRef.current;
+      const clearance = Math.max(PEEK_CLEARANCE_PX, box ? parseFloat(getComputedStyle(box).marginBottom) || 0 : 0);
+      setStripPx(Math.round(resting + clearance));
+      setPeekPx(Math.round(resting + below + clearance));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -456,8 +462,13 @@ export function BottomSheet({
         top snap the list scrolls and a pull down from its top collapses the sheet. A tap is a tap: only a move past
         the slop becomes a drag, and only a drag swallows the click.
       */}
+      {/*
+        Phones: the list ends where the tab bar's bump begins (its crown and top line), so nothing in it, the footer
+        links included, can scroll to rest under the bar, whatever the list's length or the screen's width.
+      */}
       <div
-        className="relative min-h-0 flex-1"
+        ref={listBoxRef}
+        className="relative min-h-0 flex-1 max-md:mb-[calc(var(--nav-crown)+1px)]"
         aria-busy={busy}
         onPointerDown={(e) => onPointerDown(e, true)}
         onPointerMove={onPointerMove}
@@ -467,6 +478,7 @@ export function BottomSheet({
       >
         <div
           ref={listRef}
+          data-sheet-list
           className={cx(
             "h-full overflow-y-auto overscroll-contain px-4 pb-14 transition-opacity duration-200 md:pb-4",
             snap === SHEET_STRIP && "max-md:opacity-0",

@@ -1,11 +1,12 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { ToiletSummary } from "../lib/api/types";
-import { BIG_MALL_TOILETS, MALL_TOILETS, TOWER_TOILETS, pinOf } from "./fixtures";
+import { BIG_MALL_TOILETS, COFFEESHOP_TOILETS, MALL_TOILETS, TOWER_TOILETS, WATERWAY_TOILETS, pinOf } from "./fixtures";
 import { mockApi } from "./mock-api";
 
 /*
- * A building's toilets on the home map: same-building clusters open as a list, floors stack past
- * clustering, a tall stack fans out, and the floor picker dims the other floors.
+ * A building's toilets on the home map: same-building clusters open as a list by floor, floors stack past
+ * clustering, a tall stack fans out (by floor when it spans several), and the floor picker narrows stacks
+ * and the sheet's list to one floor.
  */
 
 const BUILDING = [...MALL_TOILETS, ...TOWER_TOILETS];
@@ -122,8 +123,9 @@ async function intoOpen(page: Page, target: Locator) {
  */
 async function expectWholeTarget(target: Locator) {
   const box = (await target.boundingBox())!;
-  expect(box.width).toBeGreaterThanOrEqual(44);
-  expect(box.height).toBeGreaterThanOrEqual(44);
+  // 44 px, give or take float noise from the marker's sub-pixel transform (43.99999).
+  expect(box.width).toBeGreaterThanOrEqual(44 - 0.01);
+  expect(box.height).toBeGreaterThanOrEqual(44 - 0.01);
   const hits = await target.evaluate(
     (el, pts) =>
       pts.map(([x, y]) => {
@@ -148,13 +150,15 @@ test.describe("a building on the map", () => {
 
     const group = page.getByTestId("map-group");
     await expect(group.getByRole("heading", { name: "4 toilets in Level Test Mall" })).toBeVisible();
-    // Lowest floor first.
+    // Under floor headers, top floor first.
+    await expect(group.getByRole("heading", { level: 4 })).toHaveText(["Level 3", "Level 2", "Level 1", "Basement 1"]);
     const cards = group.getByTestId("toilet-card");
     await expect(cards).toHaveCount(4);
-    await expect(cards.nth(0)).toContainText("Basement 1");
-    await expect(cards.nth(1)).toContainText("Level 1");
-    await expect(cards.nth(2)).toContainText("Level 2");
-    await expect(cards.nth(3)).toContainText("Level 3");
+    await expect(cards.nth(0)).toContainText("Level 3");
+    await expect(cards.nth(1)).toContainText("Level 2");
+    await expect(cards.nth(2)).toContainText("Level 1");
+    await expect(cards.nth(3)).toContainText("Basement 1");
+    await expect(group.getByRole("list", { name: "Basement 1" }).getByTestId("toilet-card")).toHaveCount(1);
     // It didn't zoom: the cluster is still there.
     await expect(mall).toBeVisible();
     await group.getByRole("button", { name: "Close this list" }).click();
@@ -226,7 +230,7 @@ test.describe("a building on the map", () => {
     await expect(page.getByTestId("toilet-card").filter({ hasText: "Tall Tower" }).first()).toContainText("Level 5");
   });
 
-  test("the floor picker dims other floors and goes back to All when it leaves", async ({ page }) => {
+  test("the floor picker narrows stacks to its floor and goes back to All when it leaves", async ({ page }) => {
     await mockBuildings(page);
     await page.goto("/");
     await mapReady(page);
@@ -244,14 +248,24 @@ test.describe("a building on the map", () => {
 
     await picker.getByRole("button", { name: "Show toilets on B1" }).click();
     await expect(picker.getByRole("button", { name: "Show toilets on B1" })).toHaveAttribute("aria-pressed", "true");
+    // The mall's stack is now only its B1 toilet; the other floors' rolls are gone, not just faded.
     const stack = page.getByRole("group", { name: "3 toilets stacked here, one per level" });
-    await expect(stack.getByRole("button", { name: "Toilet on B1" })).not.toHaveClass(/opacity-35/);
-    await expect(stack.getByRole("button", { name: "Toilet on L3" })).toHaveClass(/opacity-35/);
+    // The tower's stack likewise: each is now one roll, B1's.
+    const onB1 = page.getByRole("group", { name: "1 toilet on B1", exact: true });
+    await expect(onB1).toHaveCount(2);
+    for (const one of await onB1.all()) {
+      await expect(one.getByRole("button")).toHaveCount(1);
+      await expect(one.getByRole("button", { name: "Toilet on B1" })).not.toHaveClass(/opacity-35/);
+    }
+    await expect(stack).toHaveCount(0);
 
     // Keyboard: arrow keys move through the floors.
     await picker.getByRole("button", { name: "Show toilets on B1" }).focus();
     await page.keyboard.press("ArrowDown");
     await expect(picker.getByRole("button", { name: "Show toilets on B2" })).toHaveAttribute("aria-pressed", "true");
+    // Nothing of the mall's stack is on B2: all of it is back, dimmed like a single pin on another floor.
+    await expect(stack.getByRole("button")).toHaveCount(3);
+    await expect(stack.getByRole("button", { name: "Toilet on L3" })).toHaveClass(/opacity-35/);
 
     // Zoomed back out the picker goes, and with it the floor.
     await zoomMap(page, -1);
@@ -271,8 +285,9 @@ test.describe("a building on the map", () => {
     await expect(group.getByRole("heading", { name: "20 toilets in Big Test Mall" })).toBeVisible();
     const cards = group.getByTestId("toilet-card");
     await expect(cards).toHaveCount(20);
-    await expect(cards.nth(0)).toContainText("Basement 3");
-    await expect(cards.nth(19)).toContainText("Level 17");
+    // Top floor first.
+    await expect(cards.nth(0)).toContainText("Level 17");
+    await expect(cards.nth(19)).toContainText("Basement 3");
     expect(api.find("GET", "/venues/venue-big")).toHaveLength(1);
     expect(api.calls.filter((c) => c.method === "GET" && /^\/toilets\/big-/.test(c.path))).toEqual([]);
   });
@@ -292,5 +307,215 @@ test.describe("a building on the map", () => {
     await expect(page.getByRole("group", { name: "20 toilets at this spot, by level" })).toHaveCount(0);
     expect(api.find("GET", "/venues/venue-big")).toHaveLength(1);
     expect(api.calls.filter((c) => c.method === "GET" && /^\/toilets\/big-/.test(c.path))).toEqual([]);
+  });
+});
+
+/** Saves "Which toilets do you use?" before the page loads (mockApi only fills it in when nothing is saved). */
+async function preferSex(page: Page, sex: "MALE" | "FEMALE") {
+  await page.addInitScript((sex) => {
+    localStorage.setItem("sgw:sex-pref", JSON.stringify({ sex, accessible: false, askedAt: "2026-01-01T00:00:00.000Z" }));
+  }, sex);
+}
+
+/**
+ * Taps a folded stack until its fan is open with `legs` legs and the map has settled. A camera move that
+ * lands just after the tap (the sheet easing the map's padding as the list arrives) folds a fan again.
+ */
+async function openFan(page: Page, folded: Locator, ring: Locator, legs: number) {
+  await intoOpen(page, folded);
+  await expect(async () => {
+    if (!(await ring.isVisible())) await folded.click();
+    await expect(ring.getByRole("button")).toHaveCount(legs, { timeout: 2_000 });
+    await expect(mapOf(page)).toHaveAttribute("data-moving", "false", { timeout: 2_000 });
+    await expect(ring.getByRole("button")).toHaveCount(legs, { timeout: 500 });
+  }).toPass({ timeout: 20_000 });
+}
+
+const WATERWAY_FLOORS = ["Level 2", "Level 1", "Basement 1", "Basement 2", "Basement 3", "Floor unknown"];
+
+test.describe("a 13-toilet building at one spot (Waterway Point)", () => {
+  /** At building zoom: the folded stack of all thirteen. */
+  async function zoomedIn(page: Page) {
+    await mockBuildings(page, WATERWAY_TOILETS);
+    await page.goto("/");
+    await mapReady(page);
+    await zoomMap(page, 1);
+  }
+
+  test("the stack fans out by floor, top floor first; a floor's leg picks that floor", async ({ page }) => {
+    await zoomedIn(page);
+    const folded = page.getByRole("button", { name: "13 toilets stacked here on 5 levels, show them" });
+    // Six legs, not thirteen and not a list: five floors and "Floor unknown", top floor first, unknown last.
+    const ring = page.getByRole("group", { name: "13 toilets at this spot, by level" });
+    await openFan(page, folded, ring, 6);
+    const legs = ring.getByRole("button");
+    await expect(legs.nth(0)).toHaveAccessibleName("2 toilets on L2");
+    await expect(legs.nth(1)).toHaveAccessibleName("4 toilets on L1");
+    await expect(legs.nth(2)).toHaveAccessibleName("4 toilets on B1");
+    await expect(legs.nth(3)).toHaveAccessibleName("Men's toilet on B2");
+    await expect(legs.nth(4)).toHaveAccessibleName("Unisex toilet on B3");
+    await expect(legs.nth(5)).toHaveAccessibleName("Toilet, level unknown");
+    await expect(legs.nth(2)).toContainText("B1 · 4");
+    for (let i = 0; i < 6; i++) await expectWholeTarget(legs.nth(i));
+    await expect(page.getByTestId("map-group")).toHaveCount(0);
+
+    // B1 holds more than a stack draws: the picker goes to B1 and the sheet lists B1's four.
+    await ring.getByRole("button", { name: "4 toilets on B1" }).click();
+    const picker = page.getByRole("group", { name: "Floor" });
+    await expect(picker.getByRole("button", { name: "Show toilets on B1" })).toHaveAttribute("aria-pressed", "true");
+    const group = page.getByTestId("map-group");
+    await expect(group.getByRole("heading", { name: "4 of 13 toilets in Waterway Test Point" })).toBeVisible();
+    await expect(group.getByTestId("map-group-floor")).toContainText("Showing B1");
+    // B1's four are one card: the lead (men's, with no preference) and the other three as "here too" rows.
+    await expect(group.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(group.getByTestId("toilet-card")).toContainText("Basement 1");
+    await expect(group.getByTestId("also-here")).toHaveCount(3);
+    // On the map, the stack is now B1's four.
+    await expect(page.getByRole("button", { name: "4 toilets on B1 stacked here, show them" })).toBeAttached();
+
+    // "Show all floors" puts every floor back, in the list and on the picker.
+    await group.getByRole("button", { name: "Show all floors" }).click();
+    await expect(picker.getByRole("button", { name: "Show toilets on all floors" })).toHaveAttribute("aria-pressed", "true");
+    // One card per floor; the other seven toilets are rows inside them.
+    await expect(group.getByTestId("toilet-card")).toHaveCount(6);
+    await expect(group.getByTestId("also-here")).toHaveCount(7);
+    await expect(group.getByRole("heading", { level: 4 })).toHaveText(WATERWAY_FLOORS);
+  });
+
+  test("a floor with few enough toilets shows as rolls; picking L1 narrows the stack to its four", async ({ page }) => {
+    await zoomedIn(page);
+    const folded = page.getByRole("button", { name: "13 toilets stacked here on 5 levels, show them" });
+    const all = page.getByRole("group", { name: "13 toilets at this spot, by level" });
+    await openFan(page, folded, all, 6);
+    await all.getByRole("button", { name: "2 toilets on L2" }).click();
+
+    // L2's two fit as a stack of rolls, and the picker says L2.
+    const picker = page.getByRole("group", { name: "Floor" });
+    await expect(picker.getByRole("button", { name: "Show toilets on L2" })).toHaveAttribute("aria-pressed", "true");
+    const l2 = page.getByRole("group", { name: "2 toilets on L2" });
+    await expect(l2.getByTestId("stack-roll")).toHaveCount(2);
+    await expect(page.getByTestId("map-group")).toHaveCount(0);
+
+    // Picking L1 on the picker: the stack folds to L1's four and fans out one leg per toilet.
+    await picker.getByRole("button", { name: "Show toilets on L1" }).click();
+    const l1 = page.getByRole("button", { name: "4 toilets on L1 stacked here, show them" });
+    await expect(l1).toBeVisible();
+    const ring = page.getByRole("group", { name: "4 toilets on L1", exact: true });
+    await openFan(page, l1, ring, 4);
+    for (let i = 0; i < 4; i++) await expectWholeTarget(ring.getByRole("button").nth(i));
+
+    // Moving the map yourself folds it (the keys, like a drag).
+    await page.locator(".maplibregl-canvas").focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(ring).toHaveCount(0);
+  });
+
+  test("the sheet's list is grouped by floor, then follows the floor picker", async ({ page }) => {
+    await mockBuildings(page, WATERWAY_TOILETS);
+    await page.goto("/");
+    await mapReady(page);
+    await page.getByRole("button", { name: "13 toilets in this building, see levels" }).click();
+
+    const group = page.getByTestId("map-group");
+    await expect(group.getByRole("heading", { name: "13 toilets in Waterway Test Point" })).toBeVisible();
+    await expect(group.getByRole("heading", { level: 4 })).toHaveText(WATERWAY_FLOORS);
+    // A floor is one card: L1's four toilets are its lead and three "here too" rows.
+    const l1 = group.getByRole("list", { name: "Level 1" });
+    await expect(l1.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(l1.getByTestId("also-here")).toHaveCount(3);
+    await expect(group.getByRole("list", { name: "Floor unknown" }).getByTestId("toilet-card")).toHaveCount(1);
+    await expect(group.getByTestId("map-group-floor")).toHaveCount(0);
+
+    // Zoomed in with the list still open, the floor picker narrows it.
+    await zoomMap(page, 1);
+    await page.getByRole("group", { name: "Floor" }).getByRole("button", { name: "Show toilets on L1" }).click();
+    await expect(group.getByRole("heading", { name: "4 of 13 toilets in Waterway Test Point" })).toBeVisible();
+    await expect(group.getByTestId("map-group-floor")).toContainText("Showing L1");
+    await expect(group.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(group.getByTestId("also-here")).toHaveCount(3);
+    await expect(group.getByRole("heading", { level: 4 })).toHaveCount(0);
+  });
+
+  test("Men's: men's toilets come first in the fan and the list", async ({ page }) => {
+    await preferSex(page, "MALE");
+    await zoomedIn(page);
+    await page.getByRole("group", { name: "Floor" }).getByRole("button", { name: "Show toilets on B1" }).click();
+    const folded = page.getByRole("button", { name: "4 toilets on B1 stacked here, show them" });
+    const ring = page.getByRole("group", { name: "4 toilets on B1", exact: true });
+    await openFan(page, folded, ring, 4);
+    const legs = ring.getByRole("button");
+    await expect(legs.nth(0)).toHaveAccessibleName("Men's toilet on B1");
+    await expect(legs.nth(1)).toHaveAccessibleName("Men's toilet on B1");
+    await expect(legs.nth(2)).toHaveAccessibleName("Unisex toilet on B1");
+    await expect(legs.nth(3)).toHaveAccessibleName("Unisex toilet on B1");
+
+    // The building's list: each floor's card is led by a men's toilet; its twin, then the accessible ones, follow.
+    await page.keyboard.press("Escape");
+    await zoomMap(page, -1);
+    await page.getByRole("button", { name: "13 toilets in this building, see levels" }).click();
+    const l1 = page.getByTestId("map-group").getByRole("list", { name: "Level 1" });
+    await expect(l1.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(l1.getByTestId("toilet-card")).toContainText("Men's");
+    await expect(l1.getByTestId("also-here")).toHaveText([/^Men's/, /^Accessible toilet here too/, /^Accessible toilet here too/]);
+  });
+
+  test("Women's: with no women's toilet here, accessible/unisex come before men's", async ({ page }) => {
+    await preferSex(page, "FEMALE");
+    await mockBuildings(page, WATERWAY_TOILETS);
+    await page.goto("/");
+    await mapReady(page);
+    await page.getByRole("button", { name: "13 toilets in this building, see levels" }).click();
+    const b1 = page.getByTestId("map-group").getByRole("list", { name: "Basement 1" });
+    await expect(b1.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(b1.getByTestId("toilet-card")).toContainText("Accessible / unisex");
+    await expect(b1.getByTestId("also-here")).toHaveText([/^Accessible \/ unisex/, /^Men's toilet here too/, /^Men's toilet here too/]);
+  });
+});
+
+test.describe("two places at one spot (a block's coffee shops)", () => {
+  test("their toilets stack as one, each roll naming its place", async ({ page }) => {
+    await mockBuildings(page, COFFEESHOP_TOILETS);
+    await page.goto("/");
+    await mapReady(page);
+    await zoomMap(page, 1);
+
+    // Three toilets, two places, one coordinate: one stack of rolls, not pins on top of each other.
+    const stack = page.getByRole("group", { name: "3 toilets stacked here at 2 places" });
+    await expect(stack).toBeVisible();
+    const rolls = stack.getByTestId("stack-roll");
+    await expect(rolls).toHaveCount(3);
+    // Each roll says whose it is, aloud and on its tag, once the places' names have loaded.
+    await expect(stack.getByRole("button", { name: "Unisex toilet at Kopi Test One, Blk 101 Yishun Ave 5", exact: true })).toBeVisible();
+    await expect(stack.getByRole("button", { name: "Men's toilet at Kopi Test Two, Blk 101 Yishun Ave 5", exact: true })).toBeVisible();
+    await expect(stack.getByRole("button", { name: "Women's toilet at Kopi Test Two, Blk 101 Yishun Ave 5", exact: true })).toBeVisible();
+    await expect(stack.getByRole("button", { name: /^Men's toilet/ })).toContainText("Men's · Kopi Test Two, Blk 101");
+    await intoOpen(page, stack);
+    for (let i = 0; i < 3; i++) await expectWholeTarget(rolls.nth(i));
+
+    await stack.getByRole("button", { name: /^Women's toilet/ }).click();
+    await expect(page.getByText("Selected on map")).toBeVisible();
+    await expect(page.getByTestId("toilet-card").first()).toContainText("Kopi Test Two");
+  });
+
+  test("the spot's list goes place by place, a card per place and floor", async ({ page }) => {
+    await mockBuildings(page, COFFEESHOP_TOILETS);
+    await page.goto("/");
+    await mapReady(page);
+    await page.getByRole("button", { name: "3 toilets at this spot, see the list" }).click();
+
+    const group = page.getByTestId("map-group");
+    await expect(group.getByRole("heading", { name: "3 toilets at this spot" })).toBeVisible();
+    await expect(group.getByRole("heading", { level: 4 })).toHaveText([
+      "Kopi Test One, Blk 101 Yishun Ave 5",
+      "Kopi Test Two, Blk 101 Yishun Ave 5",
+    ]);
+    const one = group.getByRole("list", { name: "Kopi Test One, Blk 101 Yishun Ave 5" });
+    await expect(one.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(one.getByTestId("also-here")).toHaveCount(0);
+    // The other shop's men's and women's are one card: men's leads (no preference), women's is a row in it.
+    const two = group.getByRole("list", { name: "Kopi Test Two, Blk 101 Yishun Ave 5" });
+    await expect(two.getByTestId("toilet-card")).toHaveCount(1);
+    await expect(two.getByTestId("toilet-card")).toContainText("Men's");
+    await expect(two.getByRole("link", { name: "Women's toilet here too, Kopi Test Two, Blk 101 Yishun Ave 5" })).toBeVisible();
   });
 });

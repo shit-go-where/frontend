@@ -3,6 +3,7 @@
 import {
   Accessibility,
   Armchair,
+  ArrowRight,
   Baby,
   BadgeCheck,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   Droplets,
   Footprints,
   Globe,
+  Mars,
   Milk,
   Navigation,
   Scroll,
@@ -22,6 +24,7 @@ import {
   Sparkles,
   TriangleAlert,
   Users,
+  Venus,
 } from "lucide-react";
 import Link from "next/link";
 import { memo, useState } from "react";
@@ -34,10 +37,10 @@ import {
   TIER_HELP,
   TIER_LABELS,
   TIER_LEGEND,
-  cleanlinessText,
   formatDistance,
   lineColor,
   lineTextColor,
+  scoreNumber,
   timeAgo,
   toiletTag,
   walkMinutes,
@@ -45,7 +48,8 @@ import {
 import { FEATURE_HUE, FILTER_HUE, HUE_TEXT } from "@/lib/feature-hues";
 import type { FilterKey } from "@/lib/filters";
 import { openFromCard } from "@/lib/toilet-handoff";
-import { levelText } from "@/lib/level";
+import { levelShort, levelText } from "@/lib/level";
+import { alsoHereText } from "@/lib/toilet-groups";
 import { PinGlyph, tierPinVariant } from "./pin";
 import { Dialog, cx } from "./ui";
 
@@ -56,6 +60,7 @@ export function TierBadge({
   age,
   seenBy,
   help,
+  compact,
   className,
 }: {
   tier: ToiletTier;
@@ -71,6 +76,11 @@ export function TierBadge({
   seenBy?: number;
   /** What the tier means, for screen readers. Defaults to the tier's own help text. */
   help?: string;
+  /**
+   * Icon and age only, the name read out but not shown: for the list card, where the badge shares one line with
+   * the score. Fill, outline and dash still tell the tiers apart without colour, and so does the icon.
+   */
+  compact?: boolean;
   className?: string;
 }) {
   if (pending) {
@@ -102,12 +112,12 @@ export function TierBadge({
       className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-extrabold", styles[tier], className)}
     >
       <Icon className="size-3.5 shrink-0" aria-hidden />
-      {TIER_LABELS[tier]}
+      <span className={cx(compact && "sr-only")}>{TIER_LABELS[tier]}</span>
       <span className="sr-only">: {help ?? TIER_HELP[tier].toLowerCase()}</span>
-      {seen !== null ? <span className="font-bold">· seen by {seen}</span> : null}
+      {seen !== null ? <span className={cx("font-bold", compact && "sr-only")}>· seen by {seen}</span> : null}
       {age ? (
         <span className="font-bold" aria-hidden>
-          · {age}
+          {compact ? age : `· ${age}`}
         </span>
       ) : null}
     </span>
@@ -171,7 +181,6 @@ function legendVariant(tier: ToiletTier | "PENDING") {
 
 /** Pin key for the map, with a button that explains the tiers. */
 export function TierLegend({ className }: { className?: string }) {
-  const [open, setOpen] = useState(false);
   return (
     <>
       <div className={cx("flex items-center gap-2 text-xs font-medium text-muted", className)}>
@@ -183,16 +192,26 @@ export function TierLegend({ className }: { className?: string }) {
             </li>
           ))}
         </ul>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="tap -my-3 ml-auto inline-flex shrink-0 items-center justify-center rounded-full text-primary"
-          aria-haspopup="dialog"
-          aria-label="What do the pins mean?"
-        >
-          <CircleHelp className="size-5" aria-hidden />
-        </button>
+        <TierHelpButton className="-my-3 ml-auto" />
       </div>
+    </>
+  );
+}
+
+/** Just the "?" that opens the pin key: where there's no room for the key itself (the map sheet on phones). */
+export function TierHelpButton({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={cx("tap inline-flex shrink-0 items-center justify-center rounded-full text-primary", className)}
+        aria-haspopup="dialog"
+        aria-label="What do the pins mean?"
+      >
+        <CircleHelp className="size-5" aria-hidden />
+      </button>
       <TierHelpDialog open={open} onClose={() => setOpen(false)} />
     </>
   );
@@ -264,12 +283,15 @@ export function FeatureChips({
   features,
   max = 4,
   plain,
+  icons,
   more,
   first = [],
 }: {
   features: Feature[];
   max?: number;
   plain?: boolean;
+  /** Icons in their hue, names read out and shown on hover: the list card, where the words took a line of their own. */
+  icons?: boolean;
   /** Count what didn't fit as a trailing "+n", so a compact card keeps its chips to one line without hiding that there's more. */
   more?: boolean;
   /** Shown ahead of the usual highlights when the toilet has them (what was asked for), even outside that set. */
@@ -293,6 +315,28 @@ export function FeatureChips({
             </li>
           );
         })}
+      </ul>
+    );
+  }
+  if (icons) {
+    return (
+      <ul className="flex flex-wrap items-center gap-1" aria-label="Features">
+        {shown.map((f) => {
+          const Icon = FEATURE_ICON[f] ?? CircleDot;
+          const hue = FEATURE_HUE[f];
+          return (
+            <li key={f} className="flex size-7 items-center justify-center rounded-full bg-surface-2" title={FEATURE_LABELS[f]}>
+              <Icon className={cx("size-4", hue ? HUE_TEXT[hue] : "text-fg")} aria-hidden />
+              <span className="sr-only">{FEATURE_LABELS[f]}</span>
+            </li>
+          );
+        })}
+        {extra > 0 ? (
+          <li className="inline-flex items-center px-1 text-xs font-bold text-muted">
+            +{extra}
+            <span className="sr-only"> more</span>
+          </li>
+        ) : null}
       </ul>
     );
   }
@@ -370,8 +414,9 @@ export function ClosedPill({ children, className }: { children: React.ReactNode;
 }
 
 /**
- * Three rows: name, one fact line (tier with its age, level, then score and hours only when known), chips.
- * Unknowns stay off the card; the detail page says what isn't known yet.
+ * Three rows: name with where it is (and its level), one fact line (tier icon with its age, then score and open
+ * only when known), then live reports and feature icons. Words live on the detail page; the card is for choosing
+ * at a glance.
  */
 function ToiletCardInner({
   t,
@@ -379,6 +424,7 @@ function ToiletCardInner({
   onHover,
   walk,
   distanceFrom,
+  also,
 }: {
   t: ToiletSummary;
   selected?: boolean;
@@ -390,15 +436,22 @@ function ToiletCardInner({
   walk?: boolean;
   /** Where the metres are measured from when it isn't the person (a searched or fallback place). */
   distanceFrom?: string;
+  /** The other toilets on this floor of the place (lib/toilet-groups.ts): a "here too" row each, under the card. */
+  also?: ToiletSummary[];
 }) {
   const mins = walkMinutes(t.walkSecondsEstimate);
   const pending = t.status === "PENDING";
   // "Women's · DTL side": who it's for and its label, after the place's name.
   const tag = toiletTag(t);
-  // Room for one line of chips: live reports first (they're news), then features.
-  const featureRoom = Math.max(1, 2 - t.activeStatus.length);
+  // One line: live reports first (they're news, so in words), then as many feature icons as still fit.
+  const featureRoom = Math.max(2, 5 - 2 * t.activeStatus.length);
+  // The level rides with where it is, not the facts (which then fit one line beside "Walk"), and only once:
+  // "Level 3, beside the cinema" already says it.
+  const levelFull = levelText(t.level);
+  const level = levelFull && !tag?.toLowerCase().includes(levelFull.toLowerCase()) ? levelShort(t.level) : null;
   // Pending toilets are never used for directions.
   const side = walk && !pending;
+  const hasAlso = !!also?.length;
   const shell = cx(
     "rounded-3xl border bg-surface shadow-rest",
     selected ? "border-primary ring-2 ring-primary" : "border-border/70",
@@ -417,7 +470,7 @@ function ToiletCardInner({
       onBlur={() => onHover?.(null)}
       className={cx(
         "group flex items-start gap-3 p-3 transition hover:brightness-110 active:scale-[0.98]",
-        side ? "min-w-0 flex-1 bg-surface" : shell,
+        side || hasAlso ? "min-w-0 flex-1 bg-surface" : shell,
       )}
       data-testid="toilet-card"
     >
@@ -434,6 +487,13 @@ function ToiletCardInner({
           <h3 className="line-clamp-2 font-extrabold leading-snug">
             {t.venue.name}
             {tag ? <span className="text-sm font-medium text-muted"> · {tag}</span> : null}
+            {level ? (
+              <span className="text-sm font-bold text-muted">
+                {" · "}
+                <span aria-hidden>{level}</span>
+                <span className="sr-only">{levelFull}</span>
+              </span>
+            ) : null}
           </h3>
           <ChevronRight className="mt-0.5 size-5 shrink-0 text-muted group-hover:text-primary" aria-hidden />
         </div>
@@ -447,8 +507,26 @@ function ToiletCardInner({
             pending={pending}
             age={pending ? undefined : shortAge(t.lastVerifiedAt)}
             seenBy={t.seenBy}
+            compact
           />
+          {/* Says "due for a re-survey" too: the detail page shows that, the card only reads it out. */}
           <span className="sr-only">{lastVerifiedText(t)}.</span>
+          {t.scoreCleanliness !== null && t.scoreCleanliness !== undefined ? (
+            <span className="inline-flex items-center gap-1 font-extrabold tabular-nums">
+              <Sparkles className="size-3.5 text-accent" aria-hidden />
+              <span aria-hidden>
+                {scoreNumber(t.scoreCleanliness)}
+                <span className="text-xs font-bold text-muted">/10</span>
+              </span>
+              <span className="sr-only">Clean {scoreNumber(t.scoreCleanliness)} out of 10</span>
+            </span>
+          ) : null}
+          {t.openNow ? (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-mint">
+              <Clock className="size-3.5" aria-hidden />
+              Open<span className="sr-only"> now</span>
+            </span>
+          ) : null}
           {/* Metres only when there are no walk minutes to show (no GPS fix). */}
           {mins === null && t.distanceM !== undefined ? (
             <span className="text-muted tabular-nums">
@@ -456,44 +534,79 @@ function ToiletCardInner({
               {distanceFrom ? ` from ${distanceFrom}` : null}
             </span>
           ) : null}
-          {t.level ? <span className="text-muted">{levelText(t.level)}</span> : null}
-          {t.scoreCleanliness !== null && t.scoreCleanliness !== undefined ? (
-            <span className="inline-flex items-center gap-1 font-semibold">
-              <Sparkles className="size-3.5 text-accent" aria-hidden />
-              {cleanlinessText(t.scoreCleanliness)}
-            </span>
-          ) : null}
-          {t.openNow ? <OpenNow openNow /> : null}
-          {t.needsResurvey ? <span className="text-xs font-bold text-warn">Re-survey due</span> : null}
         </div>
         {t.activeStatus.length || t.features.length ? (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <StatusChips statuses={t.activeStatus} />
-            <FeatureChips features={t.features} max={featureRoom} more />
+            <FeatureChips features={t.features} max={featureRoom} more icons />
           </div>
         ) : null}
       </div>
     </Link>
   );
-  if (!side) return card;
+  if (!side && !hasAlso) return card;
   return (
     // A narrow card (a small phone with large text) stacks Walk under the card instead of squeezing the name.
     <div className={cx("@container overflow-hidden", shell)}>
-      <div className="flex items-stretch @max-[18rem]:flex-col">
-      {card}
-      <Link
-        href={`/go?to=${encodeURIComponent(t.id)}`}
-        // Going deeper, like opening the toilet: the route arrives from the right, and its Back pops.
-        transitionTypes={["push"]}
-        className="flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border text-xs font-extrabold text-primary transition hover:bg-surface-2 active:scale-95 @max-[18rem]:min-h-11 @max-[18rem]:w-full @max-[18rem]:flex-row @max-[18rem]:gap-1.5 @max-[18rem]:border-l-0 @max-[18rem]:border-t @max-[18rem]:text-sm"
-        aria-label={`Walk to ${t.venue.name}${tag ? `, ${tag}` : ""}`}
-        data-testid="walk-there"
-      >
-        <Navigation className="size-5" aria-hidden />
-        <span aria-hidden>Walk</span>
-      </Link>
-      </div>
+      {side ? (
+        <div className="flex items-stretch @max-[18rem]:flex-col">
+          {card}
+          <Link
+            href={`/go?to=${encodeURIComponent(t.id)}`}
+            // Going deeper, like opening the toilet: the route arrives from the right, and its Back pops.
+            transitionTypes={["push"]}
+            className="flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border text-xs font-extrabold text-primary transition hover:bg-surface-2 active:scale-95 @max-[18rem]:min-h-11 @max-[18rem]:w-full @max-[18rem]:flex-row @max-[18rem]:gap-1.5 @max-[18rem]:border-l-0 @max-[18rem]:border-t @max-[18rem]:text-sm"
+            aria-label={`Walk to ${t.venue.name}${tag ? `, ${tag}` : ""}`}
+            data-testid="walk-there"
+          >
+            <Navigation className="size-5" aria-hidden />
+            <span aria-hidden>Walk</span>
+          </Link>
+        </div>
+      ) : (
+        card
+      )}
+      {also?.map((o) => (
+        <AlsoHere key={o.id} t={o} lead={t} className="border-t border-border/70 px-3" />
+      ))}
     </div>
+  );
+}
+
+const WHO_ICON: Record<NonNullable<ToiletSummary["sex"]>, React.ComponentType<{ className?: string }>> = {
+  MALE: Mars,
+  FEMALE: Venus,
+  UNISEX: Accessibility,
+};
+
+/**
+ * Another toilet on the same floor of the same place, as one 44 px row that opens its page: "Accessible toilet
+ * here too", "Women's toilet here too", or a twin's own tag ("Men's · East Wing"). Its name says the place and
+ * floor too, so a screen reader's links list tells the rows of different cards apart.
+ */
+export function AlsoHere({ t, lead, className }: { t: ToiletSummary; lead: ToiletSummary; className?: string }) {
+  const text = alsoHereText(t, lead);
+  const accessible = text.startsWith("Accessible") || t.sex === "UNISEX";
+  const Icon = accessible ? Accessibility : t.sex ? WHO_ICON[t.sex] : DoorOpen;
+  const level = levelText(t.level);
+  return (
+    <Link
+      href={`/toilets/${t.id}`}
+      transitionTypes={["push"]}
+      onClick={() => openFromCard(t.id, t.venue.name)}
+      className={cx(
+        "group flex h-11 items-center gap-2 text-sm font-bold text-fg transition-colors hover:bg-surface-2 active:bg-surface-2",
+        className,
+      )}
+      // Said in full, so each row's name is its own: "Accessible toilet here too, Waterway Point, Level 1".
+      aria-label={[text, t.venue.name, level, t.openNow === false ? "closed now" : null].filter(Boolean).join(", ")}
+      data-testid="also-here"
+    >
+      <Icon className={cx("size-4 shrink-0", t.sex || accessible ? HUE_TEXT.taro : "text-muted")} aria-hidden />
+      <span className="min-w-0 flex-1 truncate">{text}</span>
+      {t.openNow === false ? <ClosedPill className="shrink-0">Closed now</ClosedPill> : null}
+      <ArrowRight className="size-4 shrink-0 text-primary transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden />
+    </Link>
   );
 }
 

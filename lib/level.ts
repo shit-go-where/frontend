@@ -107,6 +107,48 @@ export function levelParts(level: string | null | undefined): string[] {
   return norm ? norm.split("; ") : [];
 }
 
+/** ";B1;L3;" for "B1; L3": the floors a level is on, as the map's floor picker looks a floor up in it. */
+export function floorsKey(level: string | null | undefined): string {
+  const parts = levelParts(level).filter((p) => levelOrder(p) !== null);
+  return parts.length ? `;${parts.join(";")};` : "";
+}
+
+/** Whether a toilet is on the picked floor ("B1; L3" is on both). No floor picked: every toilet is. */
+export function onFloor(level: string | null | undefined, floor: string | null): boolean {
+  return !floor || floorsKey(level).includes(`;${floor};`);
+}
+
+export interface FloorGroup<T> {
+  /** "B1", or "B1; L3" for a toilet on two floors (unless split); null for no readable floor. */
+  level: string | null;
+  order: number | null;
+  items: T[];
+}
+
+/**
+ * Items by floor, top floor first, those with no readable floor last; each group keeps the items' order.
+ * `split` files a "B1; L3" toilet under both B1 and L3 (the map's fan, where each leg is a floor the picker
+ * can show); otherwise it gets one "B1; L3" group of its own at its lowest floor, so a list shows it once.
+ */
+export function floorGroups<T extends { level: string | null | undefined }>(items: T[], split = false): FloorGroup<T>[] {
+  const groups = new Map<string, FloorGroup<T>>();
+  const unknown: T[] = [];
+  for (const t of items) {
+    const parts = levelParts(t.level).filter((p) => levelOrder(p) !== null);
+    if (!parts.length) {
+      unknown.push(t);
+      continue;
+    }
+    for (const key of split ? parts : [parts.join("; ")]) {
+      const g = groups.get(key);
+      if (g) g.items.push(t);
+      else groups.set(key, { level: key, order: levelOrder(key), items: [t] });
+    }
+  }
+  const out = [...groups.values()].sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || a.level!.localeCompare(b.level!));
+  return unknown.length ? [...out, { level: null, order: null, items: unknown }] : out;
+}
+
 /** Compact, for chips, map tags and the floor picker: "B1", "L3", "M", "B1, L3"; free text as typed. */
 export function levelShort(level: string | null | undefined): string | null {
   const parts = levelParts(level);

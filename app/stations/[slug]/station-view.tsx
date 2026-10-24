@@ -19,7 +19,7 @@ import {
 import Link from "next/link";
 import { BackButton } from "@/components/back-button";
 import { SexPrefRow } from "@/components/sex-pref";
-import { ClosedPill, FeatureChips, TierBadge, ToiletCard, lastVerifiedText } from "@/components/toilet-bits";
+import { AlsoHere, ClosedPill, FeatureChips, TierBadge, ToiletCard, lastVerifiedText } from "@/components/toilet-bits";
 import { EmptyState, Skeleton, buttonClass, cx } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import type { SexPreference, StationDetail, ToiletSummary } from "@/lib/api/types";
@@ -27,6 +27,8 @@ import { formatDistance, placeName, plural, scoreNumber, sexLabel, toiletTag } f
 import { useLocation } from "@/lib/location";
 import { usableBy, usePrefData } from "@/lib/sex-pref";
 import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
+import { groupToilets } from "@/lib/toilet-groups";
+import { useStoredFilters } from "@/lib/use-filters";
 import { isUnnamed } from "@/lib/unnamed-toilet";
 import { StationLineBadge, sortLines, stationLabel } from "../station-bits";
 
@@ -70,17 +72,22 @@ function narrowStation(s: StationDetail, sex: SexPreference): StationDetail {
 
 export function StationView({ station }: { station: StationDetail }) {
   // Rendered for everyone on the server; narrowed here to the toilets this person uses, if they said.
-  const { data: s } = usePrefData(
+  const { data: s, sex } = usePrefData(
     ["station", station.slug],
     station,
     (sex, signal) => api.station(station.slug, sex, signal),
     narrowStation,
   );
+  // One card per floor of a place: the toilet they use first leads (the accessible one with the map's
+  // Accessible filter on), the rest are "here too" rows inside it (lib/toilet-groups.ts).
+  const accessible = useStoredFilters().active.has("ACCESSIBLE");
   const label = stationLabel(s);
   const lines = sortLines(s.lines);
   const inside = s.toilets;
   const usableInside = inside.filter((t) => t.status === "ACTIVE");
   const best = bestOption(s);
+  const insideGroups = groupToilets(inside, sex, accessible);
+  const nearbyGroups = groupToilets(s.nearby.map(fromStation), sex, accessible);
 
   return (
     <article className="mx-auto w-full max-w-2xl px-4 pb-12 pt-4">
@@ -118,9 +125,14 @@ export function StationView({ station }: { station: StationDetail }) {
           </h2>
           {s.note ? <Note>{s.note}</Note> : null}
           <ul className="mt-3 flex flex-col gap-3">
-            {inside.map((t) => (
-              <li key={t.id}>
-                <StationToilet t={t} primary={t.id === best?.toilet.id} only={inside.length === 1} />
+            {insideGroups.map(({ lead, others }) => (
+              <li key={lead.id}>
+                <StationToilet
+                  t={lead}
+                  also={others}
+                  primary={[lead, ...others].some((t) => t.id === best?.toilet.id)}
+                  only={inside.length === 1}
+                />
               </li>
             ))}
           </ul>
@@ -143,11 +155,11 @@ export function StationView({ station }: { station: StationDetail }) {
         <p className="mt-1 text-sm text-muted text-pretty">
           Open toilets at other places within 400 m of the station, nearest first. Distances are straight-line from the station.
         </p>
-        {s.nearby.length ? (
+        {nearbyGroups.length ? (
           <ul className="mt-3 flex flex-col gap-3">
-            {s.nearby.map((n) => (
-              <li key={n.toilet.id}>
-                <ToiletCard t={fromStation(n)} walk distanceFrom={label} />
+            {nearbyGroups.map(({ lead, others }) => (
+              <li key={lead.id}>
+                <ToiletCard t={lead} also={others} walk distanceFrom={label} />
               </li>
             ))}
           </ul>
@@ -268,13 +280,13 @@ function stationToiletName(t: ToiletSummary, only: boolean): string {
  * vouches for it and when, then Walk there. Live reports and "open now" stay on the toilet's own
  * page, since this page is cached for hours.
  */
-function StationToilet({ t, primary, only }: { t: ToiletSummary; primary: boolean; only: boolean }) {
+function StationToilet({ t, also, primary, only }: { t: ToiletSummary; also: ToiletSummary[]; primary: boolean; only: boolean }) {
   const closed = CLOSED_LABEL[t.status];
   const title = stationToiletName(t, only);
   const level = t.level ? levelText(t.level) : null;
   const where = [level && !title.includes(level) ? level : null, FARE_GATES[t.areaType]].filter((w): w is string => !!w);
   return (
-    <div className="rounded-[28px] border border-border/70 bg-surface p-5 shadow-rest" data-testid="station-toilet">
+    <div className="overflow-hidden rounded-[28px] border border-border/70 bg-surface p-5 shadow-rest" data-testid="station-toilet">
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           <h3 className="font-display text-xl leading-tight text-balance">{title}</h3>
@@ -324,6 +336,14 @@ function StationToilet({ t, primary, only }: { t: ToiletSummary; primary: boolea
           <ChevronRight className="size-5" aria-hidden />
         </Link>
       </div>
+      {/* The other toilets on this floor: one row each, to their own pages. */}
+      {also.length ? (
+        <div className="-mx-5 -mb-5 mt-5">
+          {also.map((o) => (
+            <AlsoHere key={o.id} t={o} lead={t} className="border-t border-border/70 px-5" />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

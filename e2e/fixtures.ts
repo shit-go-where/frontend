@@ -341,6 +341,100 @@ export const BIG_MALL_TOILETS: ToiletSummary[] = Array.from({ length: 20 }, (_, 
   }),
 );
 
+/**
+ * Waterway Point as the expanded 2024 survey has it: twelve toilets at one coordinate, six men's and six
+ * accessible/unisex on five floors (L1 and B1 have a West Wing twin of each), plus an open-data leftover
+ * with no floor. Thirteen pins at one spot: too many to fan out one by one, so the fan is by floor.
+ */
+const waterway: VenueLite = { ...plazaSing, id: "venue-waterway", name: "Waterway Test Point", lat: 1.2998, lng: 103.845 };
+const WATERWAY_ROWS: [id: string, level: string | null, sex: ToiletSummary["sex"], label: string | null][] = [
+  ["ww-l2-m", "L2", "MALE", "Men's, West Wing"],
+  ["ww-l2-u", "L2", "UNISEX", "Accessible / unisex, West Wing"],
+  ["ww-l1-m-west", "L1", "MALE", "Men's, West Wing"],
+  ["ww-l1-m", "L1", "MALE", "Men's"],
+  ["ww-l1-u-west", "L1", "UNISEX", "Accessible / unisex, West Wing"],
+  ["ww-l1-u", "L1", "UNISEX", "Accessible / unisex"],
+  ["ww-b1-m-west", "B1", "MALE", "Men's, West Wing"],
+  ["ww-b1-m", "B1", "MALE", "Men's"],
+  ["ww-b1-u-west", "B1", "UNISEX", "Accessible / unisex, West Wing"],
+  ["ww-b1-u", "B1", "UNISEX", "Accessible / unisex"],
+  ["ww-b2-m", "B2", "MALE", "Men's"],
+  ["ww-b3-u", "B3", "UNISEX", "Accessible / unisex"],
+  ["ww-osm", null, null, null],
+];
+export const WATERWAY_TOILETS: ToiletSummary[] = WATERWAY_ROWS.map(([id, level, sex, label]) =>
+  toilet({
+    id,
+    venue: waterway,
+    lat: waterway.lat,
+    lng: waterway.lng,
+    level,
+    sex,
+    label,
+    ...(id === "ww-osm" ? { tier: "IMPORTED" as const, lastVerifiedAt: null, openNow: null } : {}),
+  }),
+);
+
+/**
+ * A hawker centre with a men's and an accessible/unisex toilet side by side on L1: one card in a list, led by
+ * the men's (all toilets) or, with the Accessible filter on, the accessible one. Not in TOILETS, so the near
+ * list's counts stay put; specs put them in the near list themselves. The accessible one is the nearer walk.
+ */
+const hawker: VenueLite = {
+  ...plazaSing,
+  id: "venue-hawker",
+  name: "Punggol Test Hawker Centre",
+  type: "HAWKER_CENTRE",
+  lat: 1.2995,
+  lng: 103.8457,
+};
+export const HAWKER_TOILETS: ToiletSummary[] = [
+  toilet({
+    id: "hk-men",
+    venue: hawker,
+    lat: hawker.lat,
+    lng: hawker.lng,
+    level: "L1",
+    sex: "MALE",
+    features: ["MALE", "FREE"],
+    scoreCleanliness: 6.9,
+    distanceM: 72,
+    walkSecondsEstimate: 75,
+  }),
+  toilet({
+    id: "hk-access",
+    venue: hawker,
+    lat: hawker.lat,
+    lng: hawker.lng + off(3),
+    level: "L1",
+    sex: "UNISEX",
+    label: "Accessible / unisex",
+    features: ["ACCESSIBLE", "FREE"],
+    scoreCleanliness: 7.5,
+    distanceM: 40,
+    walkSecondsEstimate: 42,
+  }),
+];
+
+/**
+ * Two coffee shops in one HDB block: one postcode, so one coordinate. Their three toilets are one stack on the
+ * map, and the spot's list goes place by place.
+ */
+const kopiOne: VenueLite = {
+  ...plazaSing,
+  id: "venue-kopi-1",
+  name: "Kopi Test One, Blk 101 Yishun Ave 5",
+  type: "COFFEESHOP",
+  lat: 1.2998,
+  lng: 103.845,
+};
+const kopiTwo: VenueLite = { ...kopiOne, id: "venue-kopi-2", name: "Kopi Test Two, Blk 101 Yishun Ave 5" };
+export const COFFEESHOP_TOILETS: ToiletSummary[] = [
+  toilet({ id: "kopi-1-u", venue: kopiOne, lat: kopiOne.lat, lng: kopiOne.lng, sex: "UNISEX", tier: "COMMUNITY" }),
+  toilet({ id: "kopi-2-m", venue: kopiTwo, lat: kopiTwo.lat, lng: kopiTwo.lng, sex: "MALE", tier: "COMMUNITY" }),
+  toilet({ id: "kopi-2-f", venue: kopiTwo, lat: kopiTwo.lat, lng: kopiTwo.lng, sex: "FEMALE", tier: "COMMUNITY" }),
+];
+
 export const pinOf = (t: ToiletSummary): ToiletPin => ({
   id: t.id,
   lat: t.lat,

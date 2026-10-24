@@ -1,7 +1,7 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import type { ExpressionSpecification, GeoJSONSource, Map as MlMap, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, {
@@ -14,7 +14,8 @@ import Map, {
   type MapRef,
 } from "react-map-gl/maplibre";
 import { api } from "@/lib/api/client";
-import type { AreaType, Feature, SexPreference, ToiletPin, ToiletTier } from "@/lib/api/types";
+import type { AreaType, Feature, SexPreference, ToiletPin, ToiletTier, VenueLite } from "@/lib/api/types";
+import { VENUE_TYPE_LABELS, placeName } from "@/lib/format";
 import type { LatLng } from "@/lib/location";
 import { cameraMotion, easeSheet, reducedMotion } from "@/lib/motion";
 import { useResolvedTheme } from "@/lib/theme";
@@ -26,16 +27,21 @@ import {
   FloorPicker,
   FoldedStack,
   MAX_SPIDER_LEGS,
+  MAX_STACK_ROLLS,
   OFF_FLOOR_OPACITY,
   StackRolls,
   drawLevelLabel,
+  fanOf,
   floorsKey,
   floorsOf,
   folds,
   labelText,
+  onFloor,
   spiderReach,
   stacksOf,
+  type FanLeg,
   type PinStack,
+  type PlaceOf,
 } from "./levels";
 import { OffscreenHint } from "./offscreen-hint";
 
@@ -109,6 +115,15 @@ const CLUSTER_MAX_ZOOM = 16;
 const STACK_MIN_ZOOM = CLUSTER_MAX_ZOOM + 1;
 /** Pins say their level from here in, where a building fills enough of the screen for it to matter. */
 const LEVEL_LABEL_MIN_ZOOM = 17;
+/**
+ * Stacks of several places name each toilet's place, but pins don't carry names: each place is looked up once
+ * (GET /venues/:id, cached, shared with the sheet's list). At most this many at a time, so a dense estate at
+ * building zoom never runs into the API's rate limit; the rest say what kind of place they are.
+ */
+const PLACE_NAMES_MAX = 12;
+/** Looked-up places by id (module-level, so useQueries keeps the result until a lookup lands). */
+const namesOf = (results: { data?: VenueLite }[]) =>
+  new globalThis.Map(results.flatMap((r) => (r.data ? [[r.data.id, placeName(r.data)] as const] : [])));
 
 /** Draws the toilet-roll pin for a tier onto a canvas (synchronously, so the missing-image resolver can use it). */
 function drawPin(tier: ToiletTier, dark: boolean): ImageData | null {
@@ -188,8 +203,17 @@ export interface ToiletMapProps {
   /** The same filters the page's list uses, so pins and list agree. */
   openNow?: boolean;
   areaType?: AreaType;
-  /** Only toilets usable by this sex (its own, unisex or not known), as the page's list asks for. */
+  /**
+   * Only toilets usable by this sex (its own, unisex or not known), as the page's list asks for. Inside a
+   * building, its own toilets come first in stacks and fans, then unisex.
+   */
   sex?: SexPreference;
+  /**
+   * The floor picker's floor, when the page keeps it (so its list of a building can follow it); null is All.
+   * Left out, the map keeps it itself. Either way it goes back to All when the picker goes away.
+   */
+  floor?: string | null;
+  onFloorChange?: (floor: string | null) => void;
   selectedId?: string | null;
   /** Overrides `selectedId`: marks this toilet (picked or just looked at), wherever its pin is. */
   focus?: MapFocus | null;
@@ -200,10 +224,12 @@ export interface ToiletMapProps {
   onSelect?: (id: string) => void;
   /**
    * A tapped cluster that zooming can't split (toilets on different floors at one spot) or that is all
-   * one building: list these toilets instead, lowest level first, with the building's id when they share
-   * one (so the list can ask for the building once). Without it, every cluster zooms in.
+   * one building, or a stack too big to fan out, or a fanned-out floor with more toilets than a stack
+   * draws: list these toilets instead, lowest level first, with the building's id when they share one (so
+   * the list can ask for the building once) and the floor picked (the list shows only that floor; null is
+   * all of them). Without it, every cluster zooms in.
    */
-  onSelectGroup?: (ids: string[], venueId: string | null) => void;
+  onSelectGroup?: (ids: string[], venueId: string | null, floor: string | null) => void;
   /** [lat, lng] pairs */
   route?: [number, number][] | null;
   destination?: LatLng | null;
@@ -297,6 +323,8 @@ export default function ToiletMap({
   openNow,
   areaType,
   sex,
+  floor: floorProp,
+  onFloorChange,
   selectedId,
   focus,
   focusHint = true,
@@ -348,12 +376,18 @@ export default function ToiletMap({
   const [zoomLevel, setZoomLevel] = useState(zoom);
   /** The camera is moving (a drag, a zoom, a flight); the region says so, for tests to wait on. */
   const [moving, setMoving] = useState(false);
-  /** The floor picked in the floor picker; null is All. */
-  const [floor, setFloor] = useState<string | null>(null);
+  /** The floor picked in the floor picker, unless the page keeps it; null is All. */
+  const [ownFloor, setOwnFloor] = useState<string | null>(null);
+  const picked = floorProp !== undefined ? floorProp : ownFloor;
+  const setFloor = useCallback(
+    (f: string | null) => {
+      if (floorProp === undefined) setOwnFloor(f);
+      onFloorChange?.(f);
+    },
+    [floorProp, onFloorChange],
+  );
   /** The folded stack that is fanned out, by key. */
   const [spider, setSpider] = useState<string | null>(null);
-  /** The map is panning to make room for a fan: that move mustn't fold it. */
-  const roomForSpider = useRef(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
@@ -440,8 +474,28 @@ export default function ToiletMap({
   }
 
   // Past clustering, a building's toilets at one spot become a stack instead of pins on top of each other.
-  const stacks = useMemo(() => (showPins && zoomLevel >= STACK_MIN_ZOOM ? stacksOf(pins) : []), [showPins, zoomLevel, pins]);
+  const stacks = useMemo(
+    () => (showPins && zoomLevel >= STACK_MIN_ZOOM ? stacksOf(pins, sex ?? null) : []),
+    [showPins, zoomLevel, pins, sex],
+  );
   const stackedIds = useMemo(() => stacks.flatMap((s) => s.pins.map((p) => p.id)), [stacks]);
+  // Stacks of several places say whose each toilet is.
+  const placeIds = useMemo(
+    () => [...new Set(stacks.filter((s) => !s.venueId).flatMap((s) => s.pins.map((p) => p.venueId)))].slice(0, PLACE_NAMES_MAX),
+    [stacks],
+  );
+  const placeNames = useQueries({
+    queries: placeIds.map((id) => ({
+      queryKey: ["venue", id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.venue(id, signal),
+      staleTime: 5 * 60_000,
+    })),
+    combine: namesOf,
+  });
+  const placeOf = useMemo<PlaceOf>(
+    () => (p) => placeNames.get(p.venueId) ?? VENUE_TYPE_LABELS[p.venueType] ?? "Another place",
+    [placeNames],
+  );
   const stackOf = useMemo(() => new globalThis.Map(stacks.flatMap((s) => s.pins.map((p) => [p.id, s.key] as const))), [stacks]);
   if (spider && !stacks.some((s) => s.key === spider)) setSpider(null);
 
@@ -459,8 +513,13 @@ export default function ToiletMap({
     return multiLevel ? floorsOf(inView) : [];
   }, [showPins, interactive, zoomLevel, bounds, pins]);
   // The picker going away (zoomed out, panned off the building) puts every floor back.
-  const floorShown = floor !== null && floors.some((f) => f.level === floor);
-  if (floor !== null && !floorShown) setFloor(null);
+  const floorShown = picked !== null && floors.some((f) => f.level === picked);
+  const floor = floorShown ? picked : null;
+  if (floorProp === undefined && ownFloor !== null && !floorShown) setOwnFloor(null);
+  // Kept by the page: tell it once this render is done (its list of the building follows).
+  useEffect(() => {
+    if (floorProp != null && !floorShown) onFloorChange?.(null);
+  }, [floorProp, floorShown, onFloorChange]);
 
   /** Data-driven opacity: the filters' dim for every pin, the floor picker's for pins on other floors. */
   const pinOpacity = useMemo(() => {
@@ -560,7 +619,6 @@ export default function ToiletMap({
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(readBounds, 350);
     updateClusters();
-    roomForSpider.current = false;
     setMoving(false);
     const m = mapRef.current;
     if (m) setZoomLevel(m.getZoom());
@@ -697,7 +755,7 @@ export default function ToiletMap({
           .map((f) => ({ id: f.properties?.id as string, order: f.properties?.levelOrder as number | null | undefined }))
           .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
           .map((l) => l.id);
-        onSelectGroup(ids, c.venue || null);
+        onSelectGroup(ids, c.venue || null, floor);
         return;
       }
       m.easeTo({ center: [c.lng, c.lat], zoom: z + 0.5, duration: 500, ...cameraMotion() });
@@ -705,26 +763,46 @@ export default function ToiletMap({
       m.easeTo({ center: [c.lng, c.lat], zoom: m.getZoom() + 2, ...cameraMotion() });
     }
     flown();
-  }, [liveMap, onSelectGroup, flown]);
+  }, [liveMap, onSelectGroup, flown, floor]);
 
-  /** Fans a stack out, first nudging the map so the whole ring lands in the open part of it. */
+  /** Fans a stack out into `legs` legs, first nudging the map so the whole ring lands in the open part of it. */
   const openSpider = useCallback(
-    (s: PinStack | null) => {
+    (s: PinStack | null, legs = 0) => {
       setSpider(s?.key ?? null);
       const m = liveMap();
       if (!s || !m) return;
-      const reach = spiderReach(s);
+      const reach = spiderReach(legs);
       const { x, y } = m.project([s.lng, s.lat]);
       const { offsetWidth: w, offsetHeight: h } = m.getContainer();
       const { top = 0, bottom = 0 } = m.getPadding();
       const dx = x < reach ? x - reach : x > w - reach ? x - (w - reach) : 0;
       const dy = y < top + reach ? y - top - reach : y > h - bottom - reach ? y - (h - bottom - reach) : 0;
       if (!dx && !dy) return;
-      roomForSpider.current = true;
       m.panBy([dx, dy], { duration: reducedMotion() ? 0 : 300 });
       flown();
     },
     [liveMap, flown],
+  );
+
+  /**
+   * A floor's leg of a fanned-out building: the picker goes to that floor, and the stack shows that floor's
+   * toilets, as rolls when there are few enough, else in the sheet's list (all of the stack's toilets, so
+   * the list can still show every floor). Toilets with no floor can't be picked: they go to the list.
+   */
+  const onLeg = useCallback(
+    (s: PinStack, leg: FanLeg) => {
+      setSpider(null);
+      // A leg is one place's: in a stack of several, the list is that place's toilets.
+      const venueId = leg.pins[0].venueId ?? null;
+      if (leg.level) {
+        setFloor(leg.level);
+        const ids = s.pins.filter((p) => p.venueId === venueId).map((p) => p.id);
+        if (leg.pins.length > MAX_STACK_ROLLS) onSelectGroup?.(ids, venueId, leg.level);
+      } else {
+        onSelectGroup?.(leg.pins.map((p) => p.id), venueId, null);
+      }
+    },
+    [setFloor, onSelectGroup],
   );
 
   // Keep the user and the nearest pins in the visible part of the map as the sheet moves.
@@ -812,10 +890,15 @@ export default function ToiletMap({
           fitRef.current(false);
         }}
         onMoveEnd={onMoveEnd}
-        // Moving the map folds a fanned-out stack; it would drift off its spot otherwise.
-        onMoveStart={() => {
+        /*
+         * The person moving the map (a drag, a pinch, the wheel, the keys: MapLibre passes the input event)
+         * folds a fanned-out stack. Moves of ours don't: the pan that makes room for the fan, the sheet easing
+         * the padding as its list changes. The fan rides along on its spot through those; folding on them made
+         * a fan close by itself when the two overlapped (one move's end cut into the next one's start).
+         */
+        onMoveStart={(e) => {
           setMoving(true);
-          if (!roomForSpider.current) setSpider(null);
+          if (e.originalEvent) setSpider(null);
         }}
         onSourceData={(e) => {
           if (e.sourceId === "toilets" && e.isSourceLoaded) updateClusters();
@@ -956,7 +1039,13 @@ export default function ToiletMap({
           : null}
 
         {stacks.map((s) => {
-          const folded = folds(s);
+          // A floor picked: the stack is that floor's toilets ("B1; L3" counts for both). None there: all of
+          // them, dimmed, as a single pin on another floor is.
+          const onIt = floor ? s.pins.filter((p) => onFloor(p.level, floor)) : s.pins;
+          const only = floor && onIt.length ? floor : null;
+          const view = only ? { ...s, pins: onIt } : s;
+          const folded = folds(view);
+          const fan = fanOf(view, only);
           return (
             <Marker
               key={`k${s.key}`}
@@ -968,21 +1057,33 @@ export default function ToiletMap({
             >
               {folded ? (
                 <FoldedStack
-                  stack={s}
+                  stack={view}
+                  fan={fan}
+                  only={only}
                   open={spider === s.key}
                   dim={dim}
                   floor={floor}
                   selectedId={selectedId ?? null}
                   onToggle={(open) =>
-                    // Too many floors to fan out on a phone: list them like a building's cluster.
-                    open && onSelectGroup && s.pins.length > MAX_SPIDER_LEGS
-                      ? onSelectGroup(s.pins.map((p) => p.id), s.pins[0].venueId ?? null)
-                      : openSpider(open ? s : null)
+                    // Too many legs to fan out on a phone: list them like a building's cluster.
+                    open && onSelectGroup && fan.legs.length > MAX_SPIDER_LEGS
+                      ? onSelectGroup(s.pins.map((p) => p.id), s.venueId, only)
+                      : openSpider(open ? s : null, fan.legs.length)
                   }
                   onSelect={(id) => onSelect?.(id)}
+                  onLeg={(leg) => onLeg(s, leg)}
+                  placeOf={s.venueId ? undefined : placeOf}
                 />
               ) : (
-                <StackRolls stack={s} dim={dim} floor={floor} selectedId={selectedId ?? null} onSelect={(id) => onSelect?.(id)} />
+                <StackRolls
+                  stack={view}
+                  only={only}
+                  dim={dim}
+                  floor={floor}
+                  selectedId={selectedId ?? null}
+                  onSelect={(id) => onSelect?.(id)}
+                  placeOf={s.venueId ? undefined : placeOf}
+                />
               )}
             </Marker>
           );
@@ -1027,7 +1128,8 @@ export default function ToiletMap({
           </Marker>
         ) : null}
 
-        {interactive && showPins && focus && focusHint ? <OffscreenHint focus={focus} inset={focusInset} /> : null}
+        {/* A fanned-out stack has the person's attention, and on a small phone the pill would cover its legs. */}
+        {interactive && showPins && focus && focusHint && !spider ? <OffscreenHint focus={focus} inset={focusInset} /> : null}
 
         {destination ? (
           <Marker longitude={destination.lng} latitude={destination.lat} anchor="bottom">
