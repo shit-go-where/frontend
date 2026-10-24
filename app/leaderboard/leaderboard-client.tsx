@@ -547,20 +547,22 @@ function YourStanding({ me, board, empty, when }: { me: Me | null | undefined; b
       </Card>
     );
   }
-  if (!me.leaderboardOptIn) {
+  // Everyone is on the board unless they turned it off; it lists handles, so without one they can't show yet.
+  if (!me.handle || !me.leaderboardOptIn) {
     return (
       <Card className="flex flex-col gap-3 border-primary/50 bg-primary-soft!">
         <p>
-          You have <strong className="font-extrabold tabular-nums">{me.points}</strong> points. The board only lists people who join. Only your
-          handle and points are shown, never your name or email.
+          You have <strong className="font-extrabold tabular-nums">{me.points}</strong> points.{" "}
+          {me.handle ? "You turned the leaderboard off, so you're hidden." : "The board lists people by handle, and you haven't picked one yet."}{" "}
+          Only your handle and points are shown, never your name or email.
         </p>
         {me.handle ? (
           <Button className="self-start" loading={optIn.isPending} onClick={() => optIn.mutate()}>
-            Join the leaderboard
+            Show me on the leaderboard
           </Button>
         ) : (
           <Link href="/me" className={buttonClass("primary", "md", "self-start")}>
-            Pick a handle to join
+            Pick a handle
           </Link>
         )}
         {optIn.isError ? (
@@ -613,7 +615,7 @@ function YourStanding({ me, board, empty, when }: { me: Me | null | undefined; b
   );
 }
 
-/** The heroes board before it opens: how many have joined, and how to be one of them. */
+/** The heroes board before it opens: how many heroes there are so far, and how to be one of them. */
 function HeroesOpening({ joined, me }: { joined: number; me: Me | null | undefined }) {
   const left = HEROES_MIN - joined;
   return (
@@ -626,14 +628,14 @@ function HeroesOpening({ joined, me }: { joined: number; me: Me | null | undefin
         value={joined}
         max={HEROES_MIN}
         role="progressbar"
-        aria-label="Heroes who have joined"
+        aria-label="Heroes so far"
         aria-valuemin={0}
         aria-valuemax={HEROES_MIN}
         aria-valuenow={joined}
       />
       <p>
-        <strong className="font-extrabold tabular-nums">{joined}</strong> joined so far, <span className="tabular-nums">{left}</span> more
-        to go. Early ones get the Founding Contributor badge: the first 100 people to check in or add a toilet keep it for good.
+        <strong className="font-extrabold tabular-nums">{joined}</strong> {joined === 1 ? "hero" : "heroes"} so far,{" "}
+        <span className="tabular-nums">{left}</span> more to go. Earn points and pick a handle to count. Early ones get the Founding Contributor badge: the first 100 people to check in or add a toilet keep it for good.
       </p>
       {me === null ? (
         <Link href={loginHref("/leaderboard")} className={buttonClass("primary", "md", "self-start")}>
@@ -657,7 +659,7 @@ function PeopleEmpty({ me, scope }: { me: Me | null | undefined; scope: "week" |
               Sign in to join
             </Link>
           ) : !me.leaderboardOptIn ? (
-            // The card above already has the Join button; this is the settings route to the same switch.
+            // The card above already has the Show me button; this is the settings route to the same switch.
             <Link href={OPT_IN_HREF} className={buttonClass("secondary", "md")}>
               Leaderboard settings
             </Link>
@@ -669,7 +671,7 @@ function PeopleEmpty({ me, scope }: { me: Me | null | undefined; scope: "week" |
         }
       >
         <p>
-          No one who has joined the leaderboard has points {when}. The board only lists people who turn it on in their profile.
+          No one with a handle has points {when}. Check in or add a toilet to be the first.
         </p>
       </EmptyState>
     </Card>
