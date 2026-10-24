@@ -112,6 +112,8 @@ export function MeClient() {
   const [tab, setTab] = useState<Tab>("progress");
   const tabsRef = useRef<HTMLDivElement>(null);
   const switched = useRef(false);
+  // The random-handle card jumps to a Settings row; `n` re-runs the jump when it's tapped again.
+  const [settingsJump, setSettingsJump] = useState<SettingsJump | null>(null);
   useEffect(() => {
     // The URL is client-only; open a linked tab after hydration, without animating.
     const t = readTab();
@@ -149,7 +151,15 @@ export function MeClient() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 pb-8 pt-4">
-      {me.needsHandle ? <HandleSetup me={me} /> : null}
+      {me.handleAuto ? (
+        <AutoHandle
+          me={me}
+          onJump={(row) => {
+            pick("settings");
+            setSettingsJump((j) => ({ row, n: (j?.n ?? 0) + 1 }));
+          }}
+        />
+      ) : null}
       <Profile me={me} />
       <SinceLastVisit me={me} onSeeActivity={() => pick("activity")} />
       <div ref={tabsRef} className="scroll-mt-4 md:scroll-mt-20">
@@ -160,7 +170,7 @@ export function MeClient() {
           <div className="flex flex-col gap-8">
             {tab === "progress" ? <ProgressTab me={me} /> : null}
             {tab === "activity" ? <ActivityTab /> : null}
-            {tab === "settings" ? <SettingsTab me={me} /> : null}
+            {tab === "settings" ? <SettingsTab me={me} jump={settingsJump} /> : null}
           </div>
         </ViewTransition>
       </div>
@@ -312,61 +322,44 @@ function handleProblem(handle: string, current: string | null): string | null {
   return null;
 }
 
-function HandleSetup({ me }: { me: Me }) {
+type SettingsJump = { row: "handle" | "optin"; n: number };
+
+/**
+ * Every account starts on the leaderboard under a random handle (kopi_otter_42), never its name. Until
+ * they keep or change it, this says so up top and points at the two Settings rows that matter.
+ */
+function AutoHandle({ me, onJump }: { me: Me; onJump: (row: SettingsJump["row"]) => void }) {
   const qc = useQueryClient();
-  const [handle, setHandle] = useState(me.handle ?? "");
-  const problem = handleProblem(handle, me.handle);
-  const m = useMutation({
-    mutationFn: () => api.updateMe({ handle }),
+  // Saving the same handle makes it theirs, which retires this card.
+  const keep = useMutation({
+    mutationFn: () => api.updateMe({ handle: me.handle ?? undefined }),
     onSuccess: (updated) => qc.setQueryData(ME_KEY, updated),
   });
-  const taken = isApiError(m.error) && m.error.status === 409;
   return (
     <Card className="border-primary bg-primary-soft!">
-      <h2 className="text-2xl leading-tight">Pick a handle</h2>
-      <p id="handle-hint" className="mt-1 text-sm">
-        This is what others see on reviews and the leaderboard. No real names needed. 3–20 characters: lowercase letters, numbers
-        and _.
+      <h2 className="text-2xl leading-tight [overflow-wrap:anywhere]">
+        {me.leaderboardOptIn ? `You're @${me.handle} on the leaderboard` : `You're @${me.handle}`}
+      </h2>
+      <p className="mt-1 text-sm">
+        We picked this handle at random, so nobody sees your name or email. Changing it is free.{" "}
+        {me.leaderboardOptIn ? "You can also leave the leaderboard." : "You're not on the leaderboard."}
       </p>
-      <form
-        className="mt-3 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!problem) m.mutate();
-        }}
-      >
-        <label htmlFor="handle" className="sr-only">
-          Handle
-        </label>
-        <div className="flex min-w-0 flex-1 items-center rounded-full border-2 border-border-strong bg-surface pl-4 focus-within:border-primary has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ring">
-          <span className="font-extrabold text-muted" aria-hidden>
-            @
-          </span>
-          <input
-            id="handle"
-            className="min-h-12 w-full min-w-0 bg-transparent pl-1 pr-4 text-base text-fg placeholder:text-muted focus:outline-none"
-            value={handle}
-            autoComplete="username"
-            onChange={(e) => {
-              m.reset();
-              setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
-            }}
-            maxLength={20}
-            aria-invalid={handle.length > 0 && !!problem}
-            aria-describedby="handle-hint handle-status handle-err"
-          />
-        </div>
-        {/* Disabled looks secondary (not a faded pink) so the two states can't be confused. */}
-        <Button type="submit" variant={problem ? "secondary" : "primary"} disabled={!!problem} loading={m.isPending}>
-          Save
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => onJump("handle")}>
+          <PencilLine className="size-4" aria-hidden /> Change handle
         </Button>
-      </form>
-      <p id="handle-status" className={cx("mt-2 text-sm", problem ? "text-muted" : "font-bold text-mint")} aria-live="polite">
-        {problem ?? `Ready to save @${handle}.`}
-      </p>
-      <p id="handle-err" role="alert" className="text-sm text-danger">
-        {taken ? "That handle is taken. Try another one." : m.isError ? errorMessage(m.error) : ""}
-      </p>
+        <Button size="sm" variant="secondary" loading={keep.isPending} onClick={() => keep.mutate()}>
+          <Check className="size-4" aria-hidden /> Keep it
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => onJump("optin")}>
+          Leaderboard settings
+        </Button>
+      </div>
+      {keep.isError ? (
+        <p role="alert" className="mt-2 text-sm text-danger">
+          {errorMessage(keep.error)}
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -1153,7 +1146,7 @@ function Segmented<T extends string>({
 const row = "flex flex-col gap-2 px-4 py-3.5";
 const actionRow = "flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left font-extrabold transition hover:bg-surface-2";
 
-function SettingsTab({ me }: { me: Me }) {
+function SettingsTab({ me, jump }: { me: Me; jump: SettingsJump | null }) {
   const qc = useQueryClient();
   const router = useRouter();
   const signOut = useSignOut();
@@ -1179,11 +1172,12 @@ function SettingsTab({ me }: { me: Me }) {
       <ul className="divide-y divide-border/70 overflow-hidden rounded-3xl border border-border/70 bg-surface shadow-rest">
         {me.handle ? (
           <li>
-            <HandleChange me={me} />
+            {/* A jump from the random-handle card remounts it with the form open. */}
+            <HandleChange key={jump?.row === "handle" ? jump.n : 0} me={me} startOpen={jump?.row === "handle"} />
           </li>
         ) : null}
         <li>
-          <LeaderboardOptIn me={me} />
+          <LeaderboardOptIn me={me} jumpTo={jump?.row === "optin" ? jump.n : 0} />
         </li>
         <li>
           <VerifierCredit me={me} />
@@ -1305,11 +1299,18 @@ function SettingsTab({ me }: { me: Me }) {
   );
 }
 
-/** Changing an existing handle: once every 30 days (the first pick is free and lives in HandleSetup). */
-function HandleChange({ me }: { me: Me }) {
+/** Changing a handle: once every 30 days, but replacing the random one from sign-up is free. */
+function HandleChange({ me, startOpen = false }: { me: Me; startOpen?: boolean }) {
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [handle, setHandle] = useState(me.handle ?? "");
+  const rowRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!startOpen) return;
+    rowRef.current?.scrollIntoView({ block: "center" });
+    inputRef.current?.focus({ preventScroll: true });
+  }, [startOpen]);
   // Read once: the page doesn't need to tick over at midnight.
   const [now] = useState(Date.now);
   const lockedUntil = me.handleChangeableAt && new Date(me.handleChangeableAt).getTime() > now ? me.handleChangeableAt : null;
@@ -1323,13 +1324,17 @@ function HandleChange({ me }: { me: Me }) {
   });
   const taken = isApiError(m.error) && m.error.status === 409;
   return (
-    <div className={row}>
+    <div ref={rowRef} className={cx(row, "scroll-mt-20")}>
       <div className="flex min-h-11 items-center justify-between gap-3">
         <span className="min-w-0">
           <span className="block font-extrabold">Handle</span>
           <span className="block text-sm text-muted [overflow-wrap:anywhere]">
             @{me.handle}.{" "}
-            {lockedUntil ? `You can change it again from ${formatDate(lockedUntil)}.` : "You can change it once every 30 days."}
+            {me.handleAuto
+              ? "Picked at random. Changing it is free."
+              : lockedUntil
+                ? `You can change it again from ${formatDate(lockedUntil)}.`
+                : "You can change it once every 30 days."}
           </span>
         </span>
         {!open ? (
@@ -1360,6 +1365,7 @@ function HandleChange({ me }: { me: Me }) {
             New handle
           </label>
           <input
+            ref={inputRef}
             id="new-handle"
             className={inputClass}
             value={handle}
@@ -1373,7 +1379,10 @@ function HandleChange({ me }: { me: Me }) {
             aria-describedby="new-handle-status new-handle-err"
           />
           <p id="new-handle-status" className={cx("text-sm", problem ? "text-muted" : "font-bold text-mint")} aria-live="polite">
-            {problem ?? `Ready to save @${handle}. You won't be able to change it again for 30 days.`}
+            {problem ??
+              (me.handleAuto
+                ? `Ready to save @${handle}.`
+                : `Ready to save @${handle}. You won't be able to change it again for 30 days.`)}
           </p>
           <div className="flex gap-2">
             <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
@@ -1392,7 +1401,7 @@ function HandleChange({ me }: { me: Me }) {
   );
 }
 
-function LeaderboardOptIn({ me }: { me: Me }) {
+function LeaderboardOptIn({ me, jumpTo = 0 }: { me: Me; jumpTo?: number }) {
   const qc = useQueryClient();
   const ref = useRef<HTMLDivElement>(null);
   const optIn = useMutation({
@@ -1402,10 +1411,11 @@ function LeaderboardOptIn({ me }: { me: Me }) {
       void qc.invalidateQueries({ queryKey: ["lb-users"] });
     },
   });
-  // Linked from the leaderboard as /me#leaderboard-optin, which opens this tab after /me loads.
+  // Linked from the leaderboard as /me#leaderboard-optin, which opens this tab after /me loads, and
+  // from the random-handle card (`jumpTo`).
   useEffect(() => {
-    if (window.location.hash === OPTIN_HASH) ref.current?.scrollIntoView({ block: "center" });
-  }, []);
+    if (jumpTo || window.location.hash === OPTIN_HASH) ref.current?.scrollIntoView({ block: "center" });
+  }, [jumpTo]);
   const noHandle = !me.handle;
 
   return (
@@ -1415,7 +1425,7 @@ function LeaderboardOptIn({ me }: { me: Me }) {
           <span className="block font-extrabold">Show me on the leaderboard</span>
           <span id="optin-help" className="block text-sm text-muted">
             {noHandle
-              ? "Pick a handle above first. The leaderboard only lists handles."
+              ? "You need a handle first. The leaderboard only lists handles."
               : `Others see only @${me.handle} and your points. Never your name, email, photo or where you checked in.`}
           </span>
         </span>
@@ -1458,7 +1468,7 @@ function VerifierCredit({ me }: { me: Me }) {
           <span className="block font-extrabold">Show my handle on toilets I check</span>
           <span id="credit-help" className="block text-sm text-muted">
             {noHandle
-              ? "Pick a handle above first. Toilet pages only ever show handles."
+              ? "You need a handle first. Toilet pages only ever show handles."
               : `When you confirm a toilet is still accurate, its page credits you as @${me.handle}. Never your name or email.`}
           </span>
         </span>

@@ -66,7 +66,7 @@ export default function PrivacyPage() {
       <h2>What we store when you sign in</h2>
       <ul>
         <li>From Google: your email address, name and profile picture URL.</li>
-        <li>The handle you choose, your points, badges and leaderboard choice (off by default).</li>
+        <li>Your handle (a random one we pick, which you can change), your points, badges and leaderboard choice (on by default).</li>
         <li>What you contribute: toilets and edits you submit (with the position you were standing at when submitting), reviews,
           photos, status reports, votes and flags.</li>
         <li>
@@ -195,8 +195,8 @@ export default function PrivacyPage() {
       <h2>Who sees what</h2>
       <ul>
         <li>
-          Other users see your handle on reviews, and your handle and points on the leaderboard. You can hide yourself from the
-          leaderboard on{" "}
+          When you sign in you get a random handle, never your name or email, and you appear on the leaderboard by that handle
+          and your points. Other users also see your handle on reviews. You can turn the leaderboard off in the settings on{" "}
           <Link href="/me#leaderboard-optin" className="font-bold text-primary underline hover:decoration-[3px]">
             your profile
           </Link>

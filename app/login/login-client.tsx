@@ -56,7 +56,7 @@ export function LoginClient() {
     onSuccess: (m) => {
       qc.setQueryData(ME_KEY, m);
       void qc.invalidateQueries();
-      router.replace(m.needsHandle ? "/me" : redirect);
+      router.replace(redirect);
     },
   });
 

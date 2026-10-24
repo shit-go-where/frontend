@@ -279,6 +279,7 @@ export const ME: Me = {
   points: 42,
   badges: [],
   needsHandle: false,
+  handleAuto: false,
   handleChangeableAt: null,
   trust: { score: 12, threshold: 50, isTrusted: false },
   openSubmissions: { count: 0, limit: 10 },

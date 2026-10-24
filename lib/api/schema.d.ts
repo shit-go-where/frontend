@@ -979,6 +979,7 @@ export interface components {
                 awardedAt?: string;
             }[];
             needsHandle: boolean;
+            handleAuto: boolean;
             handleChangeableAt: string | null;
             trust: {
                 score: number;

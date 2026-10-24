@@ -268,6 +268,8 @@ export interface Me {
   points: number;
   badges: Badge[];
   needsHandle: boolean;
+  /** The handle is the random one from sign-up (kopi_otter_42). Changing it is free and starts no 30-day wait. */
+  handleAuto: boolean;
   /** When the handle can next be changed (once per 30 days); null = now. */
   handleChangeableAt: string | null;
   /** isTrusted = role TRUSTED or above; score counts toward `threshold` (50). */

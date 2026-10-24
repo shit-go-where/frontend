@@ -635,7 +635,7 @@ function HeroesOpening({ joined, me }: { joined: number; me: Me | null | undefin
       />
       <p>
         <strong className="font-extrabold tabular-nums">{joined}</strong> {joined === 1 ? "hero" : "heroes"} so far,{" "}
-        <span className="tabular-nums">{left}</span> more to go. Earn points and pick a handle to count. Early ones get the Founding Contributor badge: the first 100 people to check in or add a toilet keep it for good.
+        <span className="tabular-nums">{left}</span> more to go. Earn points to count. Early ones get the Founding Contributor badge: the first 100 people to check in or add a toilet keep it for good.
       </p>
       {me === null ? (
         <Link href={loginHref("/leaderboard")} className={buttonClass("primary", "md", "self-start")}>
