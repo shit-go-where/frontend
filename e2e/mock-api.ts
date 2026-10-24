@@ -8,6 +8,11 @@ export interface MockOptions {
   signedIn?: boolean;
   /** Override or add handlers keyed by "METHOD /path" (path without /api). */
   overrides?: Record<string, Handler>;
+  /**
+   * Leave "Which toilets do you use?" unanswered, so the map asks it. By default the question counts as
+   * answered (Any) on the first load, so it stays out of specs about other things.
+   */
+  askSex?: boolean;
 }
 
 export interface ApiLog {
@@ -21,6 +26,19 @@ export interface ApiLog {
  */
 export async function mockApi(page: Page, opts: MockOptions = {}): Promise<ApiLog> {
   const calls: ApiLog["calls"] = [];
+
+  if (!opts.askSex) {
+    // Only when nothing is saved yet, so a choice made in the test survives a reload.
+    await page.addInitScript(() => {
+      try {
+        if (!localStorage.getItem("sgw:sex-pref")) {
+          localStorage.setItem("sgw:sex-pref", JSON.stringify({ sex: null, accessible: false, askedAt: "2026-01-01T00:00:00.000Z" }));
+        }
+      } catch {
+        /* about:blank and friends have no storage */
+      }
+    });
+  }
 
   const who = opts.signedIn ? "user" : "anon";
   const routes: Record<string, Handler> = { ...opts.overrides };

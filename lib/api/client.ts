@@ -11,6 +11,7 @@ import type {
   ActivitySeen,
   AdminFlag,
   ApiErrorBody,
+  AreaDetail,
   AreaType,
   Badge,
   CheckInResult,
@@ -32,6 +33,8 @@ import type {
   RecommendResponse,
   ResolveSubmissionBody,
   Review,
+  SexPreference,
+  StationDetail,
   StatusKind,
   StatusReport,
   SubmissionView,
@@ -300,6 +303,7 @@ export interface NearbyParams {
   features?: Feature[];
   openNow?: boolean;
   areaType?: AreaType;
+  sex?: SexPreference;
   tier?: ToiletTier[];
   limit?: number;
   includePending?: boolean;
@@ -313,6 +317,7 @@ export interface BoundsParams {
   features?: Feature[];
   openNow?: boolean;
   areaType?: AreaType;
+  sex?: SexPreference;
   includePending?: boolean;
 }
 
@@ -351,6 +356,13 @@ export const api = {
   searchVenues: (p: { q: string; lat?: number; lng?: number }, signal?: AbortSignal) =>
     request<List<VenueLite>>("/venues/search", { query: p, signal }),
   venue: (id: string, signal?: AbortSignal) => request<VenueDetail>(`/venues/${encodeURIComponent(id)}`, { signal }),
+
+  // Station and area pages render on the server for everyone (lib/api/server.ts); these refetch one in the
+  // browser for a saved sex preference, which narrows the lists and the counts alike.
+  station: (slug: string, sex?: SexPreference, signal?: AbortSignal) =>
+    request<StationDetail>(`/stations/${encodeURIComponent(slug)}`, { query: { sex }, signal }),
+  area: (slug: string, sex?: SexPreference, signal?: AbortSignal) =>
+    request<AreaDetail>(`/areas/${encodeURIComponent(slug)}`, { query: { sex }, signal }),
 
   // Routing & geo
   /** Someone started walking to this toilet: a per-day count, no person. Fire and forget. */

@@ -292,9 +292,9 @@ test.describe("a toilet's page", () => {
           body: {
             ...TOILET_DETAIL,
             siblings: [
-              { id: "t-dhoby-l1", label: "Concourse", level: "L1", levelOrder: 1, status: "ACTIVE" },
-              { id: "t-dhoby-b2", label: "NEL platform", level: "B2", levelOrder: -2, status: "ACTIVE" },
-              { id: "t-dhoby-x", label: "Near Exit E", level: null, levelOrder: null, status: "ACTIVE" },
+              { id: "t-dhoby-l1", label: "Concourse", level: "L1", levelOrder: 1, status: "ACTIVE", sex: "FEMALE" },
+              { id: "t-dhoby-b2", label: "NEL platform", level: "B2", levelOrder: -2, status: "ACTIVE", sex: null },
+              { id: "t-dhoby-x", label: "Near Exit E", level: null, levelOrder: null, status: "ACTIVE", sex: null },
             ],
           },
         }),
@@ -304,10 +304,12 @@ test.describe("a toilet's page", () => {
     await page.goto(`/toilets/${ID}`);
     const floors = page.getByRole("navigation", { name: "3 other toilets in this building" });
     await expect(floors).toBeVisible();
-    // Lowest floor first, unknown last; this toilet (B1) is lit and not a link.
-    await expect(floors.getByRole("listitem")).toHaveText([/B2$/, "B1 (this one)", /L1$/, "Near Exit E"]);
+    // Lowest floor first, unknown last; this toilet (B1) is lit and not a link. Who a toilet is for
+    // comes before its floor when known (the text also holds the screen-reader words: "toilet on").
+    await expect(floors.getByRole("listitem")).toHaveText([/B2$/, "B1 (this one)", /^Women's ·.*L1$/, "Near Exit E"]);
     await expect(floors.getByText("B1")).toHaveAttribute("aria-current", "page");
-    await expect(floors.getByRole("link", { name: "Toilet on L1" })).toHaveAttribute("href", "/toilets/t-dhoby-l1");
+    await expect(floors.getByRole("link", { name: "Women's toilet on L1" })).toHaveAttribute("href", "/toilets/t-dhoby-l1");
+    await expect(floors.getByRole("link", { name: "Toilet on B2" })).toHaveAttribute("href", "/toilets/t-dhoby-b2");
     await expect(floors.getByRole("link", { name: "Near Exit E" })).toHaveAttribute("href", "/toilets/t-dhoby-x");
   });
 });

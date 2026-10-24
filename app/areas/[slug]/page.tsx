@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ErrorState } from "@/components/ui";
 import { getAreaServer } from "@/lib/api/server";
 import type { AreaDetail } from "@/lib/api/types";
-import { placeName, plural } from "@/lib/format";
+import { placeName, plural, toiletTag } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 import { AreaSkeleton, AreaView } from "./area-view";
 
@@ -36,7 +36,10 @@ function JsonLd({ a }: { a: AreaDetail }) {
   const items = a.venues.flatMap((v) =>
     v.toilets
       .filter((t) => t.status === "ACTIVE")
-      .map((t) => ({ name: t.label ? `${placeName(v)} (${t.label})` : placeName(v), url: `${SITE_URL}/toilets/${t.id}` })),
+      .map((t) => {
+        const tag = toiletTag(t);
+        return { name: tag ? `${placeName(v)} (${tag})` : placeName(v), url: `${SITE_URL}/toilets/${t.id}` };
+      }),
   );
   const ld = {
     "@context": "https://schema.org",

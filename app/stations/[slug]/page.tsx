@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ErrorState } from "@/components/ui";
 import { getStationServer } from "@/lib/api/server";
 import type { StationDetail } from "@/lib/api/types";
-import { formatDate, formatDistance, placeName, plural, scoreNumber } from "@/lib/format";
+import { formatDate, formatDistance, placeName, plural, scoreNumber, toiletTag } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 import { isUnnamed, toiletDisplayTitle } from "@/lib/unnamed-toilet";
 import { sortLines, stationLabel } from "../station-bits";
@@ -75,7 +75,10 @@ function JsonLd({ s }: { s: StationDetail }) {
   const items = [
     ...s.toilets
       .filter((t) => t.status === "ACTIVE")
-      .map((t) => ({ name: t.label ? `${label} (${t.label})` : label, url: `${SITE_URL}/toilets/${t.id}` })),
+      .map((t) => {
+        const tag = toiletTag(t);
+        return { name: tag ? `${label} (${tag})` : label, url: `${SITE_URL}/toilets/${t.id}` };
+      }),
     ...s.nearby.map(({ toilet: t }) => ({
       name: toiletDisplayTitle({ ...t, venue: { ...t.venue, name: placeName(t.venue) }, near: label }),
       url: `${SITE_URL}/toilets/${t.id}`,

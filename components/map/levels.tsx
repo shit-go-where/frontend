@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef } from "react";
 import type { ToiletPin } from "@/lib/api/types";
+import { sexLabel } from "@/lib/format";
 import { compareLevelOrder, distinctLevels, levelOrder, levelParts, levelShort } from "@/lib/level";
 import { PinGlyph, tierPinVariant } from "../pin";
 import { cx } from "../ui";
@@ -41,8 +42,15 @@ function metres(a: { lat: number; lng: number }, b: { lat: number; lng: number }
   return Math.hypot(dx, dy);
 }
 
+/** Men's, women's, then unisex on the same floor, the way they usually sit side by side. */
+const SEX_ORDER = { MALE: 0, FEMALE: 1, UNISEX: 2 } as const;
+const sexOrder = (p: ToiletPin) => (p.sex ? SEX_ORDER[p.sex] : 3);
+
 const byLevel = (a: ToiletPin, b: ToiletPin) =>
-  compareLevelOrder(a.levelOrder, b.levelOrder) || (a.level ?? "").localeCompare(b.level ?? "") || a.id.localeCompare(b.id);
+  compareLevelOrder(a.levelOrder, b.levelOrder) ||
+  (a.level ?? "").localeCompare(b.level ?? "") ||
+  sexOrder(a) - sexOrder(b) ||
+  a.id.localeCompare(b.id);
 
 /**
  * ACTIVE pins of one venue within 15 m of each other (chained, so three toilets 10 m apart are one
@@ -122,10 +130,12 @@ function spiderRadius(n: number): number {
   return Math.max(68, (TARGET_PX * Math.SQRT2) / (2 * Math.sin(Math.PI / n)));
 }
 
-/** What a roll says out loud, naming its floor. */
-export function rollLabel(p: Pick<ToiletPin, "level">): string {
+/** What a roll says out loud, naming its floor and who it's for ("Women's toilet on L3"). */
+export function rollLabel(p: Pick<ToiletPin, "level" | "sex">): string {
   const short = levelShort(p.level);
-  return short ? `Toilet on ${short}` : "Toilet, level unknown";
+  const who = sexLabel(p.sex);
+  const noun = who ? `${who} toilet` : "Toilet";
+  return short ? `${noun} on ${short}` : `${noun}, level unknown`;
 }
 
 function IssueDot({ className }: { className?: string }) {
@@ -137,7 +147,12 @@ function IssueDot({ className }: { className?: string }) {
   );
 }
 
-function LevelTag({ level, className }: { level: string | null; className?: string }) {
+/**
+ * A roll's tag: its floor, and who it's for when known ("Men's · L3"), since a men's and a women's toilet on
+ * one floor would otherwise read the same.
+ */
+function LevelTag({ level, sex, className }: { level: string | null; sex?: ToiletPin["sex"]; className?: string }) {
+  const who = sexLabel(sex);
   return (
     <span
       className={cx(
@@ -146,6 +161,7 @@ function LevelTag({ level, className }: { level: string | null; className?: stri
       )}
       aria-hidden
     >
+      {who ? `${who} · ` : null}
       {levelShort(level) ?? "?"}
     </span>
   );
@@ -206,7 +222,7 @@ export function StackRolls({
               {/* Low on the roll's left (the tag takes the right). */}
               {p.hasIssue ? <IssueDot className="-left-1 top-[15px]" /> : null}
             </span>
-            <LevelTag level={p.level} className="-ml-0.5 mb-[18px]" />
+            <LevelTag level={p.level} sex={p.sex} className="-ml-0.5 mb-[18px]" />
           </button>
         );
       })}
@@ -320,7 +336,7 @@ export function FoldedStack({
                   <PinGlyph variant={tierPinVariant(p.tier)} className="size-8 drop-shadow-[0_2px_2px_rgb(10_5_2/0.5)]" />
                   {p.hasIssue ? <IssueDot className="-right-0.5 top-0" /> : null}
                 </span>
-                <LevelTag level={p.level} className="-mt-1" />
+                <LevelTag level={p.level} sex={p.sex} className="-mt-1" />
               </button>
             );
           })}

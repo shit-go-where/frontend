@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { getToiletServer } from "@/lib/api/server";
 import type { Feature, ToiletDetail } from "@/lib/api/types";
-import { FEATURE_LABELS, TIER_LABELS, VENUE_TYPE_LABELS, scoreNumber } from "@/lib/format";
+import { FEATURE_LABELS, TIER_LABELS, VENUE_TYPE_LABELS, scoreNumber, toiletTag } from "@/lib/format";
 import { OG, OG_SIZE, OgChip, OgFrame, OgLogo, OgSticker, ogVerdict, ogVerifiedText } from "@/lib/og";
 import { isUnnamed, nearPhrase } from "@/lib/unnamed-toilet";
 
@@ -86,10 +86,10 @@ export default async function Image({ params }: { params: Promise<{ id: string }
   const r = await getToiletServer(id);
   const t = r.kind === "ok" ? r.data : null;
 
-  // Name and label apart, so the label ("Male, L2", "Accessible") gets its own line instead of a bracket.
+  // Name and label apart, so the label and who it's for ("Women's · DTL side") get their own line instead of a bracket.
   const name = !t ? "A toilet in Singapore" : isUnnamed(t) && t.near ? `${t.venue.name} ${nearPhrase(t.near)}` : t.venue.name;
   const kind = t ? (t.venue.type !== "OTHER" ? VENUE_TYPE_LABELS[t.venue.type] : null) : null;
-  const sub = t ? [t.label, kind, t.venue.planningArea].filter(Boolean).join(" · ") : "";
+  const sub = t ? [toiletTag(t), kind, t.venue.planningArea].filter(Boolean).join(" · ") : "";
   const status = t?.status === "CLOSED" ? "Closed" : t?.status === "RENOVATION" ? "Under renovation" : null;
   const score = t && !status ? t.scoreCleanliness : null;
   // A verdict only for a live toilet; "Shiok!" on a pending or closed one would oversell it.

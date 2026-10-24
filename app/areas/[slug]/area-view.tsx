@@ -24,9 +24,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BackButton } from "@/components/back-button";
 import { FoldMotion, Reveal, Tick, usePresence } from "@/components/presence";
+import { SexPrefRow } from "@/components/sex-pref";
 import { FeatureChips, FilterChipLabel, LineBadge, TierBadge, lastVerifiedText } from "@/components/toilet-bits";
 import { Button, Chip, EmptyState, Skeleton, buttonClass, cx } from "@/components/ui";
-import type { AreaDetail, AreaVenue, Feature, ToiletSummary, ToiletTier, VenueType } from "@/lib/api/types";
+import { api } from "@/lib/api/client";
+import type { AreaDetail, AreaVenue, Feature, SexPreference, ToiletSummary, ToiletTier, VenueType } from "@/lib/api/types";
 import type { FilterKey } from "@/lib/filters";
 import { FILTERS } from "@/lib/filters";
 import {
@@ -41,9 +43,11 @@ import {
   shortAddress,
   timeAgo,
   scoreNumber,
+  toiletTag,
 } from "@/lib/format";
 import { useLocation } from "@/lib/location";
 import { EASE_OUT, reducedMotion } from "@/lib/motion";
+import { usableBy, usePrefData } from "@/lib/sex-pref";
 import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
 
 /**
@@ -158,7 +162,24 @@ function isChecked(v: AreaVenue) {
   return v.toilets.some((t) => t.tier !== "IMPORTED");
 }
 
-export function AreaView({ area }: { area: AreaDetail }) {
+/** On the phone, until the API's narrowed copy (with its own counts) lands: only toilets this person can use. */
+function narrowArea(a: AreaDetail, sex: SexPreference): AreaDetail {
+  return {
+    ...a,
+    venues: a.venues
+      .map((v) => ({ ...v, toilets: v.toilets.filter((t) => usableBy(t.sex, sex)) }))
+      .filter((v) => v.toilets.length),
+  };
+}
+
+export function AreaView({ area: server }: { area: AreaDetail }) {
+  // Rendered for everyone on the server; narrowed here to the toilets this person uses, if they said.
+  const { data: area } = usePrefData(
+    ["area", server.slug],
+    server,
+    (sex, signal) => api.area(server.slug, sex, signal),
+    narrowArea,
+  );
   const [active, setActive] = useState<Set<FilterKey>>(() => new Set());
   // Lists fold only once someone taps a filter; a shared filter from the URL applies at once.
   const [folding, setFolding] = useState(false);
@@ -263,6 +284,7 @@ function AreaBody({
         {area.region ? `, ${REGION_LABELS[area.region]} region` : ""}. <span className="tabular-nums">{tierMix(area.venues)}</span>.
       </p>
       <MapLink area={area} />
+      <SexPrefRow className="mt-1" />
 
       <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-4 mt-5 border-b border-border/70 bg-bg px-4 py-2.5 md:top-[calc(4rem+env(safe-area-inset-top))]">
         {/* Runs to the screen edge and fades there, so a chip cut off at the edge reads as "scroll for more". */}
@@ -414,7 +436,7 @@ function AreaBody({
         >
           {SURVEY_CREDIT}
         </a>
-        , the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
+        &apos;s 2024 toilet surveys, the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
         Licence).{" "}
         <Link href="/about" className="font-bold text-primary underline underline-offset-2 hover:decoration-[3px]">
           About our data
@@ -486,7 +508,7 @@ function Score({ t }: { t: ToiletSummary }) {
 }
 
 function BestBet({ venue, toilet }: { venue: AreaVenue; toilet: ToiletSummary }) {
-  const where = [toilet.label, toilet.level ? `Level ${toilet.level}` : null].filter(Boolean).join(" · ");
+  const where = [toiletTag(toilet), toilet.level ? `Level ${toilet.level}` : null].filter(Boolean).join(" · ");
   return (
     <section aria-labelledby="best-h" className="pt-8">
       <h2 id="best-h" className="flex flex-wrap items-baseline gap-x-3 text-2xl leading-tight">
@@ -600,8 +622,10 @@ const CLOSED_LABEL: Partial<Record<ToiletSummary["status"], string>> = {
 
 function ToiletLine({ t, venueName, lead, only }: { t: ToiletSummary; venueName: string; lead: ToiletTier; only: boolean }) {
   // A place's only toilet needs no name of its own: the place header already says where it is.
-  const title = t.label ?? (t.level ? `Level ${t.level}` : only ? null : "Toilet");
-  const level = t.label && t.level ? `Level ${t.level}` : null;
+  // Its label and who it's for ("Women's · NSL side"): a place's men's and women's often share a floor.
+  const tag = toiletTag(t);
+  const title = tag ?? (t.level ? `Level ${t.level}` : only ? null : "Toilet");
+  const level = tag && t.level ? `Level ${t.level}` : null;
   const closed = CLOSED_LABEL[t.status];
   return (
     <Link
@@ -651,7 +675,7 @@ function OpenDataRow({ v, t }: { v: AreaVenue; t: ToiletSummary }) {
       data-testid="area-toilet"
     >
       <span className="min-w-0 flex-1">
-        <span className="font-bold">{t.label ? `${v.name} (${t.label})` : v.name}</span>
+        <span className="font-bold">{toiletTag(t) ? `${v.name} (${toiletTag(t)})` : v.name}</span>
         {bits.length ? <span className="text-muted"> · {bits.join(" · ")}</span> : null}
         {t.features.length ? (
           <span className="mt-0.5 block">

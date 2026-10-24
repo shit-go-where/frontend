@@ -10,7 +10,7 @@ import { TpBar } from "@/components/tp-bar";
 import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Skeleton, buttonClass, cx } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import type { Me, ToiletLeaderboard, UserLeaderboard } from "@/lib/api/types";
-import { areaSlug } from "@/lib/format";
+import { areaSlug, sexLabel } from "@/lib/format";
 import { ME_KEY, loginHref, useHydrated, useMe } from "@/lib/auth";
 import { EASE_OUT, PANEL_IN, PANEL_OUT, reducedMotion } from "@/lib/motion";
 
@@ -824,6 +824,8 @@ function Toilets() {
               >
                 <span className={cx("line-clamp-2 w-full font-extrabold leading-tight", place === 1 ? "text-base" : "text-sm")}>
                   {r.toilet.venue.name}
+                  {/* A place's men's and women's can both make the board: say which this is. */}
+                  {sexLabel(r.toilet.sex) ? <span className="font-medium text-muted"> · {sexLabel(r.toilet.sex)}</span> : null}
                 </span>
                 <TierBadge tier={r.toilet.tier} />
                 <Score r={r} big />
@@ -850,6 +852,7 @@ function Toilets() {
                         </span>
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <TierBadge tier={r.toilet.tier} />
+                          {sexLabel(r.toilet.sex) ? <span className="text-xs font-bold text-muted">{sexLabel(r.toilet.sex)}</span> : null}
                           <span className="text-xs text-muted">{lastVerifiedText(r.toilet)}</span>
                         </span>
                       </span>

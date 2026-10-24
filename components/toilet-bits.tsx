@@ -39,6 +39,7 @@ import {
   lineColor,
   lineTextColor,
   timeAgo,
+  toiletTag,
   walkMinutes,
 } from "@/lib/format";
 import { FEATURE_HUE, FILTER_HUE, HUE_TEXT } from "@/lib/feature-hues";
@@ -392,6 +393,8 @@ function ToiletCardInner({
 }) {
   const mins = walkMinutes(t.walkSecondsEstimate);
   const pending = t.status === "PENDING";
+  // "Women's · DTL side": who it's for and its label, after the place's name.
+  const tag = toiletTag(t);
   // Room for one line of chips: live reports first (they're news), then features.
   const featureRoom = Math.max(1, 2 - t.activeStatus.length);
   // Pending toilets are never used for directions.
@@ -430,7 +433,7 @@ function ToiletCardInner({
         <div className="flex items-start justify-between gap-2">
           <h3 className="line-clamp-2 font-extrabold leading-snug">
             {t.venue.name}
-            {t.label ? <span className="text-sm font-medium text-muted"> · {t.label}</span> : null}
+            {tag ? <span className="text-sm font-medium text-muted"> · {tag}</span> : null}
           </h3>
           <ChevronRight className="mt-0.5 size-5 shrink-0 text-muted group-hover:text-primary" aria-hidden />
         </div>
@@ -483,7 +486,7 @@ function ToiletCardInner({
         // Going deeper, like opening the toilet: the route arrives from the right, and its Back pops.
         transitionTypes={["push"]}
         className="flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-l border-border text-xs font-extrabold text-primary transition hover:bg-surface-2 active:scale-95 @max-[18rem]:min-h-11 @max-[18rem]:w-full @max-[18rem]:flex-row @max-[18rem]:gap-1.5 @max-[18rem]:border-l-0 @max-[18rem]:border-t @max-[18rem]:text-sm"
-        aria-label={`Walk to ${t.venue.name}`}
+        aria-label={`Walk to ${t.venue.name}${tag ? `, ${tag}` : ""}`}
         data-testid="walk-there"
       >
         <Navigation className="size-5" aria-hidden />

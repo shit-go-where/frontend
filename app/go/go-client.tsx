@@ -57,6 +57,7 @@ import {
   cleanlinessText,
   formatDistance,
   googleMapsWalkingUrl,
+  toiletTag,
   walkMinutes,
 } from "@/lib/format";
 import { haversineM, roundCoord, useFixAge, useLocation, useWatchPosition } from "@/lib/location";
@@ -65,6 +66,7 @@ import { PURPOSE_OPTIONS, parsePurpose, type PurposeOption } from "@/lib/purpose
 import { markArrived, startRoute } from "@/lib/route-session";
 import { HUE_TEXT, type Hue } from "@/lib/feature-hues";
 import { distinctLevels } from "@/lib/level";
+import { usableBy, useSexPreference } from "@/lib/sex-pref";
 
 /** Each mission wears the hue of the features it hunts for (sitting for number two, soap for freshening up). */
 const PURPOSE_STYLE: Record<Purpose, { icon: React.ComponentType<{ className?: string }>; hue: Hue }> = {
@@ -232,6 +234,9 @@ export function GoClient() {
   const short = useShortScreen();
   // Urgent mode sends the saved must-haves (the API honours them there too), shown as removable chips.
   const stored = useStoredFilters();
+  // Which toilets they use (set on the map): both modes only offer those.
+  const pref = useSexPreference();
+  const sex = pref.sex ?? undefined;
   // The results view is in: let an animated Back from the route view finish its update.
   useLayoutEffect(() => {
     if (to) return;
@@ -272,6 +277,7 @@ export function GoClient() {
         require: urgentFilters.features.length ? urgentFilters.features : undefined,
         openNow: urgentFilters.openNow || undefined,
         areaType: urgentFilters.areaType,
+        ...(sex ? { sex } : {}),
         ...(myLevel ? { level: myLevel } : {}),
       };
     if (fussyParam === null) return null;
@@ -286,15 +292,16 @@ export function GoClient() {
       areaType: fq.areaType,
       // ASSUMPTION: weights are relative 0..1; "fussiness" trades distance for cleanliness.
       weights: { cleanliness: fussy / 10, distance: 1 - fussy / 20 },
+      ...(sex ? { sex } : {}),
       ...(myLevel ? { level: myLevel } : {}),
     };
-  }, [urgent, fussyParam, need, purpose, lat, lng, urgentFilters, myLevel]);
+  }, [urgent, fussyParam, need, purpose, lat, lng, urgentFilters, myLevel, sex]);
 
   const rec = useQuery({
     queryKey: ["recommend", body],
     queryFn: ({ signal }) => api.recommend(body!, signal),
-    // Urgent waits for the saved must-haves to load, so it asks once, with them.
-    enabled: !!body && loc.settled && (!urgent || stored.ready),
+    // Waits for the saved preference (and, urgent, the saved must-haves) to load, so it asks once, with them.
+    enabled: !!body && loc.settled && pref.ready && (!urgent || stored.ready),
     staleTime: 60_000,
     // A fresh fix asks again; meanwhile the answer from the old one stays up, labelled with its age. A floor
     // answered re-ranks the same list, so it stays up then too, instead of a skeleton jumping in.
@@ -313,9 +320,9 @@ export function GoClient() {
   }, [rec.data]);
   const askFloor = !floorAnswer && loc.source === "gps" && !!nearestVenue;
   const venueToiletsQ = useQuery({
-    queryKey: ["go-floors", nearestVenue?.id],
+    queryKey: ["go-floors", nearestVenue?.id, sex ?? null],
     queryFn: ({ signal }) =>
-      api.nearbyToilets({ lat: nearestVenue!.lat, lng: nearestVenue!.lng, radius: 300, limit: 100 }, signal),
+      api.nearbyToilets({ lat: nearestVenue!.lat, lng: nearestVenue!.lng, radius: 300, limit: 100, sex }, signal),
     enabled: askFloor,
     staleTime: 5 * 60_000,
     retry: false,
@@ -341,8 +348,8 @@ export function GoClient() {
   const fromPoint = loc.source === "default" ? null : loc.coords;
   // The service worker may still hold a list for about here, and on a weak signal the request may get through.
   const offlineSource = useQuery({
-    queryKey: ["nearby", "offline-fallback", roundCoord(lat, 3), roundCoord(lng, 3)],
-    queryFn: ({ signal }) => api.nearbyToilets({ lat, lng, radius: 2000, limit: 50 }, signal),
+    queryKey: ["nearby", "offline-fallback", roundCoord(lat, 3), roundCoord(lng, 3), sex ?? null],
+    queryFn: ({ signal }) => api.nearbyToilets({ lat, lng, radius: 2000, limit: 50, sex }, signal),
     enabled: recOffline && !!fromPoint,
     retry: false,
   });
@@ -361,10 +368,11 @@ export function GoClient() {
     }
     const must = urgent ? stored.active : new Set(need);
     return rankOffline(
-      [...byId.values()].filter((t) => matchesFilters(t, must)),
+      // Saved lists were fetched with whatever preference was set then: check it again here.
+      [...byId.values()].filter((t) => matchesFilters(t, must) && usableBy(t.sex, pref.sex)),
       fromPoint,
     ).map(offlineItem);
-  }, [recOffline, fromPoint, offlineSource.data, qc, urgent, stored.active, need]);
+  }, [recOffline, fromPoint, offlineSource.data, qc, urgent, stored.active, need, pref.sex]);
 
   // Still locating after a few seconds: offer search rather than leave a skeleton with no way out.
   const waitingForFix = (!loc.settled || (loc.status === "locating" && loc.source === "default")) && !rec.data;
@@ -813,6 +821,7 @@ function HeroCard({
   const facts = [t.level ? `Level ${t.level}` : null, t.areaType !== "UNKNOWN" ? AREA_TYPE_LABELS[t.areaType] : null].filter(
     Boolean,
   );
+  const tag = toiletTag(t);
 
   return (
     <article
@@ -855,8 +864,8 @@ function HeroCard({
           <span className="ml-auto text-sm whitespace-nowrap text-muted tabular-nums">{formatDistance(item.walkDistanceM)}</span>
         </p>
         <h2 className="mt-2 text-2xl leading-tight">{t.venue.name}</h2>
-        {t.label || facts.length ? (
-          <p className="mt-0.5 text-muted">{[t.label, ...facts].filter(Boolean).join(" · ")}</p>
+        {tag || facts.length ? (
+          <p className="mt-0.5 text-muted">{[tag, ...facts].filter(Boolean).join(" · ")}</p>
         ) : null}
 
         {/* One fact line, as on the cards: the tier carries its age, so there's no separate "verified" line. */}
@@ -950,7 +959,7 @@ function AltRow({
           <span className="block truncate font-bold">{t.venue.name}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
             <TierBadge tier={t.tier} pending={t.status === "PENDING"} unconfirmed seenBy={t.seenBy} />
-            {t.label ? <span className="truncate">{t.label}</span> : null}
+            {toiletTag(t) ? <span className="truncate">{toiletTag(t)}</span> : null}
             {caveat ? <span className="font-semibold text-warn">Must-haves not checked in person</span> : null}
             {lacks ? <span className="font-semibold text-warn">No {FEATURE_LABELS[essential!].toLowerCase()} listed</span> : null}
           </span>
@@ -1250,7 +1259,7 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
   // From a GPS fix, Google Maps starts from the phone's own live position and goes straight into navigation;
   // from a searched place, it starts there.
   const gmaps = googleMapsWalkingUrl(loc.source === "search" ? loc.coords : null, t);
-  const facts = [t.label, t.level ? `Level ${t.level}` : null, t.areaType !== "UNKNOWN" ? AREA_TYPE_LABELS[t.areaType] : null].filter(
+  const facts = [toiletTag(t), t.level ? `Level ${t.level}` : null, t.areaType !== "UNKNOWN" ? AREA_TYPE_LABELS[t.areaType] : null].filter(
     Boolean,
   );
   const shut =

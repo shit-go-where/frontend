@@ -18,11 +18,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { BackButton } from "@/components/back-button";
+import { SexPrefRow } from "@/components/sex-pref";
 import { ClosedPill, FeatureChips, TierBadge, ToiletCard, lastVerifiedText } from "@/components/toilet-bits";
 import { EmptyState, Skeleton, buttonClass, cx } from "@/components/ui";
-import type { StationDetail, ToiletSummary } from "@/lib/api/types";
-import { formatDistance, placeName, plural, scoreNumber } from "@/lib/format";
+import { api } from "@/lib/api/client";
+import type { SexPreference, StationDetail, ToiletSummary } from "@/lib/api/types";
+import { formatDistance, placeName, plural, scoreNumber, sexLabel, toiletTag } from "@/lib/format";
 import { useLocation } from "@/lib/location";
+import { usableBy, usePrefData } from "@/lib/sex-pref";
 import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
 import { isUnnamed } from "@/lib/unnamed-toilet";
 import { StationLineBadge, sortLines, stationLabel } from "../station-bits";
@@ -56,7 +59,23 @@ function walkHref(id: string) {
 
 const LINK = "font-bold text-primary underline underline-offset-2 hover:decoration-[3px]";
 
-export function StationView({ station: s }: { station: StationDetail }) {
+/** On the phone, until the API's own narrowed copy lands: only toilets this person can use. */
+function narrowStation(s: StationDetail, sex: SexPreference): StationDetail {
+  return {
+    ...s,
+    toilets: s.toilets.filter((t) => usableBy(t.sex, sex)),
+    nearby: s.nearby.filter((n) => usableBy(n.toilet.sex, sex)),
+  };
+}
+
+export function StationView({ station }: { station: StationDetail }) {
+  // Rendered for everyone on the server; narrowed here to the toilets this person uses, if they said.
+  const { data: s } = usePrefData(
+    ["station", station.slug],
+    station,
+    (sex, signal) => api.station(station.slug, sex, signal),
+    narrowStation,
+  );
   const label = stationLabel(s);
   const lines = sortLines(s.lines);
   const inside = s.toilets;
@@ -89,6 +108,7 @@ export function StationView({ station: s }: { station: StationDetail }) {
         </p>
       ) : null}
       <MapLink s={s} label={label} />
+      <SexPrefRow className="mt-1" />
 
       {inside.length ? (
         <section aria-labelledby="inside-h" className="pt-6">
@@ -161,7 +181,7 @@ export function StationView({ station: s }: { station: StationDetail }) {
         <a href={SURVEY_URL} className={LINK} target="_blank" rel="noopener noreferrer">
           {SURVEY_CREDIT}
         </a>
-        , the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
+        &apos;s 2024 toilet surveys, the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
         Licence).{" "}
         <Link href="/about" className={LINK}>
           About our data
@@ -232,15 +252,27 @@ function levelText(level: string): string {
 }
 
 /**
+ * What a station toilet is called on its card: its label (with who it's for), else who it's for and its
+ * level ("Women's · Level 2"), else just its level. A station's men's and women's often share a floor.
+ */
+function stationToiletName(t: ToiletSummary, only: boolean): string {
+  if (t.label) return toiletTag(t) ?? t.label;
+  const who = sexLabel(t.sex);
+  const level = t.level ? levelText(t.level) : null;
+  if (who) return level && !only ? `${who} · ${level}` : `${who} toilet`;
+  return only ? "Station toilet" : (level ?? "Toilet");
+}
+
+/**
  * One toilet in the station, decide-and-go: where it is (level, fare gates), how clean, who
  * vouches for it and when, then Walk there. Live reports and "open now" stay on the toilet's own
  * page, since this page is cached for hours.
  */
 function StationToilet({ t, primary, only }: { t: ToiletSummary; primary: boolean; only: boolean }) {
   const closed = CLOSED_LABEL[t.status];
-  const title = t.label ?? (only ? "Station toilet" : t.level ? levelText(t.level) : "Toilet");
+  const title = stationToiletName(t, only);
   const level = t.level ? levelText(t.level) : null;
-  const where = [level !== title ? level : null, FARE_GATES[t.areaType]].filter((w): w is string => !!w);
+  const where = [level && !title.includes(level) ? level : null, FARE_GATES[t.areaType]].filter((w): w is string => !!w);
   return (
     <div className="rounded-[28px] border border-border/70 bg-surface p-5 shadow-rest" data-testid="station-toilet">
       <div className="flex items-start gap-4">
@@ -409,7 +441,7 @@ function CheckInNudge({ s, usableInside, label }: { s: StationDetail; usableInsi
   const targets = usableInside.length
     ? usableInside.slice(0, 3).map((t) => ({
         t,
-        name: t.label ?? (usableInside.length === 1 ? null : t.level ? levelText(t.level) : null),
+        name: (usableInside.length === 1 && !t.label) || !(t.label || t.sex || t.level) ? null : stationToiletName(t, false),
       }))
     : s.nearby.slice(0, 1).map((n) => ({
         t: n.toilet,

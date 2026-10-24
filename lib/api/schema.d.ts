@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["HealthController_live"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/google": {
         parameters: {
             query?: never;
@@ -954,6 +970,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        LivenessDto_Output: {
+            /** @constant */
+            ok: true;
+            commit: string | null;
+            time: string;
+        };
         DevLoginBody: {
             /** Format: email */
             email: string;
@@ -1132,6 +1154,7 @@ export interface components {
             tier: components["schemas"]["ToiletTier_Output"];
             status: components["schemas"]["ToiletStatus_Output"];
             features: components["schemas"]["Feature_Output"][];
+            sex: components["schemas"]["Sex_Output"] | null;
             scoreCleanliness: number | null;
             surveyTotal: number | null;
             rasStars: number | null;
@@ -1153,6 +1176,8 @@ export interface components {
         ToiletStatus_Output: "ACTIVE" | "CLOSED" | "RENOVATION" | "PENDING" | "REJECTED";
         /** @enum {string} */
         Feature_Output: "TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION";
+        /** @enum {string} */
+        Sex_Output: "MALE" | "FEMALE" | "UNISEX";
         ActiveStatus_Output: {
             kind: components["schemas"]["StatusKind_Output"];
             count: number;
@@ -1188,6 +1213,7 @@ export interface components {
             venueId: string;
             level: string | null;
             levelOrder: number | null;
+            sex: components["schemas"]["Sex_Output"] | null;
         };
         ToiletPinListDto_Output: {
             items: components["schemas"]["ToiletPin_Output"][];
@@ -1218,16 +1244,38 @@ export interface components {
         Survey_Output: {
             id: string;
             surveyedAt: string;
-            phase: string | null;
+            rubric: components["schemas"]["SurveyRubric_Output"];
+            sex: components["schemas"]["Sex_Output"] | null;
             cleanliness: number;
-            scent: number;
-            aesthetics: number;
-            music: number;
-            toiletries: number;
-            facilities: number;
-            total: number;
+            total: number | null;
+            totalMax: number | null;
             rasStars: number | null;
+            phase: string | null;
             remarks: string | null;
+            items: (components["schemas"]["SurveyScaleItem_Output"] | components["schemas"]["SurveyChecklistItem_Output"])[];
+        };
+        /** @enum {string} */
+        SurveyRubric_Output: "PILOT_50" | "EXPANDED_2024";
+        SurveyScaleItem_Output: {
+            /** @constant */
+            kind: "scale";
+            key: string;
+            label: string;
+            value: number;
+            min: number;
+            max: number;
+        };
+        SurveyChecklistItem_Output: {
+            /** @constant */
+            kind: "checklist";
+            key: string;
+            label: string;
+            checked: string[];
+            total: number;
+        };
+        SurveyDate_Output: {
+            surveyedAt: string;
+            rubric: components["schemas"]["SurveyRubric_Output"];
         };
         Review_Output: {
             id: string;
@@ -1251,6 +1299,7 @@ export interface components {
             level: string | null;
             levelOrder: number | null;
             status: components["schemas"]["ToiletStatus_Output"];
+            sex: components["schemas"]["Sex_Output"] | null;
         };
         ToiletDetailDto_Output: {
             id: string;
@@ -1274,6 +1323,7 @@ export interface components {
             tier: components["schemas"]["ToiletTier_Output"];
             status: components["schemas"]["ToiletStatus_Output"];
             features: components["schemas"]["Feature_Output"][];
+            sex: components["schemas"]["Sex_Output"] | null;
             scoreCleanliness: number | null;
             surveyTotal: number | null;
             rasStars: number | null;
@@ -1299,6 +1349,7 @@ export interface components {
             }[];
             latestSurvey: components["schemas"]["Survey_Output"] | null;
             surveyCount: number;
+            surveys: components["schemas"]["SurveyDate_Output"][];
             reviews: components["schemas"]["Review_Output"][];
             photos: components["schemas"]["PhotoRef_Output"][];
             myReview: components["schemas"]["Review_Output"] | null;
@@ -1330,6 +1381,8 @@ export interface components {
         Feature: "TOILET_PAPER" | "HAND_TOWEL" | "HAND_DRYER" | "HAND_SOAP" | "SEAT_LINER" | "BIDET" | "AUTO_FLUSH" | "AUTO_TAP" | "AUTO_SOAP" | "COAT_HOOK" | "FEEDBACK_DEVICE" | "SIGNAGE" | "POSTERS" | "AMBULANT" | "ACCESSIBLE" | "CHILD" | "BABY_CHANGE" | "NURSING_ROOM" | "SHOWER" | "SITTING" | "SQUAT" | "MALE" | "FEMALE" | "UNISEX" | "FREE" | "SANITARY_BIN" | "PERIOD_PRODUCTS" | "MIRROR" | "WATER_REFILL" | "ABLUTION";
         /** @enum {string} */
         AreaType: "PAID_AREA" | "UNPAID_AREA" | "NOT_APPLICABLE" | "UNKNOWN";
+        /** @enum {string} */
+        SexPreference: "MALE" | "FEMALE";
         RecommendBodyDto: {
             lat: number;
             lng: number;
@@ -1337,6 +1390,7 @@ export interface components {
             purpose?: components["schemas"]["Purpose"];
             require?: components["schemas"]["Feature"][];
             areaType?: components["schemas"]["AreaType"];
+            sex?: components["schemas"]["SexPreference"];
             openNow?: boolean;
             radiusM?: number;
             weights?: {
@@ -2007,7 +2061,7 @@ export interface components {
             items: {
                 id: string;
                 /** @enum {string} */
-                source: "FIELDWORK_2024" | "OSM" | "ONEMAP" | "DATAGOV" | "WIKIDATA" | "COMMUNITY" | "ADMIN";
+                source: "FIELDWORK_2024" | "FIELDWORK_2024_EXPANDED" | "OSM" | "ONEMAP" | "DATAGOV" | "WIKIDATA" | "COMMUNITY" | "ADMIN";
                 command: string;
                 startedAt: string;
                 finishedAt: string | null;
@@ -2159,6 +2213,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    HealthController_live: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LivenessDto_Output"];
+                };
             };
         };
     };
@@ -2568,6 +2641,7 @@ export interface operations {
                 features?: string;
                 tier?: string;
                 areaType?: components["schemas"]["AreaType"];
+                sex?: components["schemas"]["SexPreference"];
                 openNow?: "0" | "1" | "true" | "false";
                 includePending?: "0" | "1" | "true" | "false";
                 limit?: number;
@@ -2598,6 +2672,7 @@ export interface operations {
                 features?: string;
                 tier?: string;
                 areaType?: components["schemas"]["AreaType"];
+                sex?: components["schemas"]["SexPreference"];
                 openNow?: "0" | "1" | "true" | "false";
                 includePending?: "0" | "1" | "true" | "false";
             };
@@ -3480,7 +3555,9 @@ export interface operations {
     };
     AreasController_detail: {
         parameters: {
-            query?: never;
+            query?: {
+                sex?: components["schemas"]["SexPreference"];
+            };
             header?: never;
             path: {
                 slug: string;
@@ -3520,7 +3597,9 @@ export interface operations {
     };
     StationsController_detail: {
         parameters: {
-            query?: never;
+            query?: {
+                sex?: components["schemas"]["SexPreference"];
+            };
             header?: never;
             path: {
                 slug: string;

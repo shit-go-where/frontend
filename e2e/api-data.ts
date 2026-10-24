@@ -6,6 +6,7 @@
  */
 import {
   CHECK_IN,
+  EXPANDED_DETAIL,
   ME,
   NEARBY_VENUES,
   PHOTO,
@@ -248,6 +249,7 @@ export function fixtureReply(method: string, path: string, url: URL, who: Who, b
   if (method === "GET" && (m = path.match(/^\/toilets\/([^/]+)$/))) {
     const t = TOILETS.find((x) => x.id === m![1]);
     if (m[1] === TOILET_DETAIL.id) return { body: TOILET_DETAIL };
+    if (m[1] === EXPANDED_DETAIL.id) return { body: EXPANDED_DETAIL };
     return t ? { body: { ...TOILET_DETAIL, ...t, venue: TOILET_DETAIL.venue } } : { status: 404, body: { statusCode: 404, message: "Not found" } };
   }
   if (method === "POST" && /^\/toilets\/[^/]+\/check-ins$/.test(path)) return { body: CHECK_IN };

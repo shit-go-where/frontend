@@ -14,7 +14,7 @@ import Map, {
   type MapRef,
 } from "react-map-gl/maplibre";
 import { api } from "@/lib/api/client";
-import type { AreaType, Feature, ToiletPin, ToiletTier } from "@/lib/api/types";
+import type { AreaType, Feature, SexPreference, ToiletPin, ToiletTier } from "@/lib/api/types";
 import type { LatLng } from "@/lib/location";
 import { cameraMotion, easeSheet, reducedMotion } from "@/lib/motion";
 import { useResolvedTheme } from "@/lib/theme";
@@ -188,6 +188,8 @@ export interface ToiletMapProps {
   /** The same filters the page's list uses, so pins and list agree. */
   openNow?: boolean;
   areaType?: AreaType;
+  /** Only toilets usable by this sex (its own, unisex or not known), as the page's list asks for. */
+  sex?: SexPreference;
   selectedId?: string | null;
   /** Overrides `selectedId`: marks this toilet (picked or just looked at), wherever its pin is. */
   focus?: MapFocus | null;
@@ -294,6 +296,7 @@ export default function ToiletMap({
   features = [],
   openNow,
   areaType,
+  sex,
   selectedId,
   focus,
   focusHint = true,
@@ -375,16 +378,16 @@ export default function ToiletMap({
   }, [dark, liveMap]);
 
   const pinsQ = useQuery({
-    queryKey: ["in-bounds", bounds, features, openNow ?? false, areaType ?? null],
+    queryKey: ["in-bounds", bounds, features, openNow ?? false, areaType ?? null, sex ?? null],
     queryFn: ({ signal }) =>
-      api.toiletsInBounds({ ...bounds!, features, openNow: openNow || undefined, areaType, includePending: true }, signal),
+      api.toiletsInBounds({ ...bounds!, features, openNow: openNow || undefined, areaType, sex, includePending: true }, signal),
     enabled: showPins && !!bounds,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
   const pins = useMemo(() => pinsQ.data?.items ?? [], [pinsQ.data]);
   // Also dim while this map's own pins for new filters are still in flight (not while merely panning).
-  const filterKey = `${features.join(",")}|${openNow ? 1 : 0}|${areaType ?? ""}`;
+  const filterKey = `${features.join(",")}|${openNow ? 1 : 0}|${areaType ?? ""}|${sex ?? ""}`;
   const [shownFilters, setShownFilters] = useState(filterKey);
   if (pinsQ.data && !pinsQ.isPlaceholderData && shownFilters !== filterKey) setShownFilters(filterKey);
   const dim = dimPins || (pinsQ.isPlaceholderData && shownFilters !== filterKey);

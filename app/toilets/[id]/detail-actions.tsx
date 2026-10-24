@@ -22,7 +22,7 @@ import { PhotoViewer } from "@/components/photo-viewer";
 import { Button, Dialog, ErrorState, StarInput, Stars, buttonClass, cx, inputClass } from "@/components/ui";
 import { api, errorMessage, isApiError } from "@/lib/api/client";
 import { STATUS_KINDS, type CheckInResult, type PhotoRef, type Review, type StatusKind, type ToiletDetail } from "@/lib/api/types";
-import { BAD_STATUS, STATUS_LABELS, formatDate, timeAgo } from "@/lib/format";
+import { BAD_STATUS, STATUS_LABELS, formatDate, timeAgo, toiletTag } from "@/lib/format";
 import { INTENT_PARAM, loginWithIntent, useGuard, useMe, useResumeIntent } from "@/lib/auth";
 import { getCurrentPosition } from "@/lib/location";
 import { track } from "@/lib/analytics";
@@ -304,7 +304,8 @@ export function ShareButton({ toilet, className }: { toilet: ToiletDetail; class
   const [copied, setCopied] = useState(false);
   async function share() {
     const url = `${window.location.origin}/toilets/${toilet.id}`;
-    const title = `${toilet.venue.name}${toilet.label ? ` (${toilet.label})` : ""}`;
+    const tag = toiletTag(toilet);
+    const title = `${toilet.venue.name}${tag ? ` (${tag})` : ""}`;
     const shared = (method: "native" | "copy" | "prompt") =>
       track("share", { what: "toilet", method, toilet_id: toilet.id, toilet_tier: toilet.tier });
     if (navigator.share) {

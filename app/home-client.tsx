@@ -7,6 +7,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { BottomSheet, SHEET_PEEK, SHEET_TOP } from "@/components/bottom-sheet";
 import { LocateFailed, LocationAsk, LocationNotice, LocationSearch, nearestStationName } from "@/components/location-search";
 import { ToiletMap, type Bounds, type MapFocus, type MapView } from "@/components/map";
+import { SexAsk, SexPrefChip, SexPrefRow, SexSegmented } from "@/components/sex-pref";
 import { TelegramStrip, useTelegramStrip } from "@/components/telegram-strip";
 import { FilterChipLabel, TierLegend, ToiletCard } from "@/components/toilet-bits";
 import { Button, Chip, Dialog, EmptyState, ErrorState, Skeleton, buttonClass, cx } from "@/components/ui";
@@ -17,6 +18,7 @@ import { FILTERS, FILTER_LABEL, MUST_HAVE_GROUPS, toFilterQuery } from "@/lib/fi
 import { formatDistance, isClosedNow, savedAge } from "@/lib/format";
 import { estimateWalkSeconds, haversineM, roundCoord, useLocation, type LatLng } from "@/lib/location";
 import { remeasure, useOnline, type SavedFrom } from "@/lib/offline";
+import { prefLabel, usableBy, useSexPreference } from "@/lib/sex-pref";
 import { TELEGRAM_BOT_URL } from "@/lib/site";
 import { useStoredFilters } from "@/lib/use-filters";
 import { useFlipList } from "@/lib/use-flip";
@@ -75,6 +77,9 @@ function areaSearch({ center, open }: MapView) {
 export function HomeClient() {
   const loc = useLocation();
   const { active, toggle, clear } = useStoredFilters();
+  // Which toilets they use (asked once, in the sheet): the list, the pins and "Walk there" only offer those.
+  const pref = useSexPreference();
+  const sex = pref.sex ?? undefined;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** A tapped building (or spot) on the map: its toilets, lowest level first, and the building when it is one. */
   const [tapped, setTapped] = useState<{ ids: string[]; venueId: string | null } | null>(null);
@@ -126,17 +131,18 @@ export function HomeClient() {
   const area = useMemo(() => (awayFromSpot && view ? areaSearch(view) : null), [awayFromSpot, view]);
 
   const nearby = useQuery({
-    queryKey: area ? ["nearby", "area", area, fq] : ["nearby", lat, lng, nearRadius, fq],
+    queryKey: area ? ["nearby", "area", area, fq, sex ?? null] : ["nearby", lat, lng, nearRadius, fq, sex ?? null],
     queryFn: async ({ signal }) => {
       const at = area ?? { lat, lng, radius: nearRadius };
       const res = await api.nearbyToilets(
-        { lat: at.lat, lng: at.lng, radius: at.radius, limit: LIST_LIMIT, features: fq.features, openNow: fq.openNow, areaType: fq.areaType },
+        { lat: at.lat, lng: at.lng, radius: at.radius, limit: LIST_LIMIT, features: fq.features, openNow: fq.openNow, areaType: fq.areaType, sex },
         signal,
       );
       // The list remembers which mode it was fetched for, so a list kept on screen while the next one loads stays labelled right.
       return { ...res, area };
     },
-    enabled: loc.settled,
+    // Waits for the saved preference, so the first request already carries it.
+    enabled: loc.settled && pref.ready,
     placeholderData: keepPreviousData,
   });
   const listArea = nearby.data?.area ?? null;
@@ -147,7 +153,8 @@ export function HomeClient() {
   const offlineNoList =
     !nearby.data && ((nearby.isError && offlineError(nearby.error)) || nearby.fetchStatus === "paused" || (!online && !nearby.isSuccess));
   const items = useMemo(() => {
-    const raw = nearby.data?.items ?? [];
+    // The API already filters by `sex`; a saved copy answered offline may have been fetched before the choice.
+    const raw = (nearby.data?.items ?? []).filter((t) => usableBy(t.sex, pref.sex));
     const a = nearby.data?.area;
     if (!a) {
       // A saved list was measured from wherever it was fetched: measure again from where you are now.
@@ -166,7 +173,7 @@ export function HomeClient() {
           return { ...t, distanceM: Math.round(d), walkSecondsEstimate: estimateWalkSeconds(d) };
         }),
     );
-  }, [nearby.data, user, placeFrom]);
+  }, [nearby.data, user, placeFrom, pref.sex]);
   /** Filters changed but their results haven't landed: the stale list and pins dim instead of sitting there looking final. */
   const filtering = active !== queryFilters;
   const updating = filtering || (nearby.isPlaceholderData && nearby.isFetching);
@@ -213,8 +220,9 @@ export function HomeClient() {
     () => items.filter((t) => t.id !== selectedId && !groupIds?.includes(t.id)),
     [items, selectedId, groupIds],
   );
-  // "Walk there" goes on the nearest one you can actually use, so it never routes to a shut door.
-  const walkId = listItems.find((t) => t.status !== "PENDING" && !isClosedNow(t))?.id;
+  // "Walk there" goes on the nearest one you can actually use, so it never routes to a shut door or the wrong
+  // one. The list itself stays in walking order (the preference filters it, never re-sorts it).
+  const walkId = listItems.find((t) => t.status !== "PENDING" && !isClosedNow(t) && usableBy(t.sex, pref.sex))?.id;
   const listRef = useRef<HTMLUListElement>(null);
   const itemKeys = useMemo(() => listItems.map((t) => t.id), [listItems]);
   useFlipList(listRef, itemKeys);
@@ -423,6 +431,7 @@ export function HomeClient() {
           features={fq.features}
           openNow={fq.openNow}
           areaType={fq.areaType}
+          sex={sex}
           onViewChange={onViewChange}
           selectedId={selectedId}
           focus={focus}
@@ -469,12 +478,14 @@ export function HomeClient() {
             />
           </div>
           {/* Phones: only the filters that are on, each one tap to drop. */}
-          {active.size ? (
+          {active.size || pref.sex ? (
             <div
               className="no-scrollbar pointer-events-auto flex gap-2 overflow-x-auto pb-1 md:hidden"
               role="group"
               aria-label="Filters on"
             >
+              {/* The toilets they use narrows the map like a filter, so it rides here too (a tap changes it). */}
+              {pref.sex ? <SexPrefChip className="shadow-card" /> : null}
               {FILTERS.filter((f) => active.has(f.key)).map((f) => (
                 <Chip key={f.key} active onClick={() => toggle(f.key)} className="shadow-card">
                   <FilterChipLabel k={f.key} label={f.label} active />
@@ -514,6 +525,12 @@ export function HomeClient() {
         }
       >
         <div className="flex flex-col gap-5" role="group" aria-label="Filters">
+          <div role="group" aria-labelledby="map-must-sex" className="flex flex-col gap-2">
+            <h3 id="map-must-sex" className="text-sm font-extrabold text-muted">
+              Which toilets
+            </h3>
+            <SexSegmented value={pref.sex} onChange={(s) => pref.choose(s)} label="Which toilets do you use?" />
+          </div>
           {MUST_HAVE_GROUPS.map((g) => (
             <div key={g.id} role="group" aria-labelledby={`map-must-${g.id}`} className="flex flex-col gap-2">
               <h3 id={`map-must-${g.id}`} className="text-sm font-extrabold text-muted">
@@ -587,7 +604,9 @@ export function HomeClient() {
               inert={!revealed}
             >
               <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
-                <TierLegend className="pt-2" />
+                {/* Which toilets the list holds, a tap from changing (the first visit asks above). */}
+                <SexPrefRow className="pt-2" />
+                <TierLegend />
                 <Link
                   href="/go"
                   className="-mt-1 inline-flex min-h-11 items-center gap-0.5 self-start text-sm font-semibold text-primary underline-offset-2 hover:underline md:hidden"
@@ -600,6 +619,12 @@ export function HomeClient() {
           </div>
         }
       >
+        {/*
+          First visit: "Which toilets do you use?" takes the peek until answered; the nearest card waits under it.
+          A picked pin or building takes the peek instead (the question comes back once it's closed).
+        */}
+        {selected || group ? null : <SexAsk className="mb-3" peek />}
+
         {selected ? (
           <div key={selected.id} className="rise-in mb-3" data-sheet-peek>
             <div className="-mt-1 flex items-center justify-between">
@@ -732,7 +757,9 @@ export function HomeClient() {
           >
             {active.size
               ? `Nothing with ${active.size === 1 ? "that filter" : "those filters"} within ${nearRadius / 1000} km.`
-              : `Nothing within ${nearRadius / 1000} km of here yet. Know one?`}
+              : pref.sex
+                ? `No ${prefLabel(pref.sex).toLowerCase()} or unisex toilet within ${nearRadius / 1000} km of here yet. Know one?`
+                : `Nothing within ${nearRadius / 1000} km of here yet. Know one?`}
           </EmptyState>
           </div>
         ) : (

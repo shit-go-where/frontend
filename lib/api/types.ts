@@ -79,6 +79,12 @@ export type StatusKind = (typeof STATUS_KINDS)[number];
 
 export type Role = "USER" | "TRUSTED" | "MODERATOR" | "ADMIN";
 
+/** Who a toilet is for (from its MALE / FEMALE / UNISEX features); null = not known. */
+export type ToiletSex = "MALE" | "FEMALE" | "UNISEX";
+/** `sex` on list endpoints: toilets usable by that sex (its own, unisex or unknown). */
+export type SexPreference = "MALE" | "FEMALE";
+export type SurveyRubric = "PILOT_50" | "EXPANDED_2024";
+
 export type OpeningHours =
   | { type: "always" }
   | {
@@ -127,6 +133,11 @@ export interface ToiletSummary {
   tier: ToiletTier;
   status: ToiletStatus;
   features: Feature[];
+  /**
+   * UNISEX if tagged so, else MALE or FEMALE when only one is, else null. Lists the service worker saved
+   * before this field came in lack it, so treat undefined as unknown too.
+   */
+  sex: ToiletSex | null;
   scoreCleanliness: number | null;
   surveyTotal: number | null;
   rasStars: number | null;
@@ -164,6 +175,8 @@ export interface ToiletPin {
   level: string | null;
   /** Sort key: B2 = -2, L1 = 1, M = 1.5, a list = its lowest; null when unknown. */
   levelOrder: number | null;
+  /** As on ToiletSummary (pins saved offline before it came in lack it: treat undefined as unknown). */
+  sex: ToiletSex | null;
 }
 
 /** Another ACTIVE toilet at the same place (ToiletDetail.siblings). */
@@ -173,21 +186,37 @@ export interface ToiletSibling {
   level: string | null;
   levelOrder: number | null;
   status: ToiletStatus;
+  /** As on ToiletSummary (a detail page saved offline before it came in lacks it: treat undefined as unknown). */
+  sex: ToiletSex | null;
 }
 
+/** When a toilet was surveyed, and with which score sheet (ToiletDetail.surveys). */
+export interface SurveyDate {
+  surveyedAt: string;
+  rubric: SurveyRubric;
+}
+
+/** One line of a survey, display-ready: a score on a scale, or how many boxes of a checklist were ticked. */
+export type SurveyItem =
+  | { kind: "scale"; key: string; label: string; value: number; min: number; max: number }
+  | { kind: "checklist"; key: string; label: string; checked: string[]; total: number };
+
+/** Rubric-agnostic: render `items` in order; `rubric` only for wording (e.g. the 50-point pilot). */
 export interface Survey {
   id: string;
   surveyedAt: string;
-  phase: string | null;
+  rubric: SurveyRubric;
+  /** The toilet the surveyor looked at. */
+  sex: ToiletSex | null;
+  /** 0-10 for every rubric. */
   cleanliness: number;
-  scent: number;
-  aesthetics: number;
-  music: number;
-  toiletries: number;
-  facilities: number;
-  total: number;
+  total: number | null;
+  /** 50 for the pilot; null when the rubric has no total. */
+  totalMax: number | null;
   rasStars: number | null;
+  phase: string | null;
   remarks: string | null;
+  items: SurveyItem[];
 }
 
 export interface Review {
@@ -214,6 +243,11 @@ export interface ToiletDetail extends Omit<ToiletSummary, "venue"> {
   featureDetails: FeatureDetail[];
   latestSurvey: Survey | null;
   surveyCount: number;
+  /**
+   * Every survey, newest first (the first is latestSurvey). A detail page saved offline before this
+   * existed lacks it, so readers treat undefined as "dates not known".
+   */
+  surveys: SurveyDate[];
   reviews: Review[];
   photos: PhotoRef[];
   myReview: Review | null;
@@ -465,6 +499,7 @@ export interface RecommendBody {
   purpose?: Purpose;
   require?: Feature[];
   areaType?: AreaType;
+  sex?: SexPreference;
   openNow?: boolean;
   radiusM?: number;
   weights?: { distance?: number; cleanliness?: number; freshness?: number };

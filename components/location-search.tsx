@@ -195,9 +195,15 @@ export function LocationSearch({
  * means yes (a prompt on arrival gets declined by reflex, and Chrome then never asks again). Only for someone
  * the browser has never asked (`askFirst`), while the list is still around the fallback place.
  */
+/** Whether LocationAsk is up: never asked, nothing searched, no fix on the way. Other first-visit asks wait for it. */
+export function useLocationAskShown(): boolean {
+  const { askFirst, status, source } = useLocation();
+  return !!askFirst && status === "idle" && source === "default";
+}
+
 export function LocationAsk({ onLocate, className }: { onLocate: () => Promise<boolean>; className?: string }) {
-  const { askFirst, status, source, placeName } = useLocation();
-  const shown = !!askFirst && status === "idle" && source === "default";
+  const { placeName } = useLocation();
+  const shown = useLocationAskShown();
   useEffect(() => {
     if (shown) track("location_ask", { step: "shown" });
   }, [shown]);

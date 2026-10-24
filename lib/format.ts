@@ -1,4 +1,14 @@
-import type { AreaType, Feature, Region, StatusKind, ToiletStatus, ToiletTier, VenueToiletStatus, VenueType } from "./api/types";
+import type {
+  AreaType,
+  Feature,
+  Region,
+  StatusKind,
+  ToiletSex,
+  ToiletStatus,
+  ToiletTier,
+  VenueToiletStatus,
+  VenueType,
+} from "./api/types";
 
 export const FEATURE_LABELS: Record<Feature, string> = {
   TOILET_PAPER: "Toilet paper",
@@ -153,14 +163,14 @@ export const TIER_LABELS: Record<ToiletTier, string> = {
 };
 
 export const TIER_HELP: Record<ToiletTier, string> = {
-  VERIFIED: "Reviewed in person (u/eggmayosandwich's 2024 review)",
+  VERIFIED: "Surveyed in person (u/eggmayosandwich's 2024 surveys)",
   COMMUNITY: "Added and approved by the community",
   IMPORTED: "From open data, not yet checked by a person",
 };
 
 /** One-line legend text, used under the map and in the tier explainer. */
 export const TIER_LEGEND: { tier: ToiletTier | "PENDING"; label: string; help: string }[] = [
-  { tier: "VERIFIED", label: "Verified", help: "Scored in person on a 50-point rubric (u/eggmayosandwich's 2024 review)." },
+  { tier: "VERIFIED", label: "Verified", help: "Surveyed and scored in person (u/eggmayosandwich's 2024 surveys)." },
   { tier: "COMMUNITY", label: "Community", help: "Added by a user and approved by people nearby." },
   { tier: "IMPORTED", label: "Imported", help: "From open data. Nobody has checked it in person yet." },
   { tier: "PENDING", label: "Pending", help: "Waiting for review. Never used for directions." },
@@ -261,8 +271,33 @@ export function formatDate(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Singapore" });
 }
 
-export function toiletTitle(t: { label: string | null; venue: { name: string } }): string {
-  return t.label ? `${t.venue.name} · ${t.label}` : t.venue.name;
+/** Who a toilet is for, as the signs say it. Unknown says nothing (it may be either). */
+export const SEX_LABELS: Record<ToiletSex, string> = {
+  MALE: "Men's",
+  FEMALE: "Women's",
+  UNISEX: "Unisex",
+};
+
+/** "Women's", or null when not known. Lists the service worker saved before `sex` came in lack it. */
+export function sexLabel(sex: ToiletSex | null | undefined): string | null {
+  return sex ? SEX_LABELS[sex] : null;
+}
+
+/** A label that already says who it's for ("Male, L2", "Ladies"), so the sex isn't said twice. */
+const SAYS_SEX = /\b(male|female|men'?s?|women'?s?|ladies|gents|unisex)\b/i;
+
+/**
+ * What tells a toilet apart from the others at its place: "Women's · DTL side", "Men's", "NSL side".
+ * Null when there's nothing to add to the place's name.
+ */
+export function toiletTag(t: { label: string | null; sex?: ToiletSex | null }): string | null {
+  const sex = t.label && SAYS_SEX.test(t.label) ? null : sexLabel(t.sex);
+  return [sex, t.label].filter(Boolean).join(" · ") || null;
+}
+
+export function toiletTitle(t: { label: string | null; sex?: ToiletSex | null; venue: { name: string } }): string {
+  const tag = toiletTag(t);
+  return tag ? `${t.venue.name} · ${tag}` : t.venue.name;
 }
 
 /** A cleanliness score as a number, written the same everywhere: "9", "8.5". */

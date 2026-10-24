@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { appendFileSync } from "node:fs";
-import { TOILET_DETAIL } from "./fixtures";
+import { EXPANDED_DETAIL, TOILET_DETAIL } from "./fixtures";
 import { blockTiles, pinTheme, signInAs, type Who } from "./live";
 
 /**
@@ -92,6 +92,27 @@ const ROUTES: Route[] = [
       for (const name of ["Live status", "What's inside", "Survey", "Reviews"]) {
         await page.getByText(name, { exact: true }).first().click().catch(() => {});
       }
+    },
+  },
+  {
+    // The expanded 2024 survey: signed meters with a zero mark, and tick-box chips.
+    path: `/toilets/${EXPANDED_DETAIL.id}`,
+    state: "expanded survey open",
+    ready: "h1",
+    act: async (page) => {
+      await page.getByText("Survey", { exact: true }).first().click();
+      await page.getByRole("meter", { name: "Cleanliness" }).waitFor();
+    },
+  },
+  {
+    path: "/",
+    state: "which toilets dialog",
+    ready: '[data-testid="toilet-card"]',
+    act: async (page) => {
+      const handle = page.getByRole("region", { name: "Nearby toilets" }).getByRole("button", { name: "Expand list" });
+      await handle.click();
+      await page.getByRole("region", { name: "Nearby toilets" }).getByTestId("sex-chip").click();
+      await page.getByRole("dialog").waitFor();
     },
   },
   {

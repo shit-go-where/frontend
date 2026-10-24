@@ -57,6 +57,7 @@ import { FoldDetails } from "@/components/fold-details";
 import { Mascot } from "@/components/mascot";
 import { PhotoPicker } from "@/components/photo-picker";
 import { holdChrome } from "@/components/route-transition";
+import { SexPicker } from "@/components/sex-pref";
 import { LineBadge } from "@/components/toilet-bits";
 import { Button, Card, Dialog, EmptyState, ErrorState, SlidingPill, Spinner, Tabs, buttonClass, cx, inputClass } from "@/components/ui";
 import { Switch } from "@/components/switch";
@@ -1184,6 +1185,11 @@ function SettingsTab({ me, jump }: { me: Me; jump: SettingsJump | null }) {
         </li>
         <li>
           <TelegramLink me={me} />
+        </li>
+        <li className={row}>
+          {/* The map asks this once; here it can be changed any time (it lives on this phone, like the theme). */}
+          <span className="font-extrabold">Which toilets</span>
+          <SexPicker />
         </li>
         <li className={row}>
           <span id="theme-label" className="font-extrabold">

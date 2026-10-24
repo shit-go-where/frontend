@@ -1,4 +1,5 @@
-import type { VenueType } from "./api/types";
+import type { ToiletSex, VenueType } from "./api/types";
+import { toiletTag } from "./format";
 
 /*
  * Many open-data toilets come in with no name of their own: the import calls the place "Public
@@ -7,7 +8,7 @@ import type { VenueType } from "./api/types";
  * client view share it.
  */
 
-type Named = { label: string | null; venue: { name: string; type: VenueType } };
+type Named = { label: string | null; sex?: ToiletSex | null; venue: { name: string; type: VenueType } };
 
 /** The import's generic name, or an "Other" place with no label to tell its toilets apart. */
 export function isUnnamed(t: Named): boolean {
@@ -21,8 +22,12 @@ export function nearPhrase(near: string): string {
   return /^near\b/i.test(near) ? near : `near ${near}`;
 }
 
-/** "Public toilet near Tampines MRT" when unnamed and `near` is known; otherwise the usual "Venue (label)". */
+/**
+ * "Public toilet near Tampines MRT" when unnamed and `near` is known; otherwise the usual "Venue (label)",
+ * with who it's for when known: "Outram Park (Women's · DTL side)".
+ */
 export function toiletDisplayTitle(t: Named & { near?: string | null }): string {
-  const base = t.label ? `${t.venue.name} (${t.label})` : t.venue.name;
+  const tag = toiletTag(t);
+  const base = tag ? `${t.venue.name} (${tag})` : t.venue.name;
   return isUnnamed(t) && t.near ? `${base} ${nearPhrase(t.near)}` : base;
 }

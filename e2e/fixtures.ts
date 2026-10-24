@@ -7,6 +7,7 @@ import type {
   PresignResponse,
   RecommendResponse,
   SubmissionView,
+  Survey,
   ToiletDetail,
   ToiletPin,
   ToiletSummary,
@@ -57,6 +58,7 @@ function toilet(p: Partial<ToiletSummary> & Pick<ToiletSummary, "id" | "venue" |
     tier: "VERIFIED",
     status: "ACTIVE",
     features: [],
+    sex: null,
     scoreCleanliness: null,
     surveyTotal: null,
     rasStars: null,
@@ -118,6 +120,96 @@ export const TOILETS: ToiletSummary[] = [
   }),
 ];
 
+/**
+ * Not in TOILETS (so the near list's counts stay put): a women's toilet with an expanded 2024 survey, and a
+ * men's one at the same station, for the "Which toilets do you use?" and survey specs.
+ */
+export const FEMALE_TOILET: ToiletSummary = toilet({
+  id: "t-dhoby-ladies",
+  venue: dhobyGhaut,
+  lat: 1.29895,
+  lng: 103.84575,
+  label: "NEL side",
+  level: "B2",
+  areaType: "PAID_AREA",
+  features: ["FEMALE", "TOILET_PAPER", "HAND_SOAP", "SANITARY_BIN"],
+  sex: "FEMALE",
+  scoreCleanliness: 8.3,
+  lastVerifiedAt: "2024-09-14T03:12:00.000Z",
+  distanceM: 70,
+  walkSecondsEstimate: 70,
+});
+
+export const MALE_TOILET: ToiletSummary = toilet({
+  id: "t-dhoby-gents",
+  venue: dhobyGhaut,
+  lat: 1.29893,
+  lng: 103.84572,
+  label: "NEL side",
+  level: "B2",
+  areaType: "PAID_AREA",
+  features: ["MALE", "TOILET_PAPER"],
+  sex: "MALE",
+  scoreCleanliness: 6.7,
+  distanceM: 50,
+  walkSecondsEstimate: 50,
+});
+
+/** An Aug–Oct 2024 survey as the API presents it: signed scales, then tick-box checklists. */
+export const EXPANDED_SURVEY: Survey = {
+  id: "survey-expanded-1",
+  surveyedAt: "2024-09-14T03:12:00.000Z",
+  rubric: "EXPANDED_2024",
+  sex: "FEMALE",
+  cleanliness: 8.333,
+  total: null,
+  totalMax: null,
+  rasStars: null,
+  phase: null,
+  remarks: null,
+  items: [
+    { kind: "scale", key: "cleanliness", label: "Cleanliness", value: 2, min: -3, max: 3 },
+    { kind: "scale", key: "scent", label: "Scent", value: 0, min: -2, max: 2 },
+    {
+      kind: "checklist",
+      key: "reasons",
+      label: "Why this rating",
+      checked: ["General appearance of toilet looks stain-free. (floor, walls, wall tiles, ceiling, cubicle doors)"],
+      total: 6,
+    },
+    {
+      kind: "checklist",
+      key: "toiletries",
+      label: "Toiletries",
+      checked: ["Toilet Paper", "Hand Soap", "Hand Dryer"],
+      total: 5,
+    },
+    { kind: "checklist", key: "facilities", label: "Facilities", checked: [], total: 11 },
+  ],
+};
+
+/** The March 2024 pilot's 50-point rubric, for the same breakdown. */
+export const PILOT_SURVEY: Survey = {
+  id: "survey-pilot-1",
+  surveyedAt: "2024-03-15T02:00:00.000Z",
+  rubric: "PILOT_50",
+  sex: "MALE",
+  cleanliness: 8,
+  total: 33,
+  totalMax: 50,
+  rasStars: null,
+  phase: null,
+  remarks: null,
+  items: [
+    { kind: "scale", key: "cleanliness", label: "Cleanliness", value: 8, min: 0, max: 10 },
+    { kind: "scale", key: "scent", label: "Scent", value: 4, min: 0, max: 5 },
+    { kind: "scale", key: "aesthetics", label: "Aesthetics", value: 3, min: 0, max: 5 },
+    { kind: "scale", key: "music", label: "Music", value: 0, min: 0, max: 5 },
+    { kind: "scale", key: "toiletries", label: "Toiletries", value: 4, min: 0, max: 5 },
+    { kind: "scale", key: "facilities", label: "Facilities", value: 14, min: 0, max: 20 },
+  ],
+};
+
 /** TOILETS[0] as GET /toilets/:id returns it: level and fare gates known, a few features recorded. */
 export const TOILET_DETAIL: ToiletDetail = {
   ...TOILETS[0],
@@ -136,12 +228,34 @@ export const TOILET_DETAIL: ToiletDetail = {
   })),
   latestSurvey: null,
   surveyCount: 0,
+  surveys: [],
   reviews: [],
   photos: [],
   myReview: null,
   source: "COMMUNITY",
   attribution: null,
   siblings: [],
+};
+
+/** FEMALE_TOILET's page: surveyed twice (the expanded survey is the latest). */
+export const EXPANDED_DETAIL: ToiletDetail = {
+  ...TOILET_DETAIL,
+  ...FEMALE_TOILET,
+  venue: TOILET_DETAIL.venue,
+  featureDetails: (["FEMALE", "TOILET_PAPER", "HAND_SOAP", "SANITARY_BIN"] as const).map((feature) => ({
+    feature,
+    present: true,
+    source: "FIELDWORK_2024_EXPANDED",
+    observedAt: "2024-09-14T03:12:00.000Z",
+  })),
+  latestSurvey: EXPANDED_SURVEY,
+  surveyCount: 2,
+  surveys: [
+    { surveyedAt: EXPANDED_SURVEY.surveyedAt, rubric: "EXPANDED_2024" },
+    { surveyedAt: "2024-03-14T16:00:00.000Z", rubric: "PILOT_50" },
+  ],
+  source: "FIELDWORK_2024_EXPANDED",
+  attribution: "u/eggmayosandwich",
 };
 
 export const CHECK_IN: CheckInResult = {
@@ -168,6 +282,7 @@ export const PINS: ToiletPin[] = [
     venueId: t.venue.id,
     level: t.level,
     levelOrder: levelOrder(t.level),
+    sex: t.sex,
   })),
   {
     id: "t-pending",
@@ -181,6 +296,7 @@ export const PINS: ToiletPin[] = [
     venueId: "venue-pending",
     level: null,
     levelOrder: null,
+    sex: null,
   },
 ];
 
@@ -237,6 +353,7 @@ export const pinOf = (t: ToiletSummary): ToiletPin => ({
   venueId: t.venue.id,
   level: t.level,
   levelOrder: levelOrder(t.level),
+  sex: t.sex,
 });
 
 
