@@ -79,6 +79,7 @@ import { estimateWalkSeconds, haversineM, useLocation } from "@/lib/location";
 import { compareLevelOrder, levelOrder, levelShort, levelText } from "@/lib/level";
 import { hoursText, opensText } from "@/lib/opening-hours";
 import { isUnnamed } from "@/lib/unnamed-toilet";
+import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
 import { useHydrated, useMe } from "@/lib/auth";
 import { useStoredFilters } from "@/lib/use-filters";
 import {
@@ -883,7 +884,7 @@ function sentenceCase(s: string): string {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  FIELDWORK_2024: "Fieldwork survey, March 2024",
+  FIELDWORK_2024: "2024 toilet review (r/SGExams)",
   OSM: "OpenStreetMap",
   ONEMAP: "OneMap / Singapore Land Authority",
   DATAGOV: "data.gov.sg",
@@ -893,7 +894,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 /** For per-feature rows, where the date follows. */
-const SOURCE_SHORT: Record<string, string> = { FIELDWORK_2024: "Fieldwork survey", COMMUNITY: "Community" };
+const SOURCE_SHORT: Record<string, string> = { FIELDWORK_2024: "2024 review", COMMUNITY: "Community" };
 
 function sourceLabel(s: string) {
   return SOURCE_LABELS[s] ?? s;
@@ -1130,8 +1131,17 @@ function SurveyBreakdown({ survey, count, ras }: { survey: Survey | null; count:
       {survey ? (
         <>
           <p className="text-sm font-medium text-muted">
-            <span className="font-extrabold text-fg">{survey.total}/50</span> on our 50-point rubric, surveyed in person{" "}
-            {formatDate(survey.surveyedAt)}
+            {/* Only the 2024 review import writes surveys today; credit per survey once anything else does. */}
+            <span className="font-extrabold text-fg">{survey.total}/50</span> on the 50-point rubric from{" "}
+            <a
+              href={SURVEY_URL}
+              className="font-bold text-primary underline underline-offset-2 hover:decoration-[3px]"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {SURVEY_CREDIT}
+            </a>
+            , done in person
             {survey.phase ? ` (${survey.phase})` : ""}
             {count > 1 ? ` · ${count} surveys on record` : ""}. The cleanliness score above blends it with recent reviews.
           </p>

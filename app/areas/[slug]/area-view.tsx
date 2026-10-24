@@ -44,6 +44,7 @@ import {
 } from "@/lib/format";
 import { useLocation } from "@/lib/location";
 import { EASE_OUT, reducedMotion } from "@/lib/motion";
+import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
 
 /**
  * Must-haves someone can plan around. "Outside fare gates" is left out until toilets carry a known
@@ -404,7 +405,16 @@ function AreaBody({
       {area.noToiletVenues.length ? <NoToilet venues={area.noToiletVenues} /> : null}
 
       <p className="mt-12 border-t border-border/70 pt-4 text-sm text-muted">
-        From our March 2024 fieldwork survey, the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
+        From{" "}
+        <a
+          href={SURVEY_URL}
+          className="font-bold text-primary underline underline-offset-2 hover:decoration-[3px]"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {SURVEY_CREDIT}
+        </a>
+        , the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
         Licence).{" "}
         <Link href="/about" className="font-bold text-primary underline underline-offset-2 hover:decoration-[3px]">
           About our data

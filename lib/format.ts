@@ -153,14 +153,14 @@ export const TIER_LABELS: Record<ToiletTier, string> = {
 };
 
 export const TIER_HELP: Record<ToiletTier, string> = {
-  VERIFIED: "Surveyed in person by our fieldwork team",
+  VERIFIED: "Reviewed in person (2024 review from r/SGExams)",
   COMMUNITY: "Added and approved by the community",
   IMPORTED: "From open data, not yet checked by a person",
 };
 
 /** One-line legend text, used under the map and in the tier explainer. */
 export const TIER_LEGEND: { tier: ToiletTier | "PENDING"; label: string; help: string }[] = [
-  { tier: "VERIFIED", label: "Verified", help: "Surveyed in person on our 50-point rubric." },
+  { tier: "VERIFIED", label: "Verified", help: "Scored in person on a 50-point rubric (2024 review from r/SGExams)." },
   { tier: "COMMUNITY", label: "Community", help: "Added by a user and approved by people nearby." },
   { tier: "IMPORTED", label: "Imported", help: "From open data. Nobody has checked it in person yet." },
   { tier: "PENDING", label: "Pending", help: "Waiting for review. Never used for directions." },

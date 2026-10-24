@@ -14,6 +14,13 @@ export const SITE_URL = (
 export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || null;
 
 /**
+ * Where the FIELDWORK_2024 rubric scores come from: someone else's review, not ours, so every place that shows
+ * them credits it. Swap SURVEY_CREDIT for the author's handle once known (e.g. "u/name's March 2024 review").
+ */
+export const SURVEY_URL = "https://www.reddit.com/r/SGExams/comments/1brmuvx/i_reviewed_150_toilets_ama/";
+export const SURVEY_CREDIT = "a March 2024 review posted on r/SGExams";
+
+/**
  * The Telegram bot (BOT.md), linked from /about, the map sheet and a few contextual moments. Defaults to the
  * live @ShitGoWhereBot so production shows it with no extra env; set NEXT_PUBLIC_TELEGRAM_BOT_URL to "off" to
  * hide every mention, or to another t.me link for a test bot. Inlined at build time.

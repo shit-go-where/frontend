@@ -7,7 +7,7 @@ import { buttonClass } from "@/components/styles";
 import { TELEGRAM_QR_URL, TelegramQr } from "@/components/telegram-qr";
 import { LineBadge } from "@/components/toilet-bits";
 import { MRT_LINES, TIER_LEGEND } from "@/lib/format";
-import { CONTACT_EMAIL, TELEGRAM_BOT_HANDLE, TELEGRAM_BOT_URL } from "@/lib/site";
+import { CONTACT_EMAIL, SURVEY_CREDIT, SURVEY_URL, TELEGRAM_BOT_HANDLE, TELEGRAM_BOT_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "About",
@@ -127,8 +127,12 @@ export default function AboutPage() {
       <h2 className={h2}>Data sources and licences</h2>
       <ul className="mt-4 flex list-disc flex-col gap-3 pl-5 marker:text-primary">
         <li>
-          <strong className="font-extrabold">Fieldwork survey, March 2024</strong>: 160 toilets surveyed in person across MRT stations, malls, bus interchanges,
-          hawker centres and coffee shops.
+          <strong className="font-extrabold">Toilet review, March 2024</strong>: our starting data, from{" "}
+          <a href={SURVEY_URL} className={link} target="_blank" rel="noopener noreferrer">
+            {SURVEY_CREDIT}
+          </a>
+          . 160 toilets reviewed in person across MRT stations, malls, bus interchanges, hawker centres and coffee shops, scored on
+          the reviewer&apos;s 50-point rubric.
         </li>
         <li>
           <strong className="font-extrabold">OneMap</strong>, © Singapore Land Authority: base map tiles, place search and walking routes. Map data ©{" "}

@@ -23,6 +23,7 @@ import { EmptyState, Skeleton, buttonClass, cx } from "@/components/ui";
 import type { StationDetail, ToiletSummary } from "@/lib/api/types";
 import { formatDistance, placeName, plural, scoreNumber } from "@/lib/format";
 import { useLocation } from "@/lib/location";
+import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
 import { isUnnamed } from "@/lib/unnamed-toilet";
 import { StationLineBadge, sortLines, stationLabel } from "../station-bits";
 
@@ -156,7 +157,11 @@ export function StationView({ station: s }: { station: StationDetail }) {
       </nav>
 
       <p className="mt-10 border-t border-border/70 pt-4 text-sm text-muted">
-        From our March 2024 fieldwork survey, the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
+        From{" "}
+        <a href={SURVEY_URL} className={LINK} target="_blank" rel="noopener noreferrer">
+          {SURVEY_CREDIT}
+        </a>
+        , the community, OpenStreetMap contributors (ODbL) and data.gov.sg (Singapore Open Data
         Licence).{" "}
         <Link href="/about" className={LINK}>
           About our data
