@@ -884,7 +884,7 @@ function sentenceCase(s: string): string {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  FIELDWORK_2024: "2024 toilet review (r/SGExams)",
+  FIELDWORK_2024: "u/eggmayosandwich's 2024 review",
   OSM: "OpenStreetMap",
   ONEMAP: "OneMap / Singapore Land Authority",
   DATAGOV: "data.gov.sg",

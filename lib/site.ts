@@ -15,10 +15,10 @@ export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || nu
 
 /**
  * Where the FIELDWORK_2024 rubric scores come from: someone else's review, not ours, so every place that shows
- * them credits it. Swap SURVEY_CREDIT for the author's handle once known (e.g. "u/name's March 2024 review").
+ * them credits it.
  */
 export const SURVEY_URL = "https://www.reddit.com/r/SGExams/comments/1brmuvx/i_reviewed_150_toilets_ama/";
-export const SURVEY_CREDIT = "a March 2024 review posted on r/SGExams";
+export const SURVEY_CREDIT = "u/eggmayosandwich's March 2024 review";
 
 /**
  * The Telegram bot (BOT.md), linked from /about, the map sheet and a few contextual moments. Defaults to the

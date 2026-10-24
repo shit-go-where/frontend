@@ -131,8 +131,8 @@ export default function AboutPage() {
           <a href={SURVEY_URL} className={link} target="_blank" rel="noopener noreferrer">
             {SURVEY_CREDIT}
           </a>
-          . 160 toilets reviewed in person across MRT stations, malls, bus interchanges, hawker centres and coffee shops, scored on
-          the reviewer&apos;s 50-point rubric.
+          {" "}on r/SGExams. 160 toilets reviewed in person across MRT stations, malls, bus interchanges, hawker centres and coffee
+          shops, scored on their 50-point rubric. All were men&apos;s toilets.
         </li>
         <li>
           <strong className="font-extrabold">OneMap</strong>, © Singapore Land Authority: base map tiles, place search and walking routes. Map data ©{" "}
