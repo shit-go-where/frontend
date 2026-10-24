@@ -1,62 +1,14 @@
 import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
 import Link from "next/link";
-import {
-  ArrowDown,
-  ArrowRight,
-  ArrowUpRight,
-  BriefcaseBusiness,
-  Brain,
-  ChevronRight,
-  Cloud,
-  CodeXml,
-  Database,
-  Download,
-  Footprints,
-  GraduationCap,
-  Image as ImageIcon,
-  LayoutPanelTop,
-  Mail,
-  Map as MapIcon,
-  MapPin,
-  Server,
-  ServerCog,
-  Smartphone,
-  Wrench,
-} from "lucide-react";
-import { buttonClass, cx } from "@/components/styles";
-import { TierBadge } from "@/components/toilet-bits";
-import { getAreasServer, getStationsServer } from "@/lib/api/server";
-import { HUE_CHIP, type Hue } from "@/lib/feature-hues";
-import { formatDate } from "@/lib/format";
-import { CONTACT_EMAIL } from "@/lib/site";
-import {
-  type Project,
-  CERTIFICATIONS,
-  CURRENT_ROLE,
-  EDUCATION,
-  EMAIL_SUBJECT,
-  EXPERIENCE,
-  FACTS,
-  FIRST_YEAR,
-  LINKEDIN_URL,
-  MAJORS,
-  NAME,
-  PAGE_BULLETS,
-  PROJECTS,
-  ROLE_COUNT,
-  SHIT_GO_WHERE,
-  SKILLS,
-  SUMMARY,
-  UPDATED_AT,
-  VERIFIED_HELP,
-  liveNumbersLine,
-  roleSince,
-} from "./content";
-import { CheckIns, PhoneFoldGroup, PhoneMore, StickyColumn } from "./creator-client";
+import { ArrowRight, ArrowUpRight, BriefcaseBusiness, ChevronRight, Mail } from "lucide-react";
+import { Mascot } from "@/components/mascot";
+import { buttonClass } from "@/components/styles";
+import { getAreasServer } from "@/lib/api/server";
+import { CONTACT_EMAIL, TELEGRAM_BOT_HANDLE, TELEGRAM_BOT_URL } from "@/lib/site";
+import { EMAIL_SUBJECT, INTRO, LINKEDIN_URL, NAME, PERSONAL_SITE_URL, SHIT_GO_WHERE, liveNumbersLine } from "./content";
 
-const description =
-  "Dylan Chua, a software engineer in Singapore and the creator of Shit Go Where: where I've worked, what I've built, my CV and how to reach me.";
+const description = "Dylan Chua, the creator of Shit Go Where: why I built it, and where to find out more about me.";
 
 export const metadata: Metadata = {
   title: "Who made this?",
@@ -66,56 +18,31 @@ export const metadata: Metadata = {
 };
 
 // Reading-page patterns shared with /about.
-const link = "font-bold text-primary underline decoration-primary/50 underline-offset-4 hover:decoration-primary";
-const H2 = "text-2xl leading-tight sm:text-3xl";
-/** The plain label after a joke heading ("Check-ins · Work experience"): part of the heading's name, in the fact voice. */
-const PLAIN = "font-sans text-lg font-extrabold text-muted sm:text-xl";
-const card = "rounded-3xl border border-border/70 bg-surface shadow-rest";
-const bullets = "mt-2 flex list-disc flex-col gap-1.5 pl-5 marker:text-primary";
+const link = "font-bold text-primary underline hover:decoration-[3px]";
 const external = { target: "_blank", rel: "noopener noreferrer" } as const;
-
-/** Each skill group wears one candy hue and icon, as a feature group does on a toilet page. */
-const SKILL_STYLE: Record<string, { icon: React.ComponentType<{ className?: string }>; hue: Hue | null }> = {
-  Languages: { icon: CodeXml, hue: null },
-  Backend: { icon: Server, hue: "soda" },
-  Frontend: { icon: LayoutPanelTop, hue: "papaya" },
-  "Cloud and DevOps": { icon: Cloud, hue: "taro" },
-  "Data and AI": { icon: Brain, hue: "gold" },
-};
-
-const FACT_ICONS = [MapPin, GraduationCap, Wrench];
-const STACK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  App: Smartphone,
-  API: Server,
-  Data: Database,
-  Map: MapIcon,
-  Photos: ImageIcon,
-  Hosting: Cloud,
-};
+const newTab = <span className="sr-only"> (opens in a new tab)</span>;
 
 interface LiveCounts {
   toilets: number;
   verified: number;
   areas: number;
-  stations: number;
 }
 
 /**
- * The app's own numbers, from the same public reads /areas and /stations use. Cached for a day; when
- * the API can't be reached (CI builds have none) it answers null, cached for minutes so the page
- * picks the numbers up soon after, and the page leaves them out rather than showing zeros. Everything
- * is caught in here, so /creator never fails to render over them.
+ * The app's own numbers, from the same public read /areas uses. Cached for a day; when the API can't be
+ * reached (CI builds have none) it answers null, cached for minutes so the page picks the numbers up
+ * soon after, and the page leaves them out rather than showing zeros. Everything is caught in here, so
+ * /creator never fails to render over them.
  */
 async function getLiveCounts(): Promise<LiveCounts | null> {
   "use cache";
   try {
-    const [areas, stations] = await Promise.all([getAreasServer(), getStationsServer()]);
-    if (areas.kind === "ok" && stations.kind === "ok") {
+    const areas = await getAreasServer();
+    if (areas.kind === "ok") {
       const counts: LiveCounts = {
         toilets: areas.data.items.reduce((n, a) => n + a.toiletCount, 0),
         verified: areas.data.items.reduce((n, a) => n + a.verifiedCount, 0),
         areas: areas.data.items.length,
-        stations: stations.data.items.length,
       };
       if (Object.values(counts).every((n) => Number.isFinite(n) && n > 0)) {
         cacheLife("days");
@@ -131,205 +58,15 @@ async function getLiveCounts(): Promise<LiveCounts | null> {
 
 export default async function CreatorPage() {
   const live = await getLiveCounts();
+  const s = SHIT_GO_WHERE;
   return (
-    <article className="mx-auto w-full max-w-3xl px-4 pb-12 pt-3 leading-relaxed lg:max-w-7xl">
-      {/*
-       * One grid, sections in phone reading order. From lg, Check-ins sits in the right column beside the
-       * first three rows (header, Facts, Features; the third absorbs any height difference), so the list
-       * is never rendered twice. Everything after spans both columns.
-       */}
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:grid-rows-[auto_auto_1fr] lg:gap-x-12 xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] xl:gap-x-16">
-        <Header />
-
-        <section aria-labelledby="facts" className="mt-10 lg:col-start-1">
-          <h2 id="facts" className={H2}>
-            Facts
-          </h2>
-          <dl className={cx(card, "mt-3 grid divide-y divide-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0")}>
-            {FACTS.map((f, i) => {
-              const Icon = FACT_ICONS[i] ?? MapPin;
-              return (
-                <div key={f.label} className="px-4 py-3.5">
-                  <dt className="flex items-center gap-1.5 text-sm font-bold text-muted">
-                    <Icon className="size-4" aria-hidden />
-                    {f.label}
-                  </dt>
-                  <dd className="mt-0.5 font-extrabold leading-snug">{f.value}</dd>
-                  {f.detail ? <dd className="mt-1 text-sm font-medium text-muted">{f.detail}</dd> : null}
-                </div>
-              );
-            })}
-          </dl>
-        </section>
-
-        <section aria-labelledby="features" className="mt-8 lg:col-start-1 lg:mt-10">
-          <h2 id="features" className={H2}>
-            Features <span className={PLAIN}>· Skills</span>
-          </h2>
-          <div className="mt-3 flex flex-col gap-3">
-            {SKILLS.map((g) => {
-              const style = SKILL_STYLE[g.group] ?? { icon: Wrench, hue: null };
-              const Icon = style.icon;
-              return (
-                <div key={g.group}>
-                  <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-bold text-muted">
-                    <Icon className="size-4 shrink-0" aria-hidden />
-                    {g.group}
-                  </h3>
-                  <ul className="flex flex-wrap gap-1.5">
-                    {g.items.map((s) => (
-                      <li
-                        key={s}
-                        className={cx(
-                          "inline-flex min-h-8 items-center rounded-full px-3 text-sm font-bold lg:min-h-9 lg:px-3.5",
-                          style.hue ? HUE_CHIP[style.hue] : "border border-border/70 bg-surface-2",
-                        )}
-                      >
-                        {s}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section
-          aria-labelledby="check-ins"
-          className="mt-8 lg:col-start-2 lg:row-start-1 lg:row-end-4 lg:mt-0 lg:pt-2"
-        >
-          <StickyColumn className={cx(card, "p-5")}>
-            <h2 id="check-ins" className="text-2xl leading-tight">
-              Check-ins <span className={PLAIN}>· Work experience</span>
-            </h2>
-            <p className="mt-0.5 text-sm font-medium text-muted">Where I&apos;ve been, newest first</p>
-            <CheckIns roles={EXPERIENCE} />
-            {live ? <ProofTeaser live={live} /> : null}
-          </StickyColumn>
-        </section>
-
-        <AlsoBuiltHere live={live} />
-
-        <section aria-labelledby="projects" className="mt-10 lg:col-span-full lg:mt-12">
-          <h2 id="projects" className={H2}>
-            Other projects
-          </h2>
-          <div className="mt-3">
-            <PhoneFoldGroup
-              show={`Show ${PROJECTS.length - PROJECTS_ON_PHONE} more projects`}
-              hide="Show fewer projects"
-              firstHiddenId={projectId(PROJECTS[PROJECTS_ON_PHONE]?.name ?? "")}
-            >
-              <ul className="grid items-start gap-3 lg:grid-cols-2">
-                {PROJECTS.map((p, i) => (
-                  <ProjectCard key={p.name} p={p} folded={i >= PROJECTS_ON_PHONE} />
-                ))}
-              </ul>
-            </PhoneFoldGroup>
-          </div>
-        </section>
-
-        {/* Side by side from lg: two short cards don't need a row each. */}
-        <div className="lg:col-span-full lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-12 xl:gap-x-16">
-          <section aria-labelledby="education" className="mt-10 lg:mt-12">
-            <h2 id="education" className={H2}>
-              Education
-            </h2>
-            <div className={cx(card, "mt-3 flex gap-3 px-5 py-4")}>
-              <GraduationCap className="mt-1 size-5 shrink-0 text-muted" aria-hidden />
-              <div>
-                <h3 className="font-display text-lg leading-snug">{EDUCATION.school}</h3>
-                <p className="font-extrabold">{EDUCATION.degree}</p>
-                <p className="text-sm font-bold text-muted">{EDUCATION.dates}</p>
-                <p className="mt-2">Majors: {MAJORS}</p>
-              </div>
-            </div>
-          </section>
-
-          <section aria-labelledby="certifications" className="mt-10 lg:mt-12">
-            <h2 id="certifications" className={H2}>
-              Certifications
-            </h2>
-            <ul className={cx(card, "mt-3 px-5 py-1")}>
-              {CERTIFICATIONS.map((c) => (
-                <li key={c.name} className="border-t border-border/70 py-4 first:border-t-0">
-                  <h3 className="font-extrabold">{c.name}</h3>
-                  <p className="text-sm font-bold text-muted">
-                    {c.issuer}
-                    {c.detail ? ` · ${c.detail}` : null}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/** Projects shown on phones before "Show n more projects"; desktop shows them all, two to a row. */
-const PROJECTS_ON_PHONE = 1;
-
-const projectId = (name: string) => `project-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-
-/** `folded`: hidden on phones until "Show n more projects" opens the group (PhoneFoldGroup). */
-function ProjectCard({ p, folded }: { p: Project; folded?: boolean }) {
-  return (
-    <li
-      id={projectId(p.name)}
-      tabIndex={folded ? -1 : undefined}
-      className={cx(card, "px-5 py-4", folded && "max-lg:hidden max-lg:group-data-open/fold:block")}
-    >
-      <h3 className="font-display text-lg leading-snug">{p.name}</h3>
-      <p className="text-sm font-bold text-muted">
-        {p.context ? `${p.context} · ` : null}
-        {p.dates}
-      </p>
-      {/* The strongest bullets only; the CV prints every one. */}
-      <ul className={bullets}>
-        {p.bullets.slice(0, PAGE_BULLETS).map((b) => (
-          <li key={b}>{b}</li>
-        ))}
-      </ul>
-      <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Built with">
-        {p.tags.map((t) => (
-          <li key={t} className="rounded-full border border-border/70 bg-surface-2 px-2.5 py-0.5 text-xs font-bold">
-            {t}
-          </li>
-        ))}
-      </ul>
-      {p.links.length ? (
-        <p className="mt-1 flex flex-wrap gap-x-5">
-          {p.links.map((l) => (
-            <a key={l.href} href={l.href} className={cx(link, "inline-flex min-h-11 items-center gap-1")} {...external}>
-              {l.label}
-              <ArrowUpRight className="size-4" aria-hidden />
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          ))}
-        </p>
-      ) : null}
-    </li>
-  );
-}
-
-/** The listing's head, in toilet-page anatomy: breadcrumb, photo, name, tier, freshness, the mint block, actions. */
-function Header() {
-  const updated = formatDate(UPDATED_AT);
-  return (
-    <header className="lg:col-start-1">
+    <article className="mx-auto w-full max-w-[calc(56ch+2rem)] px-4 pb-12 pt-6 leading-relaxed">
       <nav aria-label="Breadcrumb">
         <ol className="flex flex-wrap items-center gap-x-1 text-sm font-bold text-muted">
           <li className="inline-flex items-center gap-1">
-            <Link href="/areas" className="-ml-2 inline-flex min-h-11 items-center rounded-full px-2 hover:bg-surface-2 hover:text-fg">
-              Singapore
+            <Link href="/about" className="-ml-2 inline-flex min-h-11 items-center rounded-full px-2 hover:bg-surface-2 hover:text-fg">
+              About
             </Link>
-            <ChevronRight className="size-4" aria-hidden />
-          </li>
-          <li className="inline-flex items-center gap-1">
-            People
             <ChevronRight className="size-4" aria-hidden />
           </li>
           <li aria-current="page" className="text-fg">
@@ -337,192 +74,81 @@ function Header() {
           </li>
         </ol>
       </nav>
-
-      <div className="mt-2 flex items-center gap-4 sm:gap-6">
-        {/* A fixed 480 px webp in public/, so next/image would add nothing. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/creator/dylan.webp"
-          alt={`Photo of ${NAME}`}
-          width={480}
-          height={480}
-          className="size-24 shrink-0 rounded-[28px] bg-surface-2 object-cover shadow-rest ring-4 ring-rim sm:size-28 lg:size-32"
-        />
+      <header className="mt-2 flex items-center gap-4 sm:gap-5">
+        {/* The app's mascot stands in for a photo: the personal site carries that. */}
+        <span className="grid size-20 shrink-0 place-items-center rounded-[28px] bg-surface-2 shadow-rest ring-4 ring-rim sm:size-24">
+          <Mascot mood="happy" className="size-14 sm:size-16" />
+        </span>
         <div className="min-w-0">
-          <h1 className="text-[2.5rem] leading-none sm:text-5xl lg:text-6xl">{NAME}</h1>
-          <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <TierBadge tier="VERIFIED" help={VERIFIED_HELP} className="px-3! py-1! text-sm!" />
-            <span className="text-sm font-medium text-muted">
-              Last verified: <time dateTime={UPDATED_AT}>{updated}</time>
-            </span>
-          </p>
+          <h1 className="text-4xl leading-tight sm:text-5xl">{NAME}</h1>
+          <p className="mt-1 text-lg text-muted">{INTRO}</p>
         </div>
-      </div>
+      </header>
 
-      <div className="mt-5 flex flex-wrap items-stretch gap-2">
-        {/* The walk-time block, counting check-ins instead of minutes; counted from EXPERIENCE. */}
-        <p className="flex w-28 shrink-0 flex-col items-center justify-center rounded-3xl bg-mint px-2 py-3 text-center text-mint-fg shadow-gloss">
-          <Footprints className="size-4" aria-hidden />
-          <span className="mt-0.5 font-display text-4xl leading-none">{ROLE_COUNT}</span>{" "}
-          <span className="mt-1 text-xs font-extrabold">{ROLE_COUNT === 1 ? "role" : "roles"}</span>{" "}
-          <span className="text-xs font-bold">since {FIRST_YEAR}</span>
+      <div className="mt-8 flex flex-col gap-4">
+        <p>
+          {s.why}
+          {TELEGRAM_BOT_URL ? (
+            <>
+              {" "}
+              {s.bot}{" "}
+              <a href={TELEGRAM_BOT_URL} className={link} {...external}>
+                {TELEGRAM_BOT_HANDLE}
+                {newTab}
+              </a>{" "}
+              {s.botAfter}
+            </>
+          ) : null}
         </p>
-        <div className={cx(card, "flex min-w-0 flex-1 basis-52 flex-col justify-center px-4 py-3 sm:px-5")}>
-          <p className="flex items-start gap-2 font-extrabold leading-snug sm:text-lg">
-            <BriefcaseBusiness className="mt-1 hidden size-5 shrink-0 text-muted sm:block" aria-hidden />
-            {CURRENT_ROLE.title}
+        <p>
+          {s.honest}{" "}
+          <Link href="/about" className={`${link} whitespace-nowrap`}>
+            {s.honestLink}
+            <ArrowRight className="ml-1 inline size-4 align-[-0.15em]" aria-hidden />
+          </Link>
+        </p>
+        {live ? (
+          <p className="rounded-3xl bg-mint-soft px-5 py-4 font-medium text-pretty">
+            {liveNumbersLine(live).map((part, i) =>
+              part.figure ? (
+                <strong key={i} className="font-extrabold tabular-nums">
+                  {part.text}
+                </strong>
+              ) : (
+                <span key={i}>{part.text}</span>
+              ),
+            )}
           </p>
-          <p className="mt-0.5 text-sm font-bold text-muted sm:pl-7">
-            Now at {CURRENT_ROLE.company}
-            {CURRENT_ROLE.location ? ` · ${CURRENT_ROLE.location}` : null} · {roleSince(CURRENT_ROLE)}
-          </p>
-        </div>
+        ) : null}
       </div>
 
-      <p className="mt-4 max-w-[60ch] text-lg font-medium text-pretty">{SUMMARY}</p>
-
-      <ul className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" aria-label="Get in touch">
+      <ul className="mt-8 flex flex-col gap-2 sm:flex-row sm:flex-wrap" aria-label="More about me">
         <li>
-          <a href="/creator/cv.pdf" download="Dylan-Chua-CV.pdf" className={buttonClass("primary", "md", "w-full px-4 sm:px-5")}>
-            <Download className="size-5 shrink-0" aria-hidden />
-            Download CV
+          <a href={PERSONAL_SITE_URL} className={buttonClass("primary", "md", "w-full px-5")} {...external}>
+            More about me
+            <ArrowUpRight className="size-5 shrink-0" aria-hidden />
+            {newTab}
+          </a>
+        </li>
+        <li>
+          <a href={LINKEDIN_URL} className={buttonClass("secondary", "md", "w-full px-5")} {...external}>
+            <BriefcaseBusiness className="size-5 shrink-0" aria-hidden />
+            LinkedIn
+            {newTab}
           </a>
         </li>
         {CONTACT_EMAIL ? (
           <li>
             <a
               href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(EMAIL_SUBJECT)}`}
-              className={buttonClass("secondary", "md", "w-full px-4 sm:px-5")}
+              className={buttonClass("secondary", "md", "w-full px-5")}
             >
               <Mail className="size-5 shrink-0" aria-hidden />
-              Email me
+              Email
             </a>
           </li>
         ) : null}
-        <li>
-          <a href={LINKEDIN_URL} className={buttonClass("secondary", "md", "w-full px-4 sm:px-5")} {...external}>
-            <BriefcaseBusiness className="size-5 shrink-0" aria-hidden />
-            LinkedIn
-            <span className="sr-only"> (opens in a new tab)</span>
-          </a>
-        </li>
-        <li className="odd:last:col-span-2">
-          <Link href="/" className={buttonClass("secondary", "md", "w-full px-4 sm:px-5")}>
-            Try the app
-            <ArrowRight className="size-5 shrink-0" aria-hidden />
-          </Link>
-        </li>
       </ul>
-    </header>
-  );
-}
-
-/** The figures of the live-numbers sentence, emphasised. */
-function LiveNumbers({ live }: { live: LiveCounts }) {
-  return liveNumbersLine(live).map((part, i) =>
-    part.figure ? (
-      <strong key={i} className="font-extrabold whitespace-nowrap text-mint tabular-nums">
-        {part.text}
-      </strong>
-    ) : (
-      <span key={i}>{part.text}</span>
-    ),
-  );
-}
-
-/**
- * The proof, in the desktop first screen: the sketch's mint teaser under the check-ins, pointing down to
- * the case study. Phones reach the full section right after Check-ins, so it would only repeat there.
- */
-function ProofTeaser({ live }: { live: LiveCounts }) {
-  return (
-    <div className="mt-4 hidden rounded-3xl bg-mint-soft px-4 py-3 lg:block">
-      <p className="font-display text-lg leading-snug">Also built here: {SHIT_GO_WHERE.name}</p>
-      <p className="mt-1 text-sm font-medium">
-        <LiveNumbers live={live} />
-      </p>
-      <a
-        href="#also-built"
-        className="-ml-2 mt-1 inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-sm font-extrabold text-primary hover:bg-surface-2"
-      >
-        {SHIT_GO_WHERE.teaserLink}
-        <ArrowDown className="size-4" aria-hidden />
-      </a>
-    </div>
-  );
-}
-
-/**
- * The case study: what the app does, how it stays honest, what it's built on and what I run. The live
- * numbers show here only below lg; from lg the teaser under the check-ins carries them, so they appear
- * once per layout.
- */
-function AlsoBuiltHere({ live }: { live: LiveCounts | null }) {
-  const s = SHIT_GO_WHERE;
-  return (
-    <section aria-labelledby="also-built" className="mt-10 lg:col-span-full lg:mt-12">
-      <h2 id="also-built" className={cx(H2, "scroll-mt-24")}>
-        Also built here: {s.name}
-      </h2>
-      <div className="mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-start lg:gap-x-12 xl:gap-x-16">
-        <div className="flex max-w-[65ch] flex-col gap-3">
-          <p>
-            {s.what} {s.bot.before}{" "}
-            <a href={s.bot.href} className={link} {...external}>
-              {s.bot.handle}
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>{" "}
-            {s.bot.after}
-          </p>
-          <p>
-            {s.honest}{" "}
-            <Link href="/about" className={cx(link, "whitespace-nowrap")}>
-              {s.honestLink}
-              <ArrowRight className="ml-1 inline size-4 align-[-0.15em]" aria-hidden />
-            </Link>
-          </p>
-          {live ? (
-            <p className="rounded-3xl bg-mint-soft px-5 py-4 font-medium text-pretty lg:hidden">
-              <LiveNumbers live={live} />
-            </p>
-          ) : null}
-        </div>
-
-        {/* Phones fold the stack and the ops list away to keep the page short; desktop shows them beside the story. */}
-        <PhoneMore show="How I built it and what I run" hide="Hide how I built it" flush>
-          <div className={cx(card, "grid divide-y divide-border/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0")}>
-            <div className="px-5 py-4">
-              <h3 className="font-display text-lg leading-snug">How I built it</h3>
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-1">
-                {s.stack.map((x) => {
-                  const Icon = STACK_ICONS[x.label] ?? Server;
-                  return (
-                    <div key={x.label}>
-                      <dt className="flex items-center gap-1.5 text-sm font-bold text-muted">
-                        <Icon className="size-4" aria-hidden />
-                        {x.label}
-                      </dt>
-                      <dd className="font-bold">{x.value}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </div>
-
-            <div className="px-5 py-4">
-              <h3 className="font-display text-lg leading-snug">What I run myself</h3>
-              <ul className="mt-3 flex flex-col gap-2">
-                {s.runs.map((r) => (
-                  <li key={r} className="flex items-start gap-2 font-bold">
-                    <ServerCog className="mt-1 size-4 shrink-0 text-muted" aria-hidden />
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </PhoneMore>
-      </div>
-    </section>
+    </article>
   );
 }
