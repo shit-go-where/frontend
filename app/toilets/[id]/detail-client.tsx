@@ -58,7 +58,7 @@ import { ErrorState, SectionIcon, Skeleton, Stars, buttonClass, cx } from "@/com
 import { FoldDetails } from "@/components/fold-details";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { api, errorMessage } from "@/lib/api/client";
-import type { Feature, FeatureDetail, Survey, ToiletDetail } from "@/lib/api/types";
+import type { Feature, FeatureDetail, Survey, SurveyDate, SurveyItem, ToiletDetail } from "@/lib/api/types";
 import {
   BAD_STATUS,
   FEATURE_GROUPS,
@@ -71,6 +71,7 @@ import {
   googleMapsWalkingUrl,
   scoreNumber,
   shortAddress,
+  toiletTag,
   walkMinutes,
 } from "@/lib/format";
 import { FEATURE_HUE, HUE_CHIP, type Hue } from "@/lib/feature-hues";
@@ -232,7 +233,8 @@ function Detail({ t }: { t: ToiletDetail }) {
 
         <header className="mt-1">
           <h1 className={TITLE_CLASS}>{t.venue.name}</h1>
-          {t.label ? <p className="mt-0.5 text-lg font-bold text-muted">{t.label}</p> : null}
+          {/* Who it's for and its label ("Women's · DTL side"): a station's men's and women's share a name. */}
+          {toiletTag(t) ? <p className="mt-0.5 text-lg font-bold text-muted">{toiletTag(t)}</p> : null}
           <VenueLine t={t} />
           <OtherFloors t={t} />
         </header>
@@ -387,7 +389,7 @@ function OtherFloors({ t }: { t: ToiletDetail }) {
   // A page saved offline before siblings came in has none.
   const siblings = t.siblings ?? [];
   if (!siblings.length) return null;
-  const all = [{ id: t.id, label: t.label, level: t.level, levelOrder: levelOrder(t.level) }, ...siblings].sort(
+  const all = [{ id: t.id, label: t.label, level: t.level, levelOrder: levelOrder(t.level), sex: t.sex }, ...siblings].sort(
     (a, b) => compareLevelOrder(a.levelOrder, b.levelOrder),
   );
   const chip = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full border-2 px-4 text-sm font-bold tabular-nums";
@@ -398,12 +400,29 @@ function OtherFloors({ t }: { t: ToiletDetail }) {
       </p>
       <ul className="no-scrollbar -mx-4 mt-1.5 flex gap-2 overflow-x-auto px-4 pb-1">
         {all.map((s) => {
-          const text = levelShort(s.level) ?? s.label ?? "Level unknown";
+          // "Women's · L1": with men's and women's on one floor, the floor alone doesn't say which.
+          // Without a floor, what tells it apart ("Men's · EWL side", "Near Exit E"). Pages saved offline
+          // before siblings had a sex lack it: treated as unknown.
+          const level = levelShort(s.level);
+          const who = level ? toiletTag({ label: null, sex: s.sex }) : null;
+          const text = level ?? toiletTag(s) ?? "Level unknown";
+          const body = (
+            <>
+              {who ? (
+                <>
+                  {who}
+                  <span aria-hidden> · </span>
+                </>
+              ) : null}
+              {level && s.id !== t.id ? <span className="sr-only">{who ? " toilet on " : "Toilet on "}</span> : null}
+              {text}
+            </>
+          );
           return (
             <li key={s.id} className="shrink-0">
               {s.id === t.id ? (
                 <span aria-current="page" className={cx(chip, "border-primary bg-primary text-primary-fg shadow-gloss")}>
-                  {text}
+                  {body}
                   <span className="sr-only"> (this one)</span>
                 </span>
               ) : (
@@ -411,8 +430,7 @@ function OtherFloors({ t }: { t: ToiletDetail }) {
                   href={`/toilets/${encodeURIComponent(s.id)}`}
                   className={cx(chip, "border-border bg-surface-2 text-fg transition hover:border-primary/60 active:scale-[0.96]")}
                 >
-                  {levelShort(s.level) ? <span className="sr-only">Toilet on </span> : null}
-                  {text}
+                  {body}
                 </Link>
               )}
             </li>
@@ -524,7 +542,7 @@ function Verdict({ t }: { t: ToiletDetail }) {
       {t.needsResurvey ? (
         <p className="mt-3 flex items-start gap-2 rounded-2xl bg-warn-soft px-3 py-2 text-sm font-medium">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
-          Renovated or changed since our last survey. Details may be out of date.
+          Renovated or changed since it was last surveyed. Details may be out of date.
         </p>
       ) : null}
 
@@ -806,9 +824,9 @@ function MoreInfo({ t }: { t: ToiletDetail }) {
           title="Survey"
           icon={ClipboardCheck}
           hue="gold"
-          meta={t.latestSurvey ? `${t.latestSurvey.total}/50` : `${rasStars}/5 stars`}
+          meta={t.latestSurvey ? surveyMeta(t.latestSurvey) : `${rasStars}/5 stars`}
         >
-          <SurveyBreakdown survey={t.latestSurvey} count={t.surveyCount} ras={rasStars} />
+          <SurveyBreakdown survey={t.latestSurvey} count={t.surveyCount} dates={t.surveys} ras={rasStars} />
         </Fold>
       ) : null}
       {hasPlace ? (
@@ -884,7 +902,8 @@ function sentenceCase(s: string): string {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  FIELDWORK_2024: "u/eggmayosandwich's 2024 review",
+  FIELDWORK_2024: "u/eggmayosandwich's March 2024 survey",
+  FIELDWORK_2024_EXPANDED: "u/eggmayosandwich's Aug–Oct 2024 survey",
   OSM: "OpenStreetMap",
   ONEMAP: "OneMap / Singapore Land Authority",
   DATAGOV: "data.gov.sg",
@@ -894,7 +913,11 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 /** For per-feature rows, where the date follows. */
-const SOURCE_SHORT: Record<string, string> = { FIELDWORK_2024: "2024 review", COMMUNITY: "Community" };
+const SOURCE_SHORT: Record<string, string> = {
+  FIELDWORK_2024: "2024 survey",
+  FIELDWORK_2024_EXPANDED: "2024 survey",
+  COMMUNITY: "Community",
+};
 
 function sourceLabel(s: string) {
   return SOURCE_LABELS[s] ?? s;
@@ -1116,23 +1139,91 @@ function StateMark({ state }: { state: "yes" | "no" | "unknown" }) {
 // Survey breakdown (the headline cleanliness score lives in the verdict card)
 // ---------------------------------------------------------------------------
 
-const RUBRIC: { key: keyof Pick<Survey, "cleanliness" | "scent" | "aesthetics" | "music" | "toiletries" | "facilities">; label: string; max: number }[] = [
-  { key: "cleanliness", label: "Cleanliness", max: 10 },
-  { key: "scent", label: "Scent", max: 5 },
-  { key: "aesthetics", label: "Aesthetics", max: 5 },
-  { key: "music", label: "Music", max: 5 },
-  { key: "toiletries", label: "Toiletries", max: 5 },
-  { key: "facilities", label: "Facilities", max: 20 },
-];
+/*
+ * Rubric-agnostic: the API sends each survey's lines display-ready (`items`), so this renders scales and
+ * checklists without knowing which survey they came from. `rubric` only changes the wording: the March 2024
+ * pilot has a 50-point total, the Aug–Oct 2024 survey rates cleanliness and scent either side of zero.
+ */
 
-function SurveyBreakdown({ survey, count, ras }: { survey: Survey | null; count: number; ras: number | null }) {
+/** "+2", "0", "−1": signed, with a real minus sign. */
+function signed(n: number): string {
+  const v = Number.isInteger(n) ? String(Math.abs(n)) : Math.abs(n).toFixed(1);
+  return n > 0 ? `+${v}` : n < 0 ? `−${v}` : "0";
+}
+
+/** "March 2024", in Singapore time (the server renders in UTC; see formatDate). */
+function monthYear(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-SG", { month: "long", year: "numeric", timeZone: "Asia/Singapore" });
+}
+
+/**
+ * "Mar and Oct 2024", "Oct 2024 and Mar 2025": the months these dates fall in, oldest first, each year
+ * said once (after its last month). Two surveys in one month count once ("Oct 2024").
+ */
+function surveyMonths(isos: string[]): string {
+  const fmt = (d: Date, o: Intl.DateTimeFormatOptions) => d.toLocaleDateString("en-SG", { ...o, timeZone: "Asia/Singapore" });
+  const months = isos
+    .map((iso) => new Date(iso))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())
+    .map((d) => ({ month: fmt(d, { month: "short" }), year: fmt(d, { year: "numeric" }) }))
+    .filter((m, i, all) => i === 0 || m.month !== all[i - 1].month || m.year !== all[i - 1].year);
+  const words = months.map((m, i) => (months[i + 1]?.year === m.year ? m.month : `${m.month} ${m.year}`));
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : (words[0] ?? "");
+}
+
+type ScaleItem = Extract<SurveyItem, { kind: "scale" }>;
+type ChecklistItem = Extract<SurveyItem, { kind: "checklist" }>;
+
+/** A page saved offline before `items` came in has none. */
+const itemsOf = (survey: Survey): SurveyItem[] => survey.items ?? [];
+const scaleItems = (survey: Survey) => itemsOf(survey).filter((i): i is ScaleItem => i.kind === "scale");
+const hasTotal = (survey: Survey) => survey.total != null && survey.totalMax != null;
+
+/** A scale's value as rated: signed when the scale runs below zero ("+2", "−1"), else "7/10". */
+function scaleValue(i: ScaleItem): string {
+  return i.min < 0 ? signed(i.value) : `${i.value}/${i.max}`;
+}
+
+/** "33/50" for a rubric with a total; else each scale as rated: "+2 cleanliness, 0 scent". Never out of 50. */
+function surveyHeadline(survey: Survey): string {
+  if (hasTotal(survey)) return `${survey.total}/${survey.totalMax}`;
+  const parts = scaleItems(survey).map((i) => `${scaleValue(i)} ${i.label.toLowerCase()}`);
+  return parts.length ? parts.join(", ") : `${scoreNumber(survey.cleanliness)}/10 cleanliness`;
+}
+
+/** The Survey fold's closed face: "33/50", or the first scale as rated ("+2 cleanliness"). */
+function surveyMeta(survey: Survey): string {
+  if (hasTotal(survey)) return `${survey.total}/${survey.totalMax}`;
+  const first = scaleItems(survey)[0];
+  return first ? `${scaleValue(first)} ${first.label.toLowerCase()}` : `${scoreNumber(survey.cleanliness)}/10`;
+}
+
+function SurveyBreakdown({
+  survey,
+  count,
+  dates,
+  ras,
+}: {
+  survey: Survey | null;
+  count: number;
+  /** Every survey's date; a page saved offline before these came in has none, and then they're only counted. */
+  dates: SurveyDate[] | undefined;
+  ras: number | null;
+}) {
+  const items = survey ? itemsOf(survey) : [];
+  const when = survey ? monthYear(survey.surveyedAt) : "";
+  const months = dates && dates.length === count ? surveyMonths(dates.map((d) => d.surveyedAt)) : "";
   return (
     <div className="flex flex-col gap-4">
       {survey ? (
         <>
           <p className="text-sm font-medium text-muted">
-            {/* Only the 2024 review import writes surveys today; credit per survey once anything else does. */}
-            <span className="font-extrabold text-fg">{survey.total}/50</span> on the 50-point rubric from{" "}
+            {/* Only the 2024 survey imports write surveys today; credit per survey once anything else does. */}
+            <span className="font-extrabold text-fg">{surveyHeadline(survey)}</span>
+            {hasTotal(survey) ? ` on the ${survey.totalMax}-point rubric` : ""}, surveyed in person by{" "}
             <a
               href={SURVEY_URL}
               className="font-bold text-primary underline underline-offset-2 hover:decoration-[3px]"
@@ -1141,36 +1232,19 @@ function SurveyBreakdown({ survey, count, ras }: { survey: Survey | null; count:
             >
               {SURVEY_CREDIT}
             </a>
-            , done in person
-            {survey.phase ? ` (${survey.phase})` : ""}
-            {count > 1 ? ` · ${count} surveys on record` : ""}. The cleanliness score above blends it with recent reviews.
+            {when ? ` in ${when}` : ""}
+            {survey.phase ? ` (${survey.phase})` : ""}.
+            {/* Only the latest survey comes in full; the others are dated ("Mar and Oct 2024"). */}
+            {count > 1 ? ` ${count} surveys on record${months ? ` (${months})` : ""}; this is the latest.` : ""} The cleanliness score above blends it with
+            recent reviews.
           </p>
-          <ul className="flex flex-col gap-3">
-            {RUBRIC.map((r) => {
-              const v = survey[r.key];
-              const pct = Math.max(0, Math.min(100, (v / r.max) * 100));
-              return (
-                <li key={r.key}>
-                  <div className="flex justify-between text-sm">
-                    <span className="font-bold">{r.label}</span>
-                    <span className="font-bold tabular-nums text-muted">
-                      {v}/{r.max}
-                    </span>
-                  </div>
-                  <div
-                    className="mt-1 h-2.5 overflow-hidden rounded-full bg-surface-2"
-                    role="meter"
-                    aria-label={r.label}
-                    aria-valuemin={0}
-                    aria-valuemax={r.max}
-                    aria-valuenow={v}
-                  >
-                    <div className="h-full rounded-full bg-accent shadow-gloss" style={{ width: `${pct}%` }} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          {items.length ? (
+            <ul className="flex flex-col gap-4">
+              {items.map((item) =>
+                item.kind === "scale" ? <ScaleRow key={item.key} item={item} /> : <ChecklistRow key={item.key} item={item} />,
+              )}
+            </ul>
+          ) : null}
           {survey.remarks ? (
             <p className="rounded-2xl bg-surface-2 px-4 py-2.5 text-sm font-medium">&ldquo;{survey.remarks}&rdquo;</p>
           ) : null}
@@ -1185,5 +1259,98 @@ function SurveyBreakdown({ survey, count, ras }: { survey: Survey | null; count:
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One rated line as a gold meter from the scale's least to its most. A scale that runs either side of zero
+ * (−3 to +3) fills from a marked zero towards the score, so −2 reads as below the line rather than as a
+ * short bar, and says its range in words ("+2 of ±3").
+ */
+function ScaleRow({ item }: { item: ScaleItem }) {
+  const { value, min, max, label } = item;
+  const span = max - min || 1;
+  const at = (x: number) => Math.max(0, Math.min(100, ((x - min) / span) * 100));
+  const diverging = min < 0 && max > 0;
+  const zero = diverging ? at(0) : 0;
+  const pos = at(value);
+  const range = min < 0 ? (min === -max ? `±${max}` : `${signed(min)} to ${signed(max)}`) : null;
+  const valueText = min < 0 ? `${signed(value)} on a scale of ${signed(min)} to ${signed(max)}` : `${value} out of ${max}`;
+  return (
+    <li>
+      <div className="flex justify-between gap-2 text-sm">
+        <span className="font-bold">{label}</span>
+        <span className="shrink-0 font-bold tabular-nums text-muted">
+          {range ? (
+            <>
+              <span className="text-fg">{scaleValue(item)}</span> of {range}
+            </>
+          ) : (
+            scaleValue(item)
+          )}
+        </span>
+      </div>
+      <div
+        className="relative mt-1 h-2.5 overflow-hidden rounded-full bg-surface-2"
+        role="meter"
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={valueText}
+      >
+        <div
+          className="absolute inset-y-0 rounded-full bg-accent shadow-gloss"
+          style={{ left: `${Math.min(zero, pos)}%`, width: `${Math.abs(pos - zero)}%` }}
+        />
+        {diverging ? (
+          <span aria-hidden className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-border-strong" style={{ left: `${zero}%` }} />
+        ) : null}
+      </div>
+      {diverging ? (
+        <div aria-hidden className="relative mt-0.5 flex justify-between text-[11px] font-bold leading-4 text-muted tabular-nums">
+          <span>{signed(min)}</span>
+          <span className="absolute -translate-x-1/2" style={{ left: `${zero}%` }}>
+            0
+          </span>
+          <span>{signed(max)}</span>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** A tick-box line: how many of its boxes were ticked ("3 of 5"), and which, as chips. */
+function ChecklistRow({ item }: { item: ChecklistItem }) {
+  // "None of the Above" is a box on the sheet, not something the toilet has.
+  const checked = item.checked.filter((c) => !/^none of the above\.?$/i.test(c.trim()));
+  return (
+    <li>
+      <div className="flex justify-between gap-2 text-sm">
+        <span className="font-bold">{item.label}</span>
+        <span className="shrink-0 font-bold tabular-nums text-muted">
+          {checked.length} of {item.total}
+        </span>
+      </div>
+      {checked.length ? (
+        <ul aria-label={`${item.label}: ticked`} className="mt-1.5 flex flex-wrap gap-1.5">
+          {checked.map((c) => (
+            <li
+              key={c}
+              className={cx(
+                "inline-flex items-start gap-1 bg-surface-2 px-2.5 py-0.5 text-xs font-bold text-fg",
+                // A long reason ("General appearance … looks stain-free") wraps, so it rounds like a card, not a pill.
+                c.length > 32 ? "rounded-2xl py-1" : "rounded-full",
+              )}
+            >
+              <Check className="mt-px size-3.5 shrink-0 text-mint" strokeWidth={3} aria-hidden />
+              {c}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-sm font-medium text-muted">None ticked</p>
+      )}
+    </li>
   );
 }

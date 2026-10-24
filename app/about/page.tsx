@@ -99,7 +99,7 @@ export default function AboutPage() {
         </Term>
         <Term term="Happy Toilet (RAS) rating">
           A star rating from the Restroom Association (Singapore) under its Happy Toilet programme. When a toilet has one,
-          its page shows it next to our own survey score.
+          its page shows it next to the survey score.
         </Term>
       </dl>
 
@@ -127,12 +127,15 @@ export default function AboutPage() {
       <h2 className={h2}>Data sources and licences</h2>
       <ul className="mt-4 flex list-disc flex-col gap-3 pl-5 marker:text-primary">
         <li>
-          <strong className="font-extrabold">Toilet review, March 2024</strong>: our starting data, from{" "}
+          <strong className="font-extrabold">Toilet surveys, 2024</strong>: our starting data, from{" "}
           <a href={SURVEY_URL} className={link} target="_blank" rel="noopener noreferrer">
             {SURVEY_CREDIT}
           </a>
-          {" "}on r/SGExams. 160 toilets reviewed in person across MRT stations, malls, bus interchanges, hawker centres and coffee
-          shops, scored on their 50-point rubric. All were men&apos;s toilets.
+          {" "}on r/SGExams, done in person in two rounds. The March 2024 pilot reviewed about 160 men&apos;s toilets across
+          MRT stations, malls, bus interchanges, hawker centres and coffee shops, scored on a 50-point rubric. The expanded
+          survey, August to October 2024, covered 746 men&apos;s, women&apos;s and unisex toilets at 301 places, rating
+          cleanliness and scent and ticking off supplies and facilities. Where both rounds visited a toilet, the newer one
+          says what it has.
         </li>
         <li>
           <strong className="font-extrabold">OneMap</strong>, © Singapore Land Authority: base map tiles, place search and walking routes. Map data ©{" "}

@@ -14,11 +14,12 @@ export const SITE_URL = (
 export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || null;
 
 /**
- * Where the FIELDWORK_2024 rubric scores come from: someone else's review, not ours, so every place that shows
- * them credits it.
+ * Where the survey scores come from: someone else's work, not ours, so every place that shows them credits it.
+ * One author ran both rounds (the March 2024 pilot, FIELDWORK_2024, and the expanded Aug–Oct 2024 survey,
+ * FIELDWORK_2024_EXPANDED) and asked to be credited by handle alone; the sentence around it says which round.
  */
 export const SURVEY_URL = "https://www.reddit.com/r/SGExams/comments/1brmuvx/i_reviewed_150_toilets_ama/";
-export const SURVEY_CREDIT = "u/eggmayosandwich's March 2024 review";
+export const SURVEY_CREDIT = "u/eggmayosandwich";
 
 /**
  * The Telegram bot (BOT.md), linked from /about, the map sheet and a few contextual moments. Defaults to the

@@ -18,6 +18,7 @@ export const STATIONS: Station[] = [
   { name: "Aljunied", lines: ["EW"], lat: 1.31643, lng: 103.88291 },
   { name: "Ang Mo Kio", lines: ["NS"], lat: 1.36972, lng: 103.84996 },
   { name: "Ang Mo Kio Bus Interchange", lines: [], lat: 1.36964, lng: 103.849 },
+  { name: "Ang Mo Kio Integrated Transport Hub", lines: [], lat: 1.36918, lng: 103.84819 },
   { name: "Bakau", lines: ["SK"], lat: 1.38785, lng: 103.90527 },
   { name: "Bangkit", lines: ["BP"], lat: 1.38004, lng: 103.77254 },
   { name: "Bartley", lines: ["CC"], lat: 1.34247, lng: 103.88019 },
@@ -26,6 +27,7 @@ export const STATIONS: Station[] = [
   { name: "Beauty World", lines: ["DT"], lat: 1.34106, lng: 103.77577 },
   { name: "Bedok", lines: ["EW"], lat: 1.32398, lng: 103.92998 },
   { name: "Bedok Bus Interchange", lines: [], lat: 1.32516, lng: 103.93 },
+  { name: "Bedok Integrated Transport Hub", lines: [], lat: 1.32474, lng: 103.92926 },
   { name: "Bedok North", lines: ["DT"], lat: 1.33474, lng: 103.91798 },
   { name: "Bedok Reservoir", lines: ["DT"], lat: 1.33661, lng: 103.93224 },
   { name: "Bencoolen", lines: ["DT"], lat: 1.29892, lng: 103.85035 },
@@ -61,6 +63,7 @@ export const STATIONS: Station[] = [
   { name: "City Hall", lines: ["NS","EW"], lat: 1.29324, lng: 103.85222 },
   { name: "Clarke Quay", lines: ["NE"], lat: 1.28792, lng: 103.84634 },
   { name: "Clementi", lines: ["EW"], lat: 1.31512, lng: 103.76519 },
+  { name: "Clementi Integrated Transport Hub", lines: [], lat: 1.31497, lng: 103.76427 },
   { name: "Commonwealth", lines: ["EW"], lat: 1.3025, lng: 103.79823 },
   { name: "Compassvale", lines: ["SK"], lat: 1.39456, lng: 103.90016 },
   { name: "Compassvale Bus Interchange", lines: [], lat: 1.39139, lng: 103.89611 },
@@ -144,6 +147,7 @@ export const STATIONS: Station[] = [
   { name: "Outram Park", lines: ["EW","NE","TE"], lat: 1.28067, lng: 103.83944 },
   { name: "Pasir Panjang", lines: ["CC"], lat: 1.27621, lng: 103.79135 },
   { name: "Pasir Ris", lines: ["EW"], lat: 1.37304, lng: 103.94929 },
+  { name: "Pasir Ris Bus Interchange", lines: [], lat: 1.37355, lng: 103.95049 },
   { name: "Paya Lebar", lines: ["EW","CC"], lat: 1.31768, lng: 103.89266 },
   { name: "Pending", lines: ["BP"], lat: 1.37616, lng: 103.7712 },
   { name: "Petir", lines: ["BP"], lat: 1.37774, lng: 103.76656 },
@@ -210,6 +214,7 @@ export const STATIONS: Station[] = [
   { name: "Upper Changi", lines: ["DT"], lat: 1.34174, lng: 103.96147 },
   { name: "Upper Thomson", lines: ["TE"], lat: 1.35442, lng: 103.8329 },
   { name: "Woodlands", lines: ["NS","TE"], lat: 1.43644, lng: 103.787 },
+  { name: "Woodlands Integrated Transport Hub", lines: [], lat: 1.43682, lng: 103.78607 },
   { name: "Woodlands North", lines: ["TE"], lat: 1.44829, lng: 103.78569 },
   { name: "Woodlands South", lines: ["TE"], lat: 1.4274, lng: 103.79326 },
   { name: "Woodlands Temporary Bus Interchange", lines: [], lat: 1.43736, lng: 103.786 },
@@ -218,6 +223,7 @@ export const STATIONS: Station[] = [
   { name: "Yio Chu Kang", lines: ["NS"], lat: 1.38176, lng: 103.84495 },
   { name: "Yishun", lines: ["NS"], lat: 1.42944, lng: 103.83501 },
   { name: "Yishun Bus Interchange", lines: [], lat: 1.42758, lng: 103.83589 },
+  { name: "Yishun Integrated Transport Hub", lines: [], lat: 1.42818, lng: 103.83612 },
 ];
 // </generated:stations>
 
