@@ -48,3 +48,6 @@ next-env.d.ts
 /playwright/.cache/
 
 .vercel
+
+# Audit notes live outside this public repo (workspace docs/audit/)
+/AUDIT_*.md
