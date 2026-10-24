@@ -101,6 +101,14 @@ export function scrubEvent<T extends Event>(event: T): T {
 }
 
 /**
+ * The browser skipping a view transition (viewport resized as Android's URL bar moves, tab hidden).
+ * The DOM update still lands; only the animation is lost. React ignores these by exact message, but
+ * Chrome 154 appends the reason ("… invalid state. Viewport size changed"), so match the prefix.
+ */
+export const SKIPPED_VIEW_TRANSITION =
+  /^(InvalidStateError: )?(Transition was aborted because of invalid state|Skipping view transition because|View transition was skipped because)/;
+
+/**
  * Options common to every runtime. Environment and release come from next.config.ts `env`
  * (VERCEL_ENV and VERCEL_GIT_COMMIT_SHA at build time), so browser and server agree.
  */
@@ -127,6 +135,7 @@ export function sentryBaseOptions(): BrowserOptions {
     // Errors only: no performance tracing (free quota, and nothing timed about a person).
     tracesSampleRate: 0,
     maxBreadcrumbs: 30,
+    ignoreErrors: [SKIPPED_VIEW_TRANSITION],
     initialScope: { tags: { build: process.env.SGW_BUILD_ID ?? "dev" } },
     beforeSend: scrubEvent,
     beforeBreadcrumb: scrubBreadcrumb,

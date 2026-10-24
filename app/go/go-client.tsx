@@ -121,6 +121,7 @@ function animatedBack(id: string, back: () => void) {
         back();
       }),
   );
+  vt.ready.catch(() => {}); // skipped animation (viewport resized, tab hidden); the back still happens
   void vt.finished.finally(() => nameRouteMaps(null));
 }
 

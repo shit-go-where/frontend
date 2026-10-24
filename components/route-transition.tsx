@@ -52,12 +52,15 @@ export function historyBack(back: () => void) {
       };
       back();
     });
+  let vt: ViewTransition;
   try {
-    document.startViewTransition({ update, types: ["pop"] });
+    vt = document.startViewTransition({ update, types: ["pop"] });
   } catch {
     // No transition types here (older engines): still animate, just without the direction.
-    document.startViewTransition(update);
+    vt = document.startViewTransition(update);
   }
+  // Rejects when the browser skips the animation (viewport resized, tab hidden); the back still happens.
+  vt.ready.catch(() => {});
 }
 
 function nameRoot() {
