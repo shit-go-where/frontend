@@ -194,7 +194,14 @@ export default function PrivacyPage() {
 
       <h2>Who sees what</h2>
       <ul>
-        <li>Other users see your handle on reviews and, only if you opt in, on the leaderboard.</li>
+        <li>
+          Other users see your handle on reviews, and your handle and points on the leaderboard. You can hide yourself from the
+          leaderboard on{" "}
+          <Link href="/me#leaderboard-optin" className="font-bold text-primary underline hover:decoration-[3px]">
+            your profile
+          </Link>
+          .
+        </li>
         <li>
           When you confirm a toilet is still accurate, its page says it was last checked by your handle. You can turn this off on{" "}
           <Link href="/me" className="font-bold text-primary underline hover:decoration-[3px]">
@@ -266,7 +273,7 @@ export default function PrivacyPage() {
         <Link href="/terms" className="font-bold text-primary underline hover:decoration-[3px]">
           Terms of use
         </Link>{" "}
-        · Last updated 20 October 2026.
+        · Last updated 24 October 2026.
       </p>
     </article>
   );

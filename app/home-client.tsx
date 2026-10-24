@@ -5,7 +5,7 @@ import { ChevronRight, CloudOff, LocateFixed, MapPinCheck, Navigation, RefreshCw
 import Link from "next/link";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomSheet, SHEET_PEEK, SHEET_TOP } from "@/components/bottom-sheet";
-import { LocateFailed, LocationNotice, LocationSearch, nearestStationName } from "@/components/location-search";
+import { LocateFailed, LocationAsk, LocationNotice, LocationSearch, nearestStationName } from "@/components/location-search";
 import { ToiletMap, type Bounds, type MapFocus, type MapView } from "@/components/map";
 import { TelegramStrip, useTelegramStrip } from "@/components/telegram-strip";
 import { FilterChipLabel, TierLegend, ToiletCard } from "@/components/toilet-bits";
@@ -100,11 +100,12 @@ export function HomeClient() {
   /** A searched or fallback place: distances are measured from it and labelled with its name. */
   const placeFrom = loc.source === "gps" ? null : loc.coords;
 
-  // The map page needs a location, so it asks on its first visit (other pages never prompt).
-  const { locate } = loc;
+  // The map page needs a location, so it asks on its first visit (other pages never prompt). Someone the browser
+  // has never asked sees why first (LocationAsk in the sheet) and the prompt comes from their tap.
+  const { locate, askFirst } = loc;
   useEffect(() => {
-    void locate();
-  }, [locate]);
+    if (askFirst === false) void locate();
+  }, [askFirst, locate]);
 
   /*
    * Two lists: near you (1 km around your spot), and once your spot is off the open map, whatever the map shows.
@@ -290,6 +291,7 @@ export function HomeClient() {
     const c = await loc.locate();
     if (c) setRecenter((n) => n + 1);
     else setLocateFailed(true);
+    return !!c;
   };
   // Flying back to your spot puts it on the open map again, which brings back the near-you list.
   const backToNear = () => setRecenter((n) => n + 1);
@@ -575,6 +577,7 @@ export function HomeClient() {
             ) : null}
             {/* Opened from a Telegram chat, the bot tip stands in for the notice's own Telegram line. */}
             <TelegramStrip className="mt-2" />
+            <LocationAsk onLocate={locateMe} className="mt-2" />
             <LocationNotice className="mt-2" telegram={!tgStrip} />
             {/* Phones: the key and "Help me choose" open with the list and fold away at the peek. */}
             <div

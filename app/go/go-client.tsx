@@ -26,7 +26,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ViewTransition, useEffect, useEffectEvent, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { LocationNotice, LocationSearch } from "@/components/location-search";
+import { LocationNotice, LocationSearch, TurnOnLocation } from "@/components/location-search";
 import { ToiletMap } from "@/components/map";
 import { historyBack, prepareRouteTransition } from "@/components/route-transition";
 import {
@@ -752,21 +752,29 @@ function NoFix({ urgent }: { urgent: boolean }) {
     <section className={cx("relative z-10 flex flex-col gap-3", urgent ? "-mt-6" : "mt-4")} aria-label="Set your location">
       <Card className="flex flex-col gap-3 shadow-card">
         <LocationSearch autoFocus />
-        <Button
-          variant="secondary"
-          size="lg"
-          onClick={() => void loc.locate()}
-          loading={loc.status === "locating"}
-          className="w-full"
-        >
-          {loc.status === "locating" ? null : <LocateFixed className="size-5" aria-hidden />}
-          Try my location again
-        </Button>
-        <p className="text-sm text-muted">
-          {loc.status === "denied"
-            ? "Location permission is off for this site. Search for the MRT station, mall or postal code you're at, or allow location for this site in your browser's settings."
-            : "Underground or indoors? Search for the MRT station or mall you're at."}
-        </p>
+        {loc.status === "denied" ? (
+          // Asking again the usual way fails at once once it's been refused: the way back is the browser's.
+          <div className="text-sm">
+            <p className="text-muted">
+              Location is off for this site. Search for the MRT station, mall or postal code you&apos;re at, or turn it back on:
+            </p>
+            <TurnOnLocation onRetry={() => void loc.locate()} className="mt-2" />
+          </div>
+        ) : (
+          <>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => void loc.locate()}
+              loading={loc.status === "locating"}
+              className="w-full"
+            >
+              {loc.status === "locating" ? null : <LocateFixed className="size-5" aria-hidden />}
+              Try my location again
+            </Button>
+            <p className="text-sm text-muted">Underground or indoors? Search for the MRT station or mall you&apos;re at.</p>
+          </>
+        )}
       </Card>
     </section>
   );
@@ -1315,11 +1323,16 @@ function TakeMe({ toiletId, item, urgent }: { toiletId: string; item: RecommendI
             </p>
           )}
           {noFix && (loc.status === "denied" || loc.status === "unavailable") ? (
-            <p className="mt-1 text-sm text-muted" role="status">
-              {loc.status === "denied"
-                ? "Location is off for this site. Allow it in your browser's settings to see the walk time."
-                : "Couldn't find your location. Google Maps can still take you there."}
-            </p>
+            <div className="mt-1 text-sm text-muted" role="status">
+              {loc.status === "denied" ? (
+                <>
+                  <p>Location is off for this site. Turn it on to see the walk time.</p>
+                  <TurnOnLocation className="mt-2" />
+                </>
+              ) : (
+                <p>Couldn&apos;t find your location. Google Maps can still take you there.</p>
+              )}
+            </div>
           ) : null}
           <h2 className="mt-2 text-xl font-extrabold leading-tight">{t.venue.name}</h2>
           <p className="text-muted">{facts.join(" · ") || "Follow the red line on the map"}</p>
