@@ -42,7 +42,19 @@ test.describe("which toilets do you use", () => {
     expect(api.calls.slice(before).find((c) => c.path === "/toilets/nearby")!.search).toContain("sex=FEMALE");
   });
 
-  test("closing the question means Any, and it isn't asked again", async ({ page }) => {
+  test("Show all toilets answers with no filter, and it isn't asked again", async ({ page }) => {
+    const api = await mockApi(page, { askSex: true });
+    await page.goto("/");
+    const ask = page.getByTestId("sex-ask");
+    await ask.getByRole("button", { name: "Show all toilets", exact: true }).click();
+    await expect(ask).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("list", { name: "Toilets sorted by walking time" }).getByTestId("toilet-card")).toHaveCount(TOILETS.length);
+    await expect(page.getByTestId("sex-ask")).toHaveCount(0);
+    expect(api.find("GET", "/toilets/nearby").every((c) => !c.search.includes("sex="))).toBe(true);
+  });
+
+  test("closing the question shows all toilets, and it isn't asked again", async ({ page }) => {
     const api = await mockApi(page, { askSex: true });
     await page.goto("/");
     const ask = page.getByTestId("sex-ask");
@@ -57,13 +69,26 @@ test.describe("which toilets do you use", () => {
   test("the chip opens the same picker, and Accessible turns on the Accessible filter", async ({ page }) => {
     const api = await mockApi(page);
     await page.goto("/");
-    // The chip sits with the map key, which opens with the list.
-    const sheet = page.getByRole("region", { name: "Nearby toilets" });
-    await sheet.getByRole("button", { name: "Expand list" }).click();
-    await sheet.getByTestId("sex-chip").click();
+    // Phones: the choice is made in Filters, then rides as a chip in "Filters on" (the sheet has no room for it).
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    const filters = page.getByRole("dialog", { name: "Filters" });
+    await filters.getByRole("radio", { name: "Women's", exact: true }).click();
+    await filters.getByRole("button", { name: /^Show [0-9]+ toilets?$/ }).click();
+    const chip = page.getByRole("group", { name: "Filters on" }).getByTestId("sex-chip");
+    await expect(chip).toContainText("Women's");
+    await chip.click();
 
     const dialog = page.getByRole("dialog", { name: "Which toilets do you use?" });
-    await dialog.getByRole("radio", { name: "Men's", exact: true }).click();
+    const all = dialog.getByRole("radio", { name: "Show all toilets", exact: true });
+    // One radio group: arrow keys go Men's, Women's, then Show all toilets and round again.
+    await dialog.getByRole("radio", { name: "Women's", exact: true }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(all).toBeFocused();
+    await expect(all).toBeChecked();
+    // "Show all toilets" takes the chip out of "Filters on", but not while its picker is open.
+    await page.keyboard.press("ArrowRight");
+    await expect(dialog.getByRole("radio", { name: "Men's", exact: true })).toBeFocused();
+    await expect(all).not.toBeChecked();
     await dialog.getByRole("switch").check();
     await dialog.getByRole("button", { name: "Done" }).click();
 

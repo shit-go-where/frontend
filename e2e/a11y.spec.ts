@@ -109,10 +109,12 @@ const ROUTES: Route[] = [
     state: "which toilets dialog",
     ready: '[data-testid="toilet-card"]',
     act: async (page) => {
-      const handle = page.getByRole("region", { name: "Nearby toilets" }).getByRole("button", { name: "Expand list" });
-      await handle.click();
-      await page.getByRole("region", { name: "Nearby toilets" }).getByTestId("sex-chip").click();
-      await page.getByRole("dialog").waitFor();
+      // Phones: picked in Filters, then the chip in "Filters on" opens the picker.
+      await page.getByRole("button", { name: "Filters", exact: true }).click();
+      await page.getByRole("dialog", { name: "Filters" }).getByRole("radio", { name: "Men's", exact: true }).click();
+      await page.getByRole("dialog", { name: "Filters" }).getByRole("button", { name: /^Show [0-9]+ toilets?$/ }).click();
+      await page.getByRole("group", { name: "Filters on" }).getByTestId("sex-chip").click();
+      await page.getByRole("dialog", { name: "Which toilets do you use?" }).waitFor();
     },
   },
   {

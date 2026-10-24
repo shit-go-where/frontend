@@ -5,9 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SexPreference, ToiletSex } from "./api/types";
 
 /**
- * Which toilets someone uses (Men's, Women's or Any), kept on this phone so the map, the near-me list,
+ * Which toilets someone uses (Men's, Women's, or all toilets), kept on this phone so the map, the near-me list,
  * "Walk there" and the station and area pages only offer toilets they can walk into. Asked once, the
- * first time the map is used; dismissing the question is an answer too (Any) and it is never asked again.
+ * first time the map is used; dismissing the question is an answer too (all toilets) and it is never asked again.
  *
  * "Accessible" in the same picker is the ACCESSIBLE must-have filter (lib/use-filters.ts), not a second
  * setting: `accessible` here only records what the picker last saved it as.
@@ -15,7 +15,7 @@ import type { SexPreference, ToiletSex } from "./api/types";
 const KEY = "sgw:sex-pref";
 
 export interface SexPrefState {
-  /** Null is Any: every toilet, whoever it's for. */
+  /** Null is all toilets: no filter, whoever it's for. */
   sex: SexPreference | null;
   accessible: boolean;
   /** When they answered or dismissed the question; null until then. */
@@ -53,7 +53,7 @@ function write(next: SexPrefState) {
 }
 
 /**
- * The saved preference. Any (and not yet asked) on the server and until storage has loaded after
+ * The saved preference. All toilets (and not yet asked) on the server and until storage has loaded after
  * hydration; `ready` says when it has, so a request that sends `sex` can wait instead of going twice.
  */
 export function useSexPreference() {
@@ -82,7 +82,7 @@ export function useSexPreference() {
     write({ ...(current ?? read()), accessible });
   }, []);
 
-  /** Closing the question without an answer: Any, and don't ask again. */
+  /** Closing the question without an answer: all toilets, and don't ask again. */
   const dismiss = useCallback(() => {
     const prev = current ?? read();
     write({ ...prev, askedAt: prev.askedAt ?? new Date().toISOString() });
@@ -102,7 +102,7 @@ export function useSexPreference() {
 
 /**
  * Whether someone who uses `pref` toilets can use this one, as the API's `sex` filter decides it: their
- * own, unisex, or not known (most open-data toilets don't say). Any (null) takes every toilet.
+ * own, unisex, or not known (most open-data toilets don't say). Null (all toilets) takes every one.
  */
 export function usableBy(sex: ToiletSex | null | undefined, pref: SexPreference | null): boolean {
   return !pref || !sex || sex === "UNISEX" || sex === pref;
@@ -111,7 +111,7 @@ export function usableBy(sex: ToiletSex | null | undefined, pref: SexPreference 
 /**
  * A server-rendered page's data (rendered for everyone, so with every toilet), narrowed to the saved
  * preference: at once on the phone with `narrow`, then from the API with `sex`, which also redoes the
- * counts and fills a short list ("nearest 5") back up. Any keeps the server's copy and asks for nothing.
+ * counts and fills a short list ("nearest 5") back up. All toilets (null) keeps the server's copy and asks for nothing.
  * `narrow` must be a module-level function (it's a memo dependency).
  */
 export function usePrefData<T>(
@@ -131,7 +131,7 @@ export function usePrefData<T>(
   return { data: sex ? (q.data ?? local) : server, sex };
 }
 
-/** "Men's" / "Women's" / "Any toilet": the chip's words for the saved choice. */
+/** "Men's" / "Women's" / "All toilets": the chip's words for the saved choice. */
 export function prefLabel(sex: SexPreference | null): string {
-  return sex === "MALE" ? "Men's" : sex === "FEMALE" ? "Women's" : "Any toilet";
+  return sex === "MALE" ? "Men's" : sex === "FEMALE" ? "Women's" : "All toilets";
 }

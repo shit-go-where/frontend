@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Mars, Venus, VenusAndMars, X } from "lucide-react";
+import { Check, ChevronDown, Mars, Venus, VenusAndMars, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { SexPreference } from "@/lib/api/types";
 import { HUE_TEXT } from "@/lib/feature-hues";
@@ -12,29 +12,35 @@ import { Button, Dialog, SlidingPill, buttonClass, cx } from "./ui";
 
 /*
  * "Which toilets do you use?" (lib/sex-pref.ts): asked once on the map, then a chip wherever a list is
- * filtered by it (the map sheet, station and area pages) and a row in /me Settings, all opening the same
- * picker. Accessible here is the ACCESSIBLE must-have filter, switched from the same place because it's the
- * same question: which toilets can I walk into.
+ * filtered by it (the map's "Filters on" row, the sheet on desktop, station and area pages) and a row in /me
+ * Settings, all opening the same picker. The picker's Accessible switch is the ACCESSIBLE must-have filter,
+ * switched from the same place because it's the same question: which toilets can I walk into.
  */
 
-type Choice = SexPreference | "ANY";
+type Choice = SexPreference | "ALL";
 
-const OPTIONS: { value: Choice; label: string }[] = [
+/** The two answers, as the main buttons. "Show all toilets" (null, no filter) sits under them as the quiet option. */
+const OPTIONS: { value: SexPreference; label: string }[] = [
   { value: "MALE", label: "Men's" },
   { value: "FEMALE", label: "Women's" },
-  { value: "ANY", label: "Any" },
 ];
+const ALL_LABEL = "Show all toilets";
+/** Every radio in arrow-key order: the two pills, then "Show all toilets". */
+const CHOICES: Choice[] = ["MALE", "FEMALE", "ALL"];
 
 const ICON: Record<Choice, React.ComponentType<{ className?: string }>> = {
   MALE: Mars,
   FEMALE: Venus,
-  ANY: VenusAndMars,
+  ALL: VenusAndMars,
 };
 
-const toChoice = (sex: SexPreference | null): Choice => sex ?? "ANY";
-const fromChoice = (c: Choice): SexPreference | null => (c === "ANY" ? null : c);
+const toChoice = (sex: SexPreference | null): Choice => sex ?? "ALL";
+const fromChoice = (c: Choice): SexPreference | null => (c === "ALL" ? null : c);
 
-/** Men's / Women's / Any as a pill track (radio group, arrow keys move), like the theme switch on /me. */
+/**
+ * Men's / Women's as a pill track, with "Show all toilets" under it as a text-style option: one radio group
+ * (arrow keys move through all three), like the theme switch on /me.
+ */
 export function SexSegmented({
   value,
   onChange,
@@ -47,25 +53,22 @@ export function SexSegmented({
   describedBy?: string;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const index = OPTIONS.findIndex((o) => o.value === toChoice(value));
+  const current = toChoice(value);
+  const index = CHOICES.indexOf(current);
   const onKeyDown = (e: React.KeyboardEvent, i: number) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
     e.preventDefault();
-    const next = (i + (e.key === "ArrowRight" ? 1 : -1) + OPTIONS.length) % OPTIONS.length;
-    onChange(fromChoice(OPTIONS[next].value));
+    const next = (i + step + CHOICES.length) % CHOICES.length;
+    onChange(fromChoice(CHOICES[next]));
     refs.current[next]?.focus();
   };
+  const all = current === "ALL";
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      aria-describedby={describedBy}
-      className="relative grid grid-cols-3 gap-1 rounded-full bg-surface-2 p-1"
-    >
-      <SlidingPill index={index} count={OPTIONS.length} />
-      {OPTIONS.map((o, i) => {
-        const on = i === index;
-        return (
+    <div role="radiogroup" aria-label={label} aria-describedby={describedBy} className="flex flex-col items-start gap-1">
+      <div className="relative grid w-full grid-cols-2 gap-1 rounded-full bg-surface-2 p-1">
+        {all ? null : <SlidingPill index={index} count={OPTIONS.length} />}
+        {OPTIONS.map((o, i) => (
           <button
             key={o.value}
             ref={(el) => {
@@ -73,19 +76,38 @@ export function SexSegmented({
             }}
             type="button"
             role="radio"
-            aria-checked={on}
-            tabIndex={on ? 0 : -1}
-            onClick={() => onChange(fromChoice(o.value))}
+            aria-checked={current === o.value}
+            tabIndex={current === o.value ? 0 : -1}
+            onClick={() => onChange(o.value)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cx(
               "relative min-h-11 rounded-full px-3 text-sm font-extrabold whitespace-nowrap transition-[color,scale] duration-200 active:scale-[0.97]",
-              on ? "text-primary-fg" : "text-muted hover:text-fg",
+              current === o.value ? "text-primary-fg" : "text-muted hover:text-fg",
             )}
           >
             {o.label}
           </button>
-        );
-      })}
+        ))}
+      </div>
+      {/* The quiet third answer: a link-like radio, a soft pill with a tick once it's the one picked. */}
+      <button
+        ref={(el) => {
+          refs.current[OPTIONS.length] = el;
+        }}
+        type="button"
+        role="radio"
+        aria-checked={all}
+        tabIndex={all ? 0 : -1}
+        onClick={() => onChange(null)}
+        onKeyDown={(e) => onKeyDown(e, OPTIONS.length)}
+        className={cx(
+          "inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm transition-[color,background-color,scale] duration-200 active:scale-[0.97]",
+          all ? "bg-primary-soft font-extrabold text-fg" : "font-semibold text-primary underline-offset-2 hover:underline",
+        )}
+      >
+        {all ? <Check className="size-4 shrink-0 text-primary" aria-hidden /> : null}
+        {ALL_LABEL}
+      </button>
     </div>
   );
 }
@@ -133,7 +155,7 @@ export function SexPicker() {
 
 /**
  * The one-time question, at the top of the map sheet's list. It waits while the location ask is up (one ask
- * at a time) and goes for good once answered or closed (closing is Any). With `peek` it is what the sheet's
+ * at a time) and goes for good once answered or closed (closing shows all toilets). With `peek` it is what the sheet's
  * peek shows (`data-sheet-peek`) while it's up, so the nearest card sits just under it instead of being cut off.
  */
 export function SexAsk({ className, peek }: { className?: string; peek?: boolean }) {
@@ -145,7 +167,7 @@ export function SexAsk({ className, peek }: { className?: string; peek?: boolean
     <div
       role="group"
       aria-labelledby={titleId}
-      className={cx("rise-in rounded-2xl bg-primary-soft px-4 py-3 text-sm", className)}
+      className={cx("rise-in rounded-2xl bg-primary-soft px-4 pb-2 pt-2.5 text-sm", className)}
       data-testid="sex-ask"
       data-sheet-peek={peek ? "" : undefined}
     >
@@ -162,24 +184,32 @@ export function SexAsk({ className, peek }: { className?: string; peek?: boolean
           <X className="size-4" aria-hidden />
         </button>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
+      {/*
+        One row, so the card (the sheet's peek) stays short: the quiet option may wrap onto two short lines.
+        Accessible isn't asked here: it's a filter like any other, and Filters has it.
+      */}
+      <div className="mt-1.5 flex items-center gap-2">
         {OPTIONS.map((o) => {
           const Icon = ICON[o.value];
           return (
             <button
               key={o.value}
               type="button"
-              onClick={() => choose(fromChoice(o.value))}
-              className={buttonClass("secondary", "sm", "px-4")}
+              onClick={() => choose(o.value)}
+              className={buttonClass("secondary", "sm", "shrink-0 px-4")}
             >
               <Icon className={cx("size-4", HUE_TEXT.taro)} aria-hidden />
               {o.label}
             </button>
           );
         })}
-      </div>
-      <div className="mt-1">
-        <AccessibleSwitch />
+        <button
+          type="button"
+          onClick={() => choose(null)}
+          className="min-h-11 min-w-0 px-1 text-left leading-tight font-semibold text-primary underline-offset-2 hover:underline"
+        >
+          {ALL_LABEL}
+        </button>
       </div>
     </div>
   );
@@ -197,12 +227,23 @@ export function SexPrefRow({ className }: { className?: string }) {
 }
 
 /**
- * The saved choice as a chip ("Women's", "Any toilet") that opens the picker. Candy Pink while it narrows
- * the list, as a filter that's on does; Fudge on Any.
+ * The saved choice as a chip ("Women's", "All toilets") that opens the picker. Candy Pink while it narrows
+ * the list, as a filter that's on does; Fudge on all toilets.
  */
-export function SexPrefChip({ className }: { className?: string }) {
+export function SexPrefChip({
+  className,
+  onOpenChange,
+}: {
+  className?: string;
+  /** Where the chip only shows while a choice narrows the list, so "Show all toilets" doesn't unmount its own dialog. */
+  onOpenChange?: (open: boolean) => void;
+}) {
   const { sex } = useSexPreference();
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const setOpen = (o: boolean) => {
+    setOpenState(o);
+    onOpenChange?.(o);
+  };
   const Icon = ICON[toChoice(sex)];
   return (
     <>

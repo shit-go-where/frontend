@@ -10,7 +10,7 @@ export interface MockOptions {
   overrides?: Record<string, Handler>;
   /**
    * Leave "Which toilets do you use?" unanswered, so the map asks it. By default the question counts as
-   * answered (Any) on the first load, so it stays out of specs about other things.
+   * answered (all toilets) on the first load, so it stays out of specs about other things.
    */
   askSex?: boolean;
 }
