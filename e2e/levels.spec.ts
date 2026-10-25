@@ -319,4 +319,34 @@ test.describe("a toilet's page", () => {
     await expect(floors.getByRole("link", { name: "NEL platform toilet on B2" })).toHaveAttribute("href", "/toilets/t-dhoby-b2");
     await expect(floors.getByRole("link", { name: "Near Exit E" })).toHaveAttribute("href", "/toilets/t-dhoby-x");
   });
+
+  test("a floor chip swaps that toilet in on the same page", async ({ page }) => {
+    const ID = TOILET_DETAIL.id;
+    const here = { id: ID, label: TOILET_DETAIL.label, level: "B1", levelOrder: -1, status: "ACTIVE", sex: TOILET_DETAIL.sex };
+    const l1 = { id: "t-dhoby-l1", label: "Concourse", level: "L1", levelOrder: 1, status: "ACTIVE", sex: "FEMALE" };
+    await mockApi(page, {
+      overrides: {
+        [`GET /toilets/${ID}`]: () => ({ body: { ...TOILET_DETAIL, level: "B1", siblings: [l1] } }),
+        [`GET /toilets/${l1.id}`]: () => ({
+          body: { ...TOILET_DETAIL, id: l1.id, label: l1.label, level: l1.level, sex: l1.sex, siblings: [here] },
+        }),
+        [`GET /toilets/${ID}/status`]: () => ({ body: { items: [] } }),
+        [`GET /toilets/${l1.id}/status`]: () => ({ body: { items: [] } }),
+      },
+    });
+    await page.goto(`/toilets/${ID}`);
+    const detail = page.getByTestId("toilet-detail");
+    await expect(detail).toBeVisible();
+    // Marks this page, so a full navigation (which would remount it) shows up.
+    await detail.evaluate((el) => el.setAttribute("data-same-page", ""));
+
+    const floors = page.getByRole("navigation", { name: "1 other toilet in this building" });
+    await floors.getByRole("link", { name: "Women's · Concourse toilet on L1" }).click();
+
+    await expect(page).toHaveURL(`/toilets/${l1.id}`);
+    await expect(floors.getByText("L1 (this one)")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByText("Women's · Concourse", { exact: true })).toBeVisible();
+    await expect(detail).toHaveAttribute("data-same-page", "");
+    await expect(page).toHaveTitle(/: L1 \(also B1\) · Shit Go Where$/);
+  });
 });

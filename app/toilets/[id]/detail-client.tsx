@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Accessibility,
   Activity,
@@ -50,10 +50,12 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ViewTransition, addTransitionType, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { LineBadge, StatusChips, TierBadge, TierHelpDialog, UnverifiedClaim, lastVerifiedText } from "@/components/toilet-bits";
 import { arriving } from "@/lib/toilet-handoff";
 import { BackButton } from "@/components/back-button";
+import { holdChrome } from "@/components/route-transition";
 import { ErrorState, SectionIcon, Skeleton, Stars, buttonClass, cx } from "@/components/ui";
 import { FoldDetails } from "@/components/fold-details";
 import { PhotoViewer } from "@/components/photo-viewer";
@@ -79,7 +81,8 @@ import { FILTERS } from "@/lib/filters";
 import { estimateWalkSeconds, haversineM, useLocation } from "@/lib/location";
 import { compareLevelOrder, levelOrder, levelShort, levelText } from "@/lib/level";
 import { hoursText, opensText } from "@/lib/opening-hours";
-import { isUnnamed } from "@/lib/unnamed-toilet";
+import { isUnnamed, toiletPageTitle } from "@/lib/unnamed-toilet";
+import { EASE_OUT, reducedMotion } from "@/lib/motion";
 import { SURVEY_CREDIT, SURVEY_URL } from "@/lib/site";
 import { useHydrated, useMe } from "@/lib/auth";
 import { useStoredFilters } from "@/lib/use-filters";
@@ -103,13 +106,54 @@ export function ToiletDetailView({
   initial: ToiletDetail | null;
   serverError: string | null;
 }) {
+  // Another toilet in the building swaps in on this page (OtherFloors) and only replaces the URL, so
+  // the URL, not the route's param, says which toilet is showing. A history entry left on a sibling
+  // comes back with the route's original param, and the URL still wins.
+  const pathId = toiletIdFromPath(usePathname());
+  const [shown, setShown] = useState(() => ({ id: pathId ?? id, path: pathId }));
+  if (pathId !== shown.path) setShown({ id: pathId ?? id, path: pathId });
+  const shownId = shown.id;
+  const qc = useQueryClient();
+  const router = useRouter();
+  const pick = useRef(0);
+  const swapped = useRef(false);
+  // The chip lit on the tap itself, while its toilet is on the way.
+  const [picking, setPicking] = useState<string | null>(null);
+
   const q = useQuery({
-    queryKey: ["toilet", id],
-    queryFn: ({ signal }) => api.toilet(id, signal),
-    initialData: initial ?? undefined,
+    queryKey: ["toilet", shownId],
+    queryFn: ({ signal }) => api.toilet(shownId, signal),
+    // Only the server's toilet: initialData seeds whichever key it first meets.
+    initialData: shownId === id ? (initial ?? undefined) : undefined,
     // Server render has no session; refetch in the browser for myReview etc.
     initialDataUpdatedAt: 0,
   });
+
+  // The server wrote the first toilet's title; a swapped-in one names itself.
+  useEffect(() => {
+    if (swapped.current && q.data) document.title = `${toiletPageTitle(q.data)} · Shit Go Where`;
+  }, [q.data]);
+
+  const switchTo = async (to: string, dir: 1 | -1) => {
+    const n = ++pick.current;
+    const href = `/toilets/${encodeURIComponent(to)}`;
+    setPicking(to);
+    try {
+      await qc.fetchQuery(toiletQuery(to));
+    } catch {
+      // Can't fetch it here: the real page handles its own errors and not-found.
+      if (n === pick.current) router.push(href);
+      return;
+    }
+    if (n !== pick.current) return; // A later tap won.
+    swapped.current = true;
+    floorTransition(dir, () => {
+      setShown({ id: to, path: to });
+      setPicking(null);
+      // Replace, not push: the floors are one place, so "← Map" still goes back to the map.
+      window.history.replaceState(null, "", href);
+    });
+  };
 
   if (!q.data) {
     if (q.isError || (serverError && !q.isFetching)) {
@@ -129,8 +173,37 @@ export function ToiletDetailView({
     return <DetailSkeleton />;
   }
 
-  return <Detail t={q.data} />;
+  return <Detail t={q.data} picking={picking} onPick={switchTo} />;
 }
+
+function toiletIdFromPath(pathname: string): string | null {
+  const m = /^\/toilets\/([^/]+)\/?$/.exec(pathname);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function toiletQuery(id: string) {
+  return { queryKey: ["toilet", id], queryFn: ({ signal }: { signal: AbortSignal }) => api.toilet(id, signal), staleTime: 30_000 };
+}
+
+/**
+ * Moving to another toilet in the building (globals.css "Other floors"): the name and the floor
+ * row stay, the old toilet slips out and the new one glides in from the side of the chip you
+ * tapped. Reduced motion crossfades in place.
+ */
+function floorTransition(dir: 1 | -1, update: () => void) {
+  // The toilet slides under the header and tab bar, not over them.
+  holdChrome();
+  startTransition(() => {
+    addTransitionType(reducedMotion() ? "floor-still" : dir > 0 ? "floor-right" : "floor-left");
+    update();
+  });
+}
+
+const FLOOR_IN = { "floor-right": "floor-in", "floor-left": "floor-in", "floor-still": "floor-fade-in", default: "none" };
+const FLOOR_OUT = { "floor-right": "floor-out", "floor-left": "floor-out", "floor-still": "floor-fade-out", default: "none" };
+/** The "Women's · L1" line and the venue line under the name only crossfade: they're the same place. */
+const FLOOR_TAG_IN = { "floor-right": "floor-fade-in", "floor-left": "floor-fade-in", "floor-still": "floor-fade-in", default: "none" };
+const FLOOR_TAG_OUT = { "floor-right": "floor-fade-out", "floor-left": "floor-fade-out", "floor-still": "floor-fade-out", default: "none" };
 
 /** Same shape as the page: title, verdict card, the walk button. Shared with the route's Suspense fallback. */
 export function DetailSkeleton() {
@@ -205,7 +278,7 @@ function useFitsWindow(ref: React.RefObject<HTMLElement | null>) {
   return fits;
 }
 
-function Detail({ t }: { t: ToiletDetail }) {
+function Detail({ t, picking, onPick }: { t: ToiletDetail; picking: string | null; onPick: (id: string, dir: 1 | -1) => void }) {
   const pending = t.status === "PENDING";
   const pinRef = useRef<HTMLDivElement>(null);
   const fits = useFitsWindow(pinRef);
@@ -234,161 +307,179 @@ function Detail({ t }: { t: ToiletDetail }) {
         <header className="mt-1">
           <h1 className={TITLE_CLASS}>{t.venue.name}</h1>
           {/* Who it's for and its label ("Women's · DTL side"): a station's men's and women's share a name. */}
-          {toiletTag(t) ? <p className="mt-0.5 text-lg font-bold text-muted">{toiletTag(t)}</p> : null}
-          <VenueLine t={t} />
-          <OtherFloors t={t} />
+          <ViewTransition key={t.id} enter={FLOOR_TAG_IN} exit={FLOOR_TAG_OUT} default="none">
+            <div>
+              {toiletTag(t) ? <p className="mt-0.5 text-lg font-bold text-muted">{toiletTag(t)}</p> : null}
+              <VenueLine t={t} />
+            </div>
+          </ViewTransition>
+          <OtherFloors t={t} lit={picking ?? t.id} onPick={onPick} />
         </header>
       </div>
 
-      {/* The columns get their own grid so the pinned one stops where the folds end, never over the footer. */}
-      <div className="md:grid md:grid-cols-2 md:items-start md:gap-x-8 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-x-12">
-        <div ref={pinRef} data-fits={fits ? "" : undefined} className="md:data-fits:sticky md:data-fits:top-20">
-          <Verdict t={t} />
+      {/* One toilet's worth, swapped as a whole when another floor is picked. Veiled only while a slow pick loads. */}
+      <ViewTransition key={t.id} enter={FLOOR_IN} exit={FLOOR_OUT} default="none">
+        <div className={cx("floor-body", picking && "floor-body-waiting")}>
+          {/* The columns get their own grid so the pinned one stops where the folds end, never over the footer. */}
+          <div className="md:grid md:grid-cols-2 md:items-start md:gap-x-8 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-x-12">
+            <div ref={pinRef} data-fits={fits ? "" : undefined} className="md:data-fits:sticky md:data-fits:top-20">
+              <Verdict t={t} />
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {pending && nearEnough ? (
-              // Standing at it: a check-in is the confirmation. The link only adds ?do=checkin, which the
-              // Check in tile below picks up, so there is one check-in dialog on the page.
-              <Link
-                href={`/toilets/${encodeURIComponent(t.id)}?do=checkin`}
-                replace
-                scroll={false}
-                className={buttonClass("primary", "lg", "flex-1")}
-              >
-                <MapPinCheck className="size-5" aria-hidden /> Check in to confirm it
-              </Link>
-            ) : pending ? (
-              // The toilet page doesn't say which submission is open, so this opens the nearby queue.
-              <Link
-                href={t.openSubmissionId ? `/review?id=${encodeURIComponent(t.openSubmissionId)}` : "/review"}
-                className={buttonClass("primary", "lg", "flex-1")}
-              >
-                <Vote className="size-5" aria-hidden /> Help review it
-              </Link>
-            ) : closedForGood || closedNow ? (
-              // Nobody standing in front of a shut door wants directions to it: lead with the way out.
-              <Link href="/go?urgent=1" className={buttonClass("primary", "lg", "flex-1 py-2 text-center leading-tight")}>
-                <Search className="size-5 shrink-0" aria-hidden /> Find an open toilet
-              </Link>
-            ) : (
-              <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("primary", "lg", "flex-1")}>
-                <Footprints className="size-5" aria-hidden /> Walk there
-              </Link>
-            )}
-            <ShareButton toilet={t} />
-          </div>
-          {closedNow ? (
-            // Still worth the walk for someone who'll arrive after it opens.
-            <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("secondary", "md", "mt-2 w-full")}>
-              <Footprints className="size-5" aria-hidden /> Walk there
-              {opens ? (
-                <span className="font-medium text-muted" suppressHydrationWarning>
-                  · {opens}
-                </span>
-              ) : null}
-            </Link>
-          ) : null}
-          {pending ? (
-            // Pending toilets aren't routed here, but someone far away still needs to find it.
-            <a
-              href={googleMapsWalkingUrl(null, t)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass("secondary", "md", "mt-2 w-full")}
-            >
-              <ExternalLink className="size-5" aria-hidden /> Directions in Google Maps
-            </a>
-          ) : null}
-
-          {t.photos.length ? (
-            <ul aria-label="Photos" className="no-scrollbar -mx-4 mt-4 flex snap-x gap-2 overflow-x-auto px-4">
-              {t.photos.map((p, i) => (
-                <li key={p.id} className="shrink-0 snap-start">
-                  <button
-                    type="button"
-                    onClick={() => setPhotoAt(i)}
-                    aria-haspopup="dialog"
-                    aria-label={`Open photo ${i + 1} of ${t.photos.length}`}
-                    className="block rounded-3xl transition active:scale-[0.98]"
+              <div className="mt-4 flex flex-wrap gap-2">
+                {pending && nearEnough ? (
+                  // Standing at it: a check-in is the confirmation. The link only adds ?do=checkin, which the
+                  // Check in tile below picks up, so there is one check-in dialog on the page.
+                  <Link
+                    href={`/toilets/${encodeURIComponent(t.id)}?do=checkin`}
+                    replace
+                    scroll={false}
+                    className={buttonClass("primary", "lg", "flex-1")}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.thumbUrl ?? p.url}
-                      alt=""
-                      loading="lazy"
-                      className="h-32 w-44 rounded-3xl border border-border/70 bg-surface-2 object-cover shadow-rest"
-                    />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <PhotoViewer
-            photos={t.photos}
-            index={photoAt}
-            onIndex={setPhotoAt}
-            onClose={() => setPhotoAt(null)}
-            alt={(i) => `Photo ${i + 1} of the toilet at ${t.venue.name}`}
-          />
-
-          <section aria-labelledby="been-here" className="mt-8">
-            <h2 id="been-here" className="text-xl leading-tight">
-              {nearEnough ? "You're here" : "Been here?"}
-            </h2>
-            {nearEnough ? (
-              <p className="mt-1 font-bold text-mint">
-                {hereM < 15 ? "You're right at it" : `You're ${formatDistance(hereM)} away`}, close enough to check in.
-              </p>
-            ) : null}
-            <div className="mt-3 flex gap-2">
-              {/* Closed toilets don't take check-ins. */}
-              {canCheckIn ? <CheckInButton toilet={t} /> : null}
-              <ReportButton toilet={t} />
-              <ReviewButton toilet={t} />
-            </div>
-            {signedOut && t.status === "ACTIVE" ? (
-              <p className="mt-2 text-sm font-medium text-muted">
-                Check-ins and reports work without signing in.{" "}
-                <Link
-                  href={`/login?redirect=${encodeURIComponent(`/toilets/${t.id}`)}`}
-                  className="font-bold text-primary underline decoration-primary/50 underline-offset-4 hover:decoration-primary"
-                >
-                  Sign in to earn points.
+                    <MapPinCheck className="size-5" aria-hidden /> Check in to confirm it
+                  </Link>
+                ) : pending ? (
+                  // The toilet page doesn't say which submission is open, so this opens the nearby queue.
+                  <Link
+                    href={t.openSubmissionId ? `/review?id=${encodeURIComponent(t.openSubmissionId)}` : "/review"}
+                    className={buttonClass("primary", "lg", "flex-1")}
+                  >
+                    <Vote className="size-5" aria-hidden /> Help review it
+                  </Link>
+                ) : closedForGood || closedNow ? (
+                  // Nobody standing in front of a shut door wants directions to it: lead with the way out.
+                  <Link href="/go?urgent=1" className={buttonClass("primary", "lg", "flex-1 py-2 text-center leading-tight")}>
+                    <Search className="size-5 shrink-0" aria-hidden /> Find an open toilet
+                  </Link>
+                ) : (
+                  <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("primary", "lg", "flex-1")}>
+                    <Footprints className="size-5" aria-hidden /> Walk there
+                  </Link>
+                )}
+                <ShareButton toilet={t} />
+              </div>
+              {closedNow ? (
+                // Still worth the walk for someone who'll arrive after it opens.
+                <Link href={`/go?to=${encodeURIComponent(t.id)}`} transitionTypes={["push"]} className={buttonClass("secondary", "md", "mt-2 w-full")}>
+                  <Footprints className="size-5" aria-hidden /> Walk there
+                  {opens ? (
+                    <span className="font-medium text-muted" suppressHydrationWarning>
+                      · {opens}
+                    </span>
+                  ) : null}
                 </Link>
-              </p>
-            ) : null}
-            {/* The gaps sit with the other ways to help, not in the verdict, so "Walk there" stays in the first screen. */}
-            <MissingFacts t={t} />
-          </section>
-        </div>
+              ) : null}
+              {pending ? (
+                // Pending toilets aren't routed here, but someone far away still needs to find it.
+                <a
+                  href={googleMapsWalkingUrl(null, t)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonClass("secondary", "md", "mt-2 w-full")}
+                >
+                  <ExternalLink className="size-5" aria-hidden /> Directions in Google Maps
+                </a>
+              ) : null}
 
-        {/* From md, top-aligned with the verdict card (both 16px under the title). */}
-        <div className="mt-8 md:mt-4">
-          <MoreInfo t={t} />
-        </div>
-      </div>
+              {t.photos.length ? (
+                <ul aria-label="Photos" className="no-scrollbar -mx-4 mt-4 flex snap-x gap-2 overflow-x-auto px-4">
+                  {t.photos.map((p, i) => (
+                    <li key={p.id} className="shrink-0 snap-start">
+                      <button
+                        type="button"
+                        onClick={() => setPhotoAt(i)}
+                        aria-haspopup="dialog"
+                        aria-label={`Open photo ${i + 1} of ${t.photos.length}`}
+                        className="block rounded-3xl transition active:scale-[0.98]"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.thumbUrl ?? p.url}
+                          alt=""
+                          loading="lazy"
+                          className="h-32 w-44 rounded-3xl border border-border/70 bg-surface-2 object-cover shadow-rest"
+                        />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <PhotoViewer
+                photos={t.photos}
+                index={photoAt}
+                onIndex={setPhotoAt}
+                onClose={() => setPhotoAt(null)}
+                alt={(i) => `Photo ${i + 1} of the toilet at ${t.venue.name}`}
+              />
 
-      {/* Below both columns, not under the shorter one. */}
-      <footer className="mt-8 flex flex-col gap-2 border-t border-border/70 pt-4 text-sm font-medium text-muted md:mt-12">
-        <FlagButton toilet={t} />
-        <p>
-          Source: {sourceLabel(t.source)}
-          {t.attribution ? <> · {t.attribution}</> : null}
-        </p>
-      </footer>
+              <section aria-labelledby="been-here" className="mt-8">
+                <h2 id="been-here" className="text-xl leading-tight">
+                  {nearEnough ? "You're here" : "Been here?"}
+                </h2>
+                {nearEnough ? (
+                  <p className="mt-1 font-bold text-mint">
+                    {hereM < 15 ? "You're right at it" : `You're ${formatDistance(hereM)} away`}, close enough to check in.
+                  </p>
+                ) : null}
+                <div className="mt-3 flex gap-2">
+                  {/* Closed toilets don't take check-ins. */}
+                  {canCheckIn ? <CheckInButton toilet={t} /> : null}
+                  <ReportButton toilet={t} />
+                  <ReviewButton toilet={t} />
+                </div>
+                {signedOut && t.status === "ACTIVE" ? (
+                  <p className="mt-2 text-sm font-medium text-muted">
+                    Check-ins and reports work without signing in.{" "}
+                    <Link
+                      href={`/login?redirect=${encodeURIComponent(`/toilets/${t.id}`)}`}
+                      className="font-bold text-primary underline decoration-primary/50 underline-offset-4 hover:decoration-primary"
+                    >
+                      Sign in to earn points.
+                    </Link>
+                  </p>
+                ) : null}
+                {/* The gaps sit with the other ways to help, not in the verdict, so "Walk there" stays in the first screen. */}
+                <MissingFacts t={t} />
+              </section>
+            </div>
+
+            {/* From md, top-aligned with the verdict card (both 16px under the title). */}
+            <div className="mt-8 md:mt-4">
+              <MoreInfo t={t} />
+            </div>
+          </div>
+
+          {/* Below both columns, not under the shorter one. */}
+          <footer className="mt-8 flex flex-col gap-2 border-t border-border/70 pt-4 text-sm font-medium text-muted md:mt-12">
+            <FlagButton toilet={t} />
+            <p>
+              Source: {sourceLabel(t.source)}
+              {t.attribution ? <> · {t.attribution}</> : null}
+            </p>
+          </footer>
+        </div>
+      </ViewTransition>
     </article>
   );
 }
 
-/** One quiet row under the name: what kind of place, which lines, which area. */
 /**
  * The building's other toilets, one chip per floor with this one lit: in a mall the toilet one floor
- * down is often the better bet, and its page is a tap away.
+ * down is often the better bet, and it's a tap away. A tap swaps it in on this page rather than
+ * opening a new one (ToiletDetailView): the lit pill slides along the row to the chip you tapped
+ * at once, and the toilet below follows from that side as soon as it has loaded.
  */
-function OtherFloors({ t }: { t: ToiletDetail }) {
+function OtherFloors({ t, lit, onPick }: { t: ToiletDetail; lit: string; onPick: (id: string, dir: 1 | -1) => void }) {
+  const qc = useQueryClient();
+  const scroller = useRef<HTMLDivElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const chips = useRef(new Map<string, HTMLElement>());
+  // The lit pill is a lit copy of the row, clipped to the picked chip; sliding the clip recolours
+  // whatever it passes, so it reads as one pill gliding over the chips rather than hiding under them.
+  const [clip, setClip] = useState<string | null>(null);
+  const [glide, setGlide] = useState(false);
+
   // A page saved offline before siblings came in has none.
   const siblings = t.siblings ?? [];
-  if (!siblings.length) return null;
   // Ties on a floor are broken the same way on every toilet's page (men's, women's, unisex, then the
   // label), so the lit chip moves along the row when you tap a sibling instead of always sitting first.
   const sexOrder = { MALE: 0, FEMALE: 1, UNISEX: 2 } as const;
@@ -399,55 +490,145 @@ function OtherFloors({ t }: { t: ToiletDetail }) {
       (a.label ?? "").localeCompare(b.label ?? "") ||
       a.id.localeCompare(b.id),
   );
+  const order = all.map((s) => s.id).join(" ");
+
+  useLayoutEffect(() => {
+    const box = track.current;
+    if (!box) return;
+    const place = () => {
+      const el = chips.current.get(lit);
+      if (!el) return setClip(null);
+      const right = box.offsetWidth - el.offsetLeft - el.offsetWidth;
+      setClip(`inset(0 ${right}px 0 ${el.offsetLeft}px round 9999px)`);
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [lit, order]);
+
+  // Glide only once the pill is in place, so it doesn't sweep in from the edge on arrival.
+  useEffect(() => {
+    if (!clip || glide) return;
+    const f = requestAnimationFrame(() => setGlide(true));
+    return () => cancelAnimationFrame(f);
+  }, [clip, glide]);
+
+  // Keep the lit chip in view when it moves along a row wider than the screen.
+  useEffect(() => {
+    const row = scroller.current;
+    const el = chips.current.get(lit);
+    if (!row || !el || !glide) return;
+    const pad = 16;
+    const left = el.offsetLeft - pad;
+    const over = el.offsetLeft + el.offsetWidth + pad - row.clientWidth;
+    const to = left < row.scrollLeft ? left : over > row.scrollLeft ? over : null;
+    if (to !== null) row.scrollTo({ left: to, behavior: reducedMotion() ? "auto" : "smooth" });
+  }, [lit, glide]);
+
+  if (!siblings.length) return null;
+
+  const at = all.findIndex((s) => s.id === lit);
+  // Fetched on the way to a tap (hover, press, focus), so the swap rarely has to wait. Not on page
+  // load: most visitors never switch, and each sibling is a request.
+  const warm = (id: string) => void qc.prefetchQuery(toiletQuery(id));
   const chip = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full border-2 px-4 text-sm font-bold tabular-nums";
+  const litChip = "border-primary bg-primary text-primary-fg shadow-gloss";
+
+  const label = (s: (typeof all)[number], forScreenReaders: boolean) => {
+    // "Women's · L1", "Men's, West Wing · B1": with men's and women's, or two wings, on one floor,
+    // the floor alone doesn't say which. Without a floor, what tells it apart ("Men's · EWL side",
+    // "Near Exit E"). Pages saved offline before siblings had a sex lack it: treated as unknown.
+    const level = levelShort(s.level);
+    const who = level ? toiletTag(s) : null;
+    const text = level ?? toiletTag(s) ?? "Level unknown";
+    return (
+      <>
+        {who ? (
+          <>
+            {who}
+            <span aria-hidden> · </span>
+          </>
+        ) : null}
+        {forScreenReaders && level && s.id !== t.id ? <span className="sr-only">{who ? " toilet on " : "Toilet on "}</span> : null}
+        {text}
+      </>
+    );
+  };
+
   return (
     <nav aria-labelledby="other-floors" className="mt-3" data-testid="other-floors">
       <p id="other-floors" className="text-sm font-bold text-muted">
         {siblings.length === 1 ? "1 other toilet in this building" : `${siblings.length} other toilets in this building`}
       </p>
-      <ul className="no-scrollbar -mx-4 mt-1.5 flex gap-2 overflow-x-auto px-4 pb-1">
-        {all.map((s) => {
-          // "Women's · L1", "Men's, West Wing · B1": with men's and women's, or two wings, on one floor,
-          // the floor alone doesn't say which. Without a floor, what tells it apart ("Men's · EWL side",
-          // "Near Exit E"). Pages saved offline before siblings had a sex lack it: treated as unknown.
-          const level = levelShort(s.level);
-          const who = level ? toiletTag(s) : null;
-          const text = level ?? toiletTag(s) ?? "Level unknown";
-          const body = (
-            <>
-              {who ? (
-                <>
-                  {who}
-                  <span aria-hidden> · </span>
-                </>
-              ) : null}
-              {level && s.id !== t.id ? <span className="sr-only">{who ? " toilet on " : "Toilet on "}</span> : null}
-              {text}
-            </>
-          );
-          return (
-            <li key={s.id} className="shrink-0">
-              {s.id === t.id ? (
-                <span aria-current="page" className={cx(chip, "border-primary bg-primary text-primary-fg shadow-gloss")}>
-                  {body}
-                  <span className="sr-only"> (this one)</span>
-                </span>
-              ) : (
-                <Link
-                  href={`/toilets/${encodeURIComponent(s.id)}`}
-                  className={cx(chip, "border-border bg-surface-2 text-fg transition hover:border-primary/60 active:scale-[0.96]")}
-                >
-                  {body}
-                </Link>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <div ref={scroller} className="no-scrollbar -mx-4 mt-1.5 overflow-x-auto px-4 pb-1">
+        <div ref={track} className="relative w-max">
+          <ul className="flex gap-2">
+            {all.map((s, i) => {
+              const ref = (el: HTMLElement | null) => {
+                if (el) chips.current.set(s.id, el);
+                else chips.current.delete(s.id);
+              };
+              // Until the pill has measured itself (the server render, the first frame), the chip lights itself.
+              const selfLit = !clip && s.id === lit;
+              return (
+                <li key={s.id} className="shrink-0">
+                  {s.id === t.id ? (
+                    <span ref={ref} aria-current="page" className={cx(chip, selfLit ? litChip : "border-border bg-surface-2 text-fg")}>
+                      {label(s, true)}
+                      <span className="sr-only"> (this one)</span>
+                    </span>
+                  ) : (
+                    <Link
+                      ref={ref}
+                      href={`/toilets/${encodeURIComponent(s.id)}`}
+                      prefetch={false}
+                      data-in-place=""
+                      aria-busy={s.id === lit || undefined}
+                      onPointerEnter={() => warm(s.id)}
+                      onPointerDown={() => warm(s.id)}
+                      onFocus={() => warm(s.id)}
+                      onClick={(e) => {
+                        // A new tab or window is a real page.
+                        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                        e.preventDefault();
+                        if (s.id !== lit) onPick(s.id, i > at ? 1 : -1);
+                      }}
+                      className={cx(
+                        chip,
+                        selfLit ? litChip : "border-border bg-surface-2 text-fg hover:border-primary/60",
+                        "transition active:scale-[0.96]",
+                      )}
+                    >
+                      {label(s, true)}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {/* The pill: the same row drawn lit, shown only inside the picked chip's outline. */}
+          <ul
+            aria-hidden
+            className={cx(
+              "pointer-events-none absolute inset-0 flex gap-2",
+              glide && "transition-[clip-path] duration-[320ms] motion-reduce:transition-none",
+            )}
+            style={{ clipPath: clip ?? "inset(0 100% 0 0)", transitionTimingFunction: EASE_OUT }}
+          >
+            {all.map((s) => (
+              <li key={s.id} className="shrink-0">
+                <span className={cx(chip, litChip)}>{label(s, false)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </nav>
   );
 }
 
+/** One quiet row under the name: what kind of place, which lines, which area. */
 function VenueLine({ t }: { t: ToiletDetail }) {
   const type = t.venue.type !== "OTHER" ? VENUE_TYPE_LABELS[t.venue.type] : null;
   // "Public toilet" alone says nothing, and a pending toilet has no directions here: both say where they are.

@@ -87,6 +87,8 @@ function isRouteClick(e: MouseEvent) {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
   const a = (e.target as Element | null)?.closest?.("a[href]");
   if (!(a instanceof HTMLAnchorElement) || a.target === "_blank" || a.hasAttribute("download")) return false;
+  // Swaps its view in on this page with its own transition (a toilet's other floors).
+  if (a.hasAttribute("data-in-place")) return false;
   const url = new URL(a.href, location.href);
   return url.origin === location.origin && viewOf(url.pathname, url.searchParams) !== viewOf(location.pathname, new URLSearchParams(location.search));
 }

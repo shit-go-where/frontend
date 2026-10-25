@@ -247,6 +247,8 @@ export interface ToiletMapProps {
   dimPins?: boolean;
   /** False for small preview maps: no panning, zooming or controls. */
   interactive?: boolean;
+  /** False where the page's own controls sit top left (the add page's pin picker, which asks for the level in its form). */
+  floorPicker?: boolean;
   /** Start the map credit folded to its "i" (the phone home map, where the expanded line runs into the locate button). */
   foldCredit?: boolean;
   className?: string;
@@ -340,6 +342,7 @@ export default function ToiletMap({
   viewPadding,
   dimPins = false,
   interactive = true,
+  floorPicker = true,
   foldCredit = false,
   className,
   label = "Map of toilets",
@@ -501,7 +504,7 @@ export default function ToiletMap({
 
   // The floor picker: at building zoom, when a building in view has toilets on two or more floors.
   const floors = useMemo(() => {
-    if (!showPins || !interactive || zoomLevel < STACK_MIN_ZOOM || !bounds) return [];
+    if (!showPins || !interactive || !floorPicker || zoomLevel < STACK_MIN_ZOOM || !bounds) return [];
     const inView = pins.filter(
       (p) =>
         p.status === "ACTIVE" &&
@@ -511,7 +514,7 @@ export default function ToiletMap({
     for (const p of inView) if (p.venueId) byVenue.set(p.venueId, [...(byVenue.get(p.venueId) ?? []), p]);
     const multiLevel = [...byVenue.values()].some((list) => floorsOf(list).length >= 2);
     return multiLevel ? floorsOf(inView) : [];
-  }, [showPins, interactive, zoomLevel, bounds, pins]);
+  }, [showPins, interactive, floorPicker, zoomLevel, bounds, pins]);
   // The picker going away (zoomed out, panned off the building) puts every floor back.
   const floorShown = picked !== null && floors.some((f) => f.level === picked);
   const floor = floorShown ? picked : null;

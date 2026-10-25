@@ -584,6 +584,8 @@ export function AddClient() {
                 recenterZoom={18}
                 zoom={18}
                 showPins
+                // The Level field below asks for the floor; the picker would also cover the buttons top left.
+                floorPicker={false}
                 user={user}
                 onCenterChange={(c) => set("pin", c)}
                 label="Pick the toilet location"

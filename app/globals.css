@@ -927,6 +927,53 @@ h3 {
   }
 }
 
+/*
+ * Other floors (app/toilets/[id]/detail-client.tsx): another toilet in the building swaps in on the
+ * same page. The building name and the floor row hold still while the lit pill slides to the chip
+ * you tapped; the old toilet slips out and the new one glides in from that side, so moving along
+ * the row reads as moving along the floors. The "Women's · L1" line only crossfades. Reduced
+ * motion ("floor-still") crossfades in place.
+ */
+:root {
+  --floor-dir: 1;
+}
+:root:active-view-transition-type(floor-left) {
+  --floor-dir: -1;
+}
+@keyframes sgw-floor-out {
+  to {
+    opacity: 0;
+    translate: calc(var(--floor-dir) * -12px) 0;
+  }
+}
+@keyframes sgw-floor-in {
+  from {
+    opacity: 0;
+    translate: calc(var(--floor-dir) * 32px) 0;
+  }
+}
+::view-transition-old(.floor-out) {
+  animation: sgw-floor-out 110ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+::view-transition-new(.floor-in) {
+  /* Overlaps the old one's last frames, so there is never a blank beat. */
+  animation: sgw-floor-in 280ms var(--ease-out) 70ms both;
+}
+::view-transition-old(.floor-fade-out) {
+  animation: sgw-fade 110ms cubic-bezier(0.4, 0, 1, 1) reverse both;
+}
+::view-transition-new(.floor-fade-in) {
+  animation: sgw-fade 200ms var(--ease-out) 60ms both;
+}
+/* A pick that's slow to load: the toilet still showing dims, so the tap visibly took. Never for a quick one. */
+.floor-body {
+  transition: opacity 120ms var(--ease-out);
+}
+.floor-body-waiting {
+  opacity: 0.5;
+  transition: opacity 220ms var(--ease-out) 150ms;
+}
+
 /* The empty marker that starts each route transition. */
 ::view-transition-group(.route-marker) {
   animation: none;

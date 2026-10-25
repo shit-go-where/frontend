@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { getToiletServer } from "@/lib/api/server";
 import { TIER_LABELS, VENUE_TYPE_LABELS } from "@/lib/format";
-import { levelParts, levelShort, levelText } from "@/lib/level";
-import { isUnnamed, toiletDisplayTitle } from "@/lib/unnamed-toilet";
+import { levelText } from "@/lib/level";
+import { isUnnamed, toiletDisplayTitle, toiletPageTitle } from "@/lib/unnamed-toilet";
 import { DetailSkeleton, ToiletDetailView } from "./detail-client";
 
 export async function generateMetadata({ params }: PageProps<"/toilets/[id]">): Promise<Metadata> {
@@ -12,12 +12,10 @@ export async function generateMetadata({ params }: PageProps<"/toilets/[id]">): 
   const r = await getToiletServer(id);
   if (r.kind !== "ok") return { title: "Toilet" };
   const t = r.data;
-  // Unnamed imports ("Public toilet") say where they are, so a shared link isn't one of hundreds alike.
+  // Unnamed imports ("Public toilet") say where they are, so a shared link isn't one of hundreds alike;
+  // a building with toilets on several floors says which floor this one is, and the others.
   const name = toiletDisplayTitle(t);
-  // A building with toilets on several floors: say which floor this one is, and the others ("Jewel: L3 (also B1, L1)").
-  const here = levelShort(t.level);
-  const others = [...new Set((t.siblings ?? []).flatMap((s) => levelParts(s.level)))].filter((l) => !levelParts(t.level).includes(l));
-  const title = !others.length ? name : here ? `${name}: ${here} (also ${others.join(", ")})` : `${name} (toilets on ${others.join(", ")})`;
+  const title = toiletPageTitle(t);
   const bits = [
     t.venue.type !== "OTHER" ? VENUE_TYPE_LABELS[t.venue.type] : null,
     t.near,

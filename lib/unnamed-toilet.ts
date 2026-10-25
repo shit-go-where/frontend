@@ -1,5 +1,6 @@
 import type { ToiletSex, VenueType } from "./api/types";
 import { toiletTag } from "./format";
+import { levelParts, levelShort } from "./level";
 
 /*
  * Many open-data toilets come in with no name of their own: the import calls the place "Public
@@ -30,4 +31,19 @@ export function toiletDisplayTitle(t: Named & { near?: string | null }): string 
   const tag = toiletTag(t);
   const base = tag ? `${t.venue.name} (${tag})` : t.venue.name;
   return isUnnamed(t) && t.near ? `${base} ${nearPhrase(t.near)}` : base;
+}
+
+/**
+ * The page title (before the site name): with toilets on several floors, which floor this one is
+ * and the others ("Jewel: L3 (also B1, L1)"). The server page's metadata and a toilet swapped in
+ * on the client both use it.
+ */
+export function toiletPageTitle(
+  t: Named & { near?: string | null; level: string | null; siblings?: { level: string | null }[] | null },
+): string {
+  const name = toiletDisplayTitle(t);
+  const here = levelShort(t.level);
+  const others = [...new Set((t.siblings ?? []).flatMap((s) => levelParts(s.level)))].filter((l) => !levelParts(t.level).includes(l));
+  if (!others.length) return name;
+  return here ? `${name}: ${here} (also ${others.join(", ")})` : `${name} (toilets on ${others.join(", ")})`;
 }
