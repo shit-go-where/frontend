@@ -391,6 +391,25 @@ function Initial({ handle, big }: { handle: string; big?: boolean }) {
   );
 }
 
+/**
+ * A handle that wraps instead of being cut off. Auto handles run to 20-odd characters
+ * (plucky_pangolin_42), too wide for a podium step on a phone, so they break after each underscore,
+ * and anywhere if a single part still doesn't fit.
+ */
+function Handle({ handle }: { handle: string }) {
+  const parts = `@${handle}`.split(/(?<=_)/);
+  return (
+    <span className="[overflow-wrap:anywhere]">
+      {parts.map((part, i) => (
+        <span key={i}>
+          {part}
+          {i < parts.length - 1 ? <wbr /> : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function Points({ handle, points, big }: { handle: string; points: number; big?: boolean }) {
   return (
     <span className="inline-flex items-baseline gap-1">
@@ -436,7 +455,9 @@ function People() {
           render={(r: PersonRow, place) => (
             <>
               <Initial handle={r.handle} big />
-              <span className="w-full truncate font-extrabold">@{r.handle}</span>
+              <span className="w-full text-sm leading-tight font-extrabold sm:text-base">
+                <Handle handle={r.handle} />
+              </span>
               <Points handle={r.handle} points={r.points} big={place === 1} />
             </>
           )}
@@ -461,8 +482,8 @@ function People() {
                 >
                   <RankNo rank={r.rank} />
                   <Initial handle={r.handle} />
-                  <span className="min-w-0 flex-1 truncate font-extrabold">
-                    @{r.handle}
+                  <span className="min-w-0 flex-1 leading-tight font-extrabold">
+                    <Handle handle={r.handle} />
                     {isMe ? <span className="ml-1.5 text-sm font-medium text-muted">(you)</span> : null}
                   </span>
                   <Points handle={r.handle} points={r.points} />
