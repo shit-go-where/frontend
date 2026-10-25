@@ -31,6 +31,8 @@
  *   the leaderboard's `me`); lib/offline.ts forgetSignedInCopies() drops them on sign-out.
  * - /_next/static, /maplibre/<version> and /icons: cache-first (content-hashed or versioned, immutable).
  * - RSC payloads and other same-origin GETs: network-first with the same race.
+ * - Messages: "sgw:build?" on a MessageChannel port is answered with this worker's build id, so a
+ *   page taken over by a new worker (app/providers.tsx) reloads only when it is of another build.
  * - A 404 or 410 from the network deletes the saved copy (a toilet that was rejected or removed
  *   stops being served from the cache), for pages, RSC payloads and API reads alike.
  * - API, PAGES and DATA caches are trimmed to the 100 most recently stored entries.
@@ -93,6 +95,15 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k.startsWith("sgw-") && !CURRENT.includes(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
+});
+
+/**
+ * "Which build are you?" from a page (app/providers.tsx), answered on the port it sends. A page
+ * compares this with its own build when a worker takes over, and only reloads when they differ.
+ */
+self.addEventListener("message", (event) => {
+  const port = event.ports && event.ports[0];
+  if (port && event.data && event.data.type === "sgw:build?") port.postMessage({ type: "sgw:build", build: BUILD });
 });
 
 async function precache() {

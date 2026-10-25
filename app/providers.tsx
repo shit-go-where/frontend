@@ -91,10 +91,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
     /*
      * A tab kept open for a day (Android keeps them alive) never navigates, so the browser never
      * looks for a new worker and the page runs a build that no longer exists, errors and all. So:
-     * coming back to the tab asks for an update, and a new worker taking over mid-visit reloads
-     * the page once, as soon as it is in view and nobody is typing.
+     * coming back to the tab asks for an update, and a worker of another build taking over
+     * mid-visit reloads the page once, as soon as it is in view and nobody is typing.
+     *
+     * Not every takeover means a stale page. The first visit after a deploy fetches the new page
+     * while the old worker still controls it; the page then installs the new worker, which claims
+     * it. Reloading there threw away a page that was already current, and cut off the scripts it
+     * was still importing (Safari: "Importing a module script failed"). So the page asks the new
+     * worker for its build first.
      */
     const UPDATE_EVERY_MS = 10 * 60 * 1000;
+    const PAGE_BUILD = process.env.SGW_BUILD_ID ?? "dev";
     let controlled = !!sw.controller;
     let fresh = false;
     const typing = () => {
@@ -106,14 +113,30 @@ export function Providers({ children }: { children: React.ReactNode }) {
       fresh = false;
       window.location.reload();
     };
+    /** The worker's build id (service-worker/sw.js answers "sgw:build?"), or null if it doesn't say. */
+    const buildOf = (worker: ServiceWorker) =>
+      new Promise<string | null>((resolve) => {
+        const channel = new MessageChannel();
+        const timer = window.setTimeout(() => resolve(null), 3000);
+        channel.port1.onmessage = (e: MessageEvent<{ build?: unknown }>) => {
+          window.clearTimeout(timer);
+          resolve(typeof e.data?.build === "string" ? e.data.build : null);
+        };
+        worker.postMessage({ type: "sgw:build?" }, [channel.port2]);
+      });
     const onControllerChange = () => {
       // The first worker claiming a page that loaded without one: this page is already its build.
       if (!controlled) {
         controlled = true;
         return;
       }
-      fresh = true;
-      reloadIfFresh();
+      const worker = sw.controller;
+      if (!worker) return;
+      void buildOf(worker).then((build) => {
+        if (build === PAGE_BUILD) return;
+        fresh = true;
+        reloadIfFresh();
+      });
     };
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;

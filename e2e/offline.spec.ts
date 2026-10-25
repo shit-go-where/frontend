@@ -84,6 +84,23 @@ test("the worker installs and precaches the shell pages, manifest, icons and ass
   expect(cached).toEqual(["/", "/about", "/go", "/icons/icon-192.png", "/icons/icon-512.png", "/manifest.webmanifest"].sort());
 });
 
+test("the worker tells a page which build it is, the one its caches are named after", async ({ page }) => {
+  await page.goto("/");
+  await workerReady(page);
+  const { build, caches: names } = await page.evaluate(async () => {
+    const worker = navigator.serviceWorker.controller!;
+    const build = await new Promise<unknown>((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (e: MessageEvent<{ build?: unknown }>) => resolve(e.data?.build);
+      worker.postMessage({ type: "sgw:build?" }, [channel.port2]);
+      setTimeout(() => resolve(null), 3000);
+    });
+    return { build, caches: await caches.keys() };
+  });
+  expect(typeof build).toBe("string");
+  expect(names).toContain(`sgw-${build as string}-shell`);
+});
+
 test.describe("the signal drops", () => {
   test("/ and /go?urgent=1 still render, from the worker's saved copies", async ({ page, context, baseURL }) => {
     await page.goto("/");
