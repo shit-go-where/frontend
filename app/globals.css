@@ -432,10 +432,12 @@ h3 {
     display: none;
   }
   /*
-   * While the add flow's place search is open (data-map-search, add-client.tsx), the tab bar and the Next bar
-   * would stack on top of the keyboard and cover the field and its results, so they step aside until it closes.
+   * While the add flow's place search is open (data-map-search, add-client.tsx), or a text field has the keyboard up
+   * (data-typing, nav.tsx), the tab bar and the bars docked on it would stack on top of the keyboard and cover
+   * the field and its results, so they step aside until it closes.
    */
-  :root[data-map-search] .docked-bar {
+  :root[data-map-search] .docked-bar,
+  :root[data-typing] .docked-bar {
     display: none;
   }
 }

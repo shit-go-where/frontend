@@ -3,7 +3,7 @@
 import { ClipboardCheck, Map as MapIcon, Plus, Shield, Trophy, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import type { Me } from "@/lib/api/types";
 import { hasRole, loginHref, useMe } from "@/lib/auth";
 import { Logo } from "./logo";
@@ -146,7 +146,65 @@ function PathBottomNav() {
   return <BottomNavInner pathname={usePathname()} />;
 }
 
+/** Fields that bring up the on-screen keyboard (not checkboxes, radios, sliders, buttons or file pickers). */
+const NO_KEYBOARD = new Set(["checkbox", "radio", "range", "button", "submit", "reset", "file", "color", "image", "hidden"]);
+function typesText(el: EventTarget | null) {
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly;
+  if (el instanceof HTMLInputElement) return !el.readOnly && !NO_KEYBOARD.has(el.type);
+  return el instanceof HTMLElement && el.isContentEditable;
+}
+
+/** Shorter than the tallest it's been at this width by this much, and the keyboard is up. */
+const KEYBOARD_PX = 150;
+
+/**
+ * Android shrinks the page for the keyboard (layout.tsx, interactive-widget=resizes-content), so the bars
+ * docked at the bottom ride up on top of it and cover the field being typed in. While a text field has focus
+ * and the keyboard is up, data-typing on <html> has them step aside (globals.css). Focus alone isn't enough:
+ * Android's back button drops the keyboard but leaves the field focused, and the bars must come back then.
+ */
+function useTypingFlag() {
+  useEffect(() => {
+    const html = document.documentElement;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let typing = typesText(document.activeElement);
+    let width = vv.width;
+    let tallest = vv.height;
+    const update = () => {
+      // Turned the phone: start over from this width's height.
+      if (Math.abs(vv.width - width) > 1) {
+        width = vv.width;
+        tallest = vv.height;
+      }
+      tallest = Math.max(tallest, vv.height);
+      // Pinch zoom also shrinks the visual viewport; that isn't a keyboard.
+      const keyboard = vv.scale < 1.01 && tallest - vv.height > KEYBOARD_PX;
+      html.toggleAttribute("data-typing", typing && keyboard);
+    };
+    const onIn = (e: FocusEvent) => {
+      typing = typesText(e.target);
+      update();
+    };
+    const onOut = (e: FocusEvent) => {
+      // On to another field: stay away.
+      typing = typesText(e.relatedTarget);
+      update();
+    };
+    document.addEventListener("focusin", onIn);
+    document.addEventListener("focusout", onOut);
+    vv.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("focusin", onIn);
+      document.removeEventListener("focusout", onOut);
+      vv.removeEventListener("resize", update);
+      html.removeAttribute("data-typing");
+    };
+  }, []);
+}
+
 export function BottomNav() {
+  useTypingFlag();
   return (
     <Suspense fallback={<BottomNavInner pathname={null} />}>
       <PathBottomNav />

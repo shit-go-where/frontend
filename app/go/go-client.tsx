@@ -1146,7 +1146,7 @@ function Wizard() {
         shows through between them, and its bottom padding only clears the mascot disc's rise above the nav
         (a little more ate the questions' room on small phones). A short fade on top lets the cards slide under it softly.
       */}
-      <div className="fixed inset-x-0 bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom))] z-30 bg-bg px-4 pb-[calc(var(--nav-crown)+0.25rem)] pt-1.5 before:pointer-events-none before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-linear-to-t before:from-bg before:to-transparent before:content-[''] md:static md:mt-6 md:bg-transparent md:p-0 md:before:hidden">
+      <div className="docked-bar fixed inset-x-0 bottom-[calc(var(--nav-h)+env(safe-area-inset-bottom))] z-30 bg-bg px-4 pb-[calc(var(--nav-crown)+0.25rem)] pt-1.5 before:pointer-events-none before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-linear-to-t before:from-bg before:to-transparent before:content-[''] md:static md:mt-6 md:bg-transparent md:p-0 md:before:hidden">
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {/* Phones skip the summary line, so the questions keep the room; screen readers still hear it. */}
           <p className="truncate text-center text-sm font-semibold text-muted max-md:sr-only" aria-live="polite">
