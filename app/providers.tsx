@@ -71,14 +71,64 @@ export function Providers({ children }: { children: React.ReactNode }) {
       });
       return;
     }
+    const sw = navigator.serviceWorker;
+    let registration: ServiceWorkerRegistration | null = null;
+    let checkedAt = 0;
     const register = () => {
       // /sw.js is app/sw.js/route.ts: the worker with this deploy's version baked in.
-      navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch(() => {
-        /* offline support is best-effort */
-      });
+      sw.register("/sw.js", { scope: "/", updateViaCache: "none" })
+        .then((reg) => {
+          registration = reg;
+          checkedAt = Date.now();
+        })
+        .catch(() => {
+          /* offline support is best-effort */
+        });
     };
     if (document.readyState === "complete") register();
     else window.addEventListener("load", register, { once: true });
+
+    /*
+     * A tab kept open for a day (Android keeps them alive) never navigates, so the browser never
+     * looks for a new worker and the page runs a build that no longer exists, errors and all. So:
+     * coming back to the tab asks for an update, and a new worker taking over mid-visit reloads
+     * the page once, as soon as it is in view and nobody is typing.
+     */
+    const UPDATE_EVERY_MS = 10 * 60 * 1000;
+    let controlled = !!sw.controller;
+    let fresh = false;
+    const typing = () => {
+      const el = document.activeElement;
+      return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
+    };
+    const reloadIfFresh = () => {
+      if (!fresh || document.visibilityState !== "visible" || typing()) return;
+      fresh = false;
+      window.location.reload();
+    };
+    const onControllerChange = () => {
+      // The first worker claiming a page that loaded without one: this page is already its build.
+      if (!controlled) {
+        controlled = true;
+        return;
+      }
+      fresh = true;
+      reloadIfFresh();
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      reloadIfFresh();
+      if (registration && Date.now() - checkedAt > UPDATE_EVERY_MS) {
+        checkedAt = Date.now();
+        registration.update().catch(() => {});
+      }
+    };
+    sw.addEventListener("controllerchange", onControllerChange);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      sw.removeEventListener("controllerchange", onControllerChange);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   return (
