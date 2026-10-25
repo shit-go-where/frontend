@@ -389,8 +389,15 @@ function OtherFloors({ t }: { t: ToiletDetail }) {
   // A page saved offline before siblings came in has none.
   const siblings = t.siblings ?? [];
   if (!siblings.length) return null;
+  // Ties on a floor are broken the same way on every toilet's page (men's, women's, unisex, then the
+  // label), so the lit chip moves along the row when you tap a sibling instead of always sitting first.
+  const sexOrder = { MALE: 0, FEMALE: 1, UNISEX: 2 } as const;
   const all = [{ id: t.id, label: t.label, level: t.level, levelOrder: levelOrder(t.level), sex: t.sex }, ...siblings].sort(
-    (a, b) => compareLevelOrder(a.levelOrder, b.levelOrder),
+    (a, b) =>
+      compareLevelOrder(a.levelOrder, b.levelOrder) ||
+      (a.sex ? sexOrder[a.sex] : 3) - (b.sex ? sexOrder[b.sex] : 3) ||
+      (a.label ?? "").localeCompare(b.label ?? "") ||
+      a.id.localeCompare(b.id),
   );
   const chip = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full border-2 px-4 text-sm font-bold tabular-nums";
   return (
@@ -400,11 +407,11 @@ function OtherFloors({ t }: { t: ToiletDetail }) {
       </p>
       <ul className="no-scrollbar -mx-4 mt-1.5 flex gap-2 overflow-x-auto px-4 pb-1">
         {all.map((s) => {
-          // "Women's · L1": with men's and women's on one floor, the floor alone doesn't say which.
-          // Without a floor, what tells it apart ("Men's · EWL side", "Near Exit E"). Pages saved offline
-          // before siblings had a sex lack it: treated as unknown.
+          // "Women's · L1", "Men's, West Wing · B1": with men's and women's, or two wings, on one floor,
+          // the floor alone doesn't say which. Without a floor, what tells it apart ("Men's · EWL side",
+          // "Near Exit E"). Pages saved offline before siblings had a sex lack it: treated as unknown.
           const level = levelShort(s.level);
-          const who = level ? toiletTag({ label: null, sex: s.sex }) : null;
+          const who = level ? toiletTag(s) : null;
           const text = level ?? toiletTag(s) ?? "Level unknown";
           const body = (
             <>

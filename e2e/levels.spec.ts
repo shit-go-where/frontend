@@ -306,10 +306,17 @@ test.describe("a toilet's page", () => {
     await expect(floors).toBeVisible();
     // Lowest floor first, unknown last; this toilet (B1) is lit and not a link. Who a toilet is for
     // comes before its floor when known (the text also holds the screen-reader words: "toilet on").
-    await expect(floors.getByRole("listitem")).toHaveText([/B2$/, "B1 (this one)", /^Women's ·.*L1$/, "Near Exit E"]);
-    await expect(floors.getByText("B1")).toHaveAttribute("aria-current", "page");
-    await expect(floors.getByRole("link", { name: "Women's toilet on L1" })).toHaveAttribute("href", "/toilets/t-dhoby-l1");
-    await expect(floors.getByRole("link", { name: "Toilet on B2" })).toHaveAttribute("href", "/toilets/t-dhoby-b2");
+    // Each chip carries what tells the toilet apart (sex, label) before its floor, so two on one floor never read the same.
+    // (the text also holds the screen-reader words "toilet on" between the tag and the floor).
+    await expect(floors.getByRole("listitem")).toHaveText([
+      /^NEL platform · .*B2$/,
+      /^NSL side, near Exit A · B1 \(this one\)$/,
+      /^Women's · Concourse · .*L1$/,
+      "Near Exit E",
+    ]);
+    await expect(floors.getByText("B1 (this one)")).toHaveAttribute("aria-current", "page");
+    await expect(floors.getByRole("link", { name: "Women's · Concourse toilet on L1" })).toHaveAttribute("href", "/toilets/t-dhoby-l1");
+    await expect(floors.getByRole("link", { name: "NEL platform toilet on B2" })).toHaveAttribute("href", "/toilets/t-dhoby-b2");
     await expect(floors.getByRole("link", { name: "Near Exit E" })).toHaveAttribute("href", "/toilets/t-dhoby-x");
   });
 });
