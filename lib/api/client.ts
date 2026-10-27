@@ -438,7 +438,8 @@ export const api = {
 
   // Admin
   adminFlags: () => request<List<AdminFlag>>("/admin/flags", { query: { resolved: false } }),
-  resolveFlag: (id: string) => request<{ ok: true }>(`/admin/flags/${encodeURIComponent(id)}/resolve`, { method: "POST" }),
+  resolveFlag: ({ id, note }: { id: string; note?: string }) =>
+    request<{ ok: true }>(`/admin/flags/${encodeURIComponent(id)}/resolve`, { method: "POST", body: { note } }),
   pendingPhotos: () => request<List<PendingPhoto>>("/admin/photos/pending"),
   approvePhoto: (id: string) =>
     request<{ approved: boolean; approvals: number }>(`/admin/photos/${encodeURIComponent(id)}/approve`, {

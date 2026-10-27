@@ -153,6 +153,7 @@ const FLAGS: AdminFlag[] = [
     reason: "Closed for renovation",
     createdAt: "2026-10-01T00:00:00.000Z",
     toilet: { id: "t-plaza-l3", label: "Level 3", venueName: "Plaza Singapura" },
+    resolutionNote: null,
     user: { handle: "ahbeng" },
   },
 ];

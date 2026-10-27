@@ -134,7 +134,7 @@ function BottomNavInner({ pathname }: { pathname: string | null }) {
  */
 function hasUnseenActivity(me: Me | null | undefined) {
   const u = me?.unseen;
-  return !!u && u.resolvedSubmissions + u.badges + u.points + (u.routed ?? 0) > 0;
+  return !!u && u.resolvedSubmissions + (u.resolvedFlags ?? 0) + u.badges + u.points + (u.routed ?? 0) > 0;
 }
 
 /** Mint, the good-news colour; ringed in the bar's surface so it reads on the icon. */

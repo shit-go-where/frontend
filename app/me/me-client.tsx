@@ -236,7 +236,7 @@ function Stat({ value, of, label, gold }: { value: number | undefined; of?: numb
 
 /* ─────────────── since your last visit ─────────────── */
 
-const NOTHING_UNSEEN: Me["unseen"] = { resolvedSubmissions: 0, badges: 0, points: 0, routed: 0 };
+const NOTHING_UNSEEN: Me["unseen"] = { resolvedSubmissions: 0, resolvedFlags: 0, badges: 0, points: 0, routed: 0 };
 
 /**
  * What happened while they were away (Me.unseen), marked seen once it's on screen so the Me tab's dot
@@ -245,19 +245,21 @@ const NOTHING_UNSEEN: Me["unseen"] = { resolvedSubmissions: 0, badges: 0, points
  */
 function SinceLastVisit({ me, onSeeActivity }: { me: Me; onSeeActivity: () => void }) {
   const qc = useQueryClient();
-  const [snap] = useState(() => ({ unseen: me.unseen, since: me.lastSeenActivityAt }));
+  // flagReplies is missing on a Me cached before the field existed.
+  const [snap] = useState(() => ({ unseen: me.unseen, since: me.lastSeenActivityAt, flagReplies: me.flagReplies ?? [] }));
   const marked = useRef(false);
   const { resolvedSubmissions, badges, points } = snap.unseen;
   // Missing on a Me cached before the field existed.
   const routed = snap.unseen.routed ?? 0;
-  const any = resolvedSubmissions + badges + points + routed > 0;
+  const replies = snap.flagReplies;
+  const any = resolvedSubmissions + replies.length + badges + points + routed > 0;
   useEffect(() => {
     if (!any || marked.current) return;
     marked.current = true;
     api
       .markActivitySeen()
       .then((r) =>
-        qc.setQueryData<Me | null>(ME_KEY, (m) => (m ? { ...m, unseen: NOTHING_UNSEEN, lastSeenActivityAt: r.seenAt } : m)),
+        qc.setQueryData<Me | null>(ME_KEY, (m) => (m ? { ...m, unseen: NOTHING_UNSEEN, flagReplies: [], lastSeenActivityAt: r.seenAt } : m)),
       )
       .catch(() => {
         // Not marked, so the dot and this banner simply come back next visit.
@@ -290,6 +292,19 @@ function SinceLastVisit({ me, onSeeActivity }: { me: Me; onSeeActivity: () => vo
               </button>
             </li>
           ) : null}
+          {replies.map((f) => (
+            <li key={f.id} className="py-1">
+              <span>
+                Your report on{" "}
+                <Link href={`/toilets/${f.toilet.id}`} className="text-primary underline">
+                  {f.toilet.venueName}
+                  {f.toilet.label ? ` · ${f.toilet.label}` : ""}
+                </Link>{" "}
+                was sorted.
+              </span>
+              {f.note ? <p className="mt-0.5 font-normal">&ldquo;{f.note}&rdquo;</p> : null}
+            </li>
+          ))}
           {badges > 0 ? <li>{plural(badges, "new badge")}</li> : null}
           {routed > 0 ? (
             <li>

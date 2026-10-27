@@ -313,11 +313,15 @@ export interface Me {
   /** Since lastSeenActivityAt (else sign-up). resolvedSubmissions counts only APPROVED and REJECTED. */
   unseen: {
     resolvedSubmissions: number;
+    /** Your reports a moderator resolved; the replies are in flagReplies. */
+    resolvedFlags: number;
     badges: number;
     points: number;
     /** Routes other people started to toilets you helped, on Singapore days since your last visit. */
     routed: number;
   };
+  /** Your reports resolved since your last visit, newest first (at most 10), with the moderator's reply. */
+  flagReplies: FlagReply[];
   /**
    * What your contributions did (GROWTH.md 1.3): toilets you added, last verified, or checked in at in
    * the last 90 days, and routes started to them over the last 7 days.
@@ -675,10 +679,19 @@ export interface PresignResponse {
   headers: Record<string, string>;
 }
 
+export interface FlagReply {
+  id: string;
+  toilet: { id: string; label: string | null; venueName: string };
+  reason: string;
+  note: string | null;
+  resolvedAt: string;
+}
+
 export interface AdminFlag {
   id: string;
   reason: string;
   createdAt: string;
+  resolutionNote: string | null;
   toilet: { id: string; label: string | null; venueName: string };
   user: { handle: string | null };
 }

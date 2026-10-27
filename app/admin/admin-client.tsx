@@ -15,7 +15,7 @@ import {
 } from "@/app/review/submission-bits";
 import { Button, Card, Chip, EmptyState, ErrorState, PageHeader, Spinner, Tabs, inputClass } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
-import type { DataQuality, ModeratorSubmission, ResolveSubmissionBody } from "@/lib/api/types";
+import type { AdminFlag, DataQuality, ModeratorSubmission, ResolveSubmissionBody } from "@/lib/api/types";
 import { hasRole, useRequireAuth } from "@/lib/auth";
 import { formatDate, formatDistance, plural, timeAgo } from "@/lib/format";
 
@@ -201,10 +201,6 @@ function ModCard({ s }: { s: ModeratorSubmission }) {
 function Flags() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin-flags"], queryFn: api.adminFlags });
-  const resolve = useMutation({
-    mutationFn: api.resolveFlag,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin-flags"] }),
-  });
   if (q.isError) return <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
   if (q.isLoading) return <Spinner />;
   if (!q.data?.items.length) return <EmptyState title="No open flags" mascot="happy">All clear. Shiok.</EmptyState>;
@@ -212,26 +208,53 @@ function Flags() {
     <ul className="flex flex-col gap-3">
       {q.data.items.map((f) => (
         <li key={f.id}>
-          <Card className="flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <Link href={`/toilets/${f.toilet.id}`} className="font-extrabold text-primary underline">
-                  {f.toilet.venueName}
-                  {f.toilet.label ? ` · ${f.toilet.label}` : ""}
-                </Link>
-                <p className="mt-0.5 text-xs text-muted">
-                  {f.user.handle ? `@${f.user.handle}` : "someone"} · {timeAgo(f.createdAt)}
-                </p>
-              </div>
-              <Button className="shrink-0" loading={resolve.isPending && resolve.variables === f.id} onClick={() => resolve.mutate(f.id)}>
-                <Check className="size-4" aria-hidden /> Resolve
-              </Button>
-            </div>
-            <p>{f.reason}</p>
-          </Card>
+          <FlagCard flag={f} onResolved={() => void qc.invalidateQueries({ queryKey: ["admin-flags"] })} />
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The reply goes to the reporter's Me page (and their Telegram chat, if linked). */
+function FlagCard({ flag: f, onResolved }: { flag: AdminFlag; onResolved: () => void }) {
+  const [note, setNote] = useState("");
+  const resolve = useMutation({ mutationFn: api.resolveFlag, onSuccess: onResolved });
+  const who = f.user.handle ? `@${f.user.handle}` : "someone";
+  return (
+    <Card className="flex flex-col gap-2">
+      <div>
+        <Link href={`/toilets/${f.toilet.id}`} className="font-extrabold text-primary underline">
+          {f.toilet.venueName}
+          {f.toilet.label ? ` · ${f.toilet.label}` : ""}
+        </Link>
+        <p className="mt-0.5 text-xs text-muted">
+          {who} · {timeAgo(f.createdAt)}
+        </p>
+      </div>
+      <p>{f.reason}</p>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`flag-${f.id}-note`} className="text-sm font-bold">
+          Reply to {who} <span className="font-normal text-muted">(optional)</span>
+        </label>
+        <textarea
+          id={`flag-${f.id}-note`}
+          rows={2}
+          maxLength={500}
+          className={inputClass}
+          placeholder="E.g. Fixed, moved the pin to Exit A. Thanks!"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+      {resolve.isError ? (
+        <p role="alert" className="text-sm text-danger">
+          {errorMessage(resolve.error)}
+        </p>
+      ) : null}
+      <Button className="self-end" loading={resolve.isPending} onClick={() => resolve.mutate({ id: f.id, note: note.trim() || undefined })}>
+        <Check className="size-4" aria-hidden /> {note.trim() ? "Reply and resolve" : "Resolve"}
+      </Button>
+    </Card>
   );
 }
 

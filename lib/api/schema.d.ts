@@ -1014,10 +1014,22 @@ export interface components {
             };
             unseen: {
                 resolvedSubmissions: number;
+                resolvedFlags: number;
                 badges: number;
                 points: number;
                 routed: number;
             };
+            flagReplies: {
+                id: string;
+                toilet: {
+                    id: string;
+                    label: string | null;
+                    venueName: string;
+                };
+                reason: string;
+                note: string | null;
+                resolvedAt: string;
+            }[];
             impact: {
                 toilets: number;
                 routedWeek: number;
@@ -2002,6 +2014,7 @@ export interface components {
                 reason: string;
                 createdAt: string;
                 resolved: boolean;
+                resolutionNote: string | null;
                 toilet: {
                     id: string;
                     label: string | null;
@@ -2011,6 +2024,9 @@ export interface components {
                     handle: string | null;
                 };
             }[];
+        };
+        ResolveFlagDto: {
+            note?: string;
         };
         AdminOkDto_Output: {
             /** @constant */
@@ -3373,7 +3389,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveFlagDto"];
+            };
+        };
         responses: {
             default: {
                 headers: {
