@@ -1,8 +1,10 @@
 "use client";
 
-import { MapPinOff } from "lucide-react";
+import { MapPinOff, RotateCw } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Component, useEffect, useState, type ReactNode } from "react";
+import { buttonClass } from "@/components/ui";
+import { MapLibreLoadError } from "./load-error";
 import type { ToiletMapProps } from "./ToiletMap";
 
 function MapPlaceholder() {
@@ -46,20 +48,27 @@ function useMapLetIn() {
 }
 
 /** Keeps the page usable when WebGL or the tile server fails. */
-class MapErrorBoundary extends Component<{ children: ReactNode; className?: string }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
+class MapErrorBoundary extends Component<{ children: ReactNode; className?: string }, { error: unknown }> {
+  state = { error: null as unknown };
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
   }
   render() {
-    if (this.state.failed) {
+    if (this.state.error) {
+      // A dropped download is worth another go; Safari keeps a failed module import for the page's life, so reload.
+      const dropped = this.state.error instanceof MapLibreLoadError;
       return (
-        <div
-          className={`flex flex-col items-center justify-center gap-2 bg-surface-2 p-4 text-center text-muted ${this.props.className ?? ""}`}
-          role="note"
-        >
-          <MapPinOff className="size-8" aria-hidden />
-          <p>The map can&apos;t load on this device. The list still works.</p>
+        <div className={`bg-surface-2 text-center text-muted ${this.props.className ?? ""}`} role="note">
+          {/* Capped so a full-screen map (home, under the list sheet) shows this above the sheet; a card map centres it. */}
+          <div className="flex h-full max-h-[55svh] flex-col items-center justify-center gap-2 p-4">
+            <MapPinOff className="size-8" aria-hidden />
+            <p>{dropped ? "The map didn't load. The list still works." : "The map can't load on this device. The list still works."}</p>
+            {dropped ? (
+              <button type="button" className={buttonClass("secondary", "md")} onClick={() => window.location.reload()}>
+                <RotateCw className="size-4" aria-hidden /> Try again
+              </button>
+            ) : null}
+          </div>
         </div>
       );
     }

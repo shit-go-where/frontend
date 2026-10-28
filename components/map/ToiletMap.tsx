@@ -44,6 +44,7 @@ import {
   type PlaceOf,
 } from "./levels";
 import { OffscreenHint } from "./offscreen-hint";
+import { MapLibreLoadError } from "./load-error";
 
 /**
  * MapLibre 6, loaded by URL instead of bundled, so the main thread and its worker share one download of
@@ -53,12 +54,17 @@ import { OffscreenHint } from "./offscreen-hint";
 const MAPLIBRE_URL = `/maplibre/${process.env.MAPLIBRE_VERSION}/maplibre-gl.mjs`;
 let mapLib: Promise<typeof import("maplibre-gl")> | null = null;
 function loadMapLib() {
-  mapLib ??= (import(/* webpackIgnore: true */ MAPLIBRE_URL) as Promise<typeof import("maplibre-gl")>).catch((e: unknown) => {
+  if (mapLib) return mapLib;
+  const p = (import(/* webpackIgnore: true */ MAPLIBRE_URL) as Promise<typeof import("maplibre-gl")>).catch((e: unknown) => {
     // No signal: let the next map try again instead of keeping the failure.
     mapLib = null;
-    throw e;
+    throw new MapLibreLoadError(e);
   });
-  return mapLib;
+  // react-map-gl reports the failure through onError; a render React throws away never hands the promise over,
+  // and that rejection would otherwise surface as unhandled (SGW-FRONTEND-A).
+  p.catch(() => {});
+  mapLib = p;
+  return p;
 }
 
 /** [west, south, east, north] */
@@ -372,6 +378,9 @@ export default function ToiletMap({
   // The map never started (no WebGL2, which MapLibre 6 requires, or its module didn't arrive): hand it to
   // MapErrorBoundary (./index.tsx) so the page says so instead of showing an empty box. Tile errors don't count.
   const [fatal, setFatal] = useState<unknown>(null);
+  // Once per map: react-map-gl only reads mapLib on mount, so an import started by a later render after a
+  // failure would reject with nobody listening (SGW-FRONTEND-A).
+  const [lib] = useState(loadMapLib);
   if (fatal) throw fatal;
   const [clusters, setClusters] = useState<Cluster[]>([]);
   /** Clusters whose expansion zoom is past clustering (their toilets share a spot), by cluster id. */
@@ -850,7 +859,7 @@ export default function ToiletMap({
     >
       <Map
         ref={mapRef}
-        mapLib={loadMapLib()}
+        mapLib={lib}
         onError={(e) => {
           // react-map-gl reports a failed start with no target; everything else is a map event (a tile, say).
           if (!e.target) setFatal(e.error ?? new Error("The map could not start"));

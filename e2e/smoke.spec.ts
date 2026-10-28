@@ -34,6 +34,23 @@ test.describe("find", () => {
     await expect(page.getByText("© OpenStreetMap contributors (ODbL)")).toBeVisible();
   });
 
+  test("a map that didn't download offers a reload, with no unhandled errors", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await mockApi(page);
+    await page.route("**/maplibre/**", (r) => r.abort("connectionreset"));
+    await page.goto("/");
+    await expect(page.getByText("The map didn't load. The list still works.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    // The list re-renders after the failure; that must not start an import nobody listens to (SGW-FRONTEND-A).
+    await expect(page.getByRole("list", { name: "Toilets sorted by walking time" }).getByTestId("toilet-card")).toHaveCount(TOILETS.length);
+    expect(errors).toEqual([]);
+
+    await page.unroute("**/maplibre/**");
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("region", { name: "Map of toilets" })).toBeVisible();
+  });
+
   test("the list sheet stops below the search", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
