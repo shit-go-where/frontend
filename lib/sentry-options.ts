@@ -103,10 +103,11 @@ export function scrubEvent<T extends Event>(event: T): T {
 /**
  * The browser skipping a view transition (viewport resized as Android's URL bar moves, tab hidden).
  * The DOM update still lands; only the animation is lost. React ignores these by exact message, but
- * Chrome 154 appends the reason ("… invalid state. Viewport size changed"), so match the prefix.
+ * Chrome 154 appends the reason ("… invalid state. Viewport size changed"), so match the prefix. Firefox
+ * words it its own way ("Skipped ViewTransition due to document being hidden"), which React doesn't know.
  */
 export const SKIPPED_VIEW_TRANSITION =
-  /^(InvalidStateError: )?(Transition was aborted because of invalid state|Skipping view transition because|View transition was skipped because)/;
+  /^(InvalidStateError: )?(Transition was aborted because of invalid state|Skipping view transition because|View transition was skipped because|Skipped ViewTransition due to)/;
 
 /**
  * Options common to every runtime. Environment and release come from next.config.ts `env`
