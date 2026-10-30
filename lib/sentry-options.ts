@@ -110,6 +110,12 @@ export const SKIPPED_VIEW_TRANSITION =
   /^(InvalidStateError: )?(Transition was aborted because of invalid state|Skipping view transition because|View transition was skipped because|Skipped ViewTransition due to)/;
 
 /**
+ * Scripts the browser itself injects into every page, not ours: Brave and Firefox on iOS
+ * (`__firefox__.reader`, a `window.ethereum` wallet shim) throw from them on load (SGW-FRONTEND-8, -9).
+ */
+export const INJECTED_BY_BROWSER = /__firefox__|window\.ethereum\b/;
+
+/**
  * Options common to every runtime. Environment and release come from next.config.ts `env`
  * (VERCEL_ENV and VERCEL_GIT_COMMIT_SHA at build time), so browser and server agree.
  */
@@ -136,7 +142,7 @@ export function sentryBaseOptions(): BrowserOptions {
     // Errors only: no performance tracing (free quota, and nothing timed about a person).
     tracesSampleRate: 0,
     maxBreadcrumbs: 30,
-    ignoreErrors: [SKIPPED_VIEW_TRANSITION],
+    ignoreErrors: [SKIPPED_VIEW_TRANSITION, INJECTED_BY_BROWSER],
     initialScope: { tags: { build: process.env.SGW_BUILD_ID ?? "dev" } },
     beforeSend: scrubEvent,
     beforeBreadcrumb: scrubBreadcrumb,

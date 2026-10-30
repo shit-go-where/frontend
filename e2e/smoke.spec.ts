@@ -51,6 +51,18 @@ test.describe("find", () => {
     await expect(page.getByRole("region", { name: "Map of toilets" })).toBeVisible();
   });
 
+  test("MapLibre's files are served by version; anything else is a 404, not a server error", async ({ page }) => {
+    await mockApi(page);
+    const main = page.waitForRequest((r) => r.url().includes("/maplibre/") && r.url().endsWith("/maplibre-gl.mjs"));
+    await page.goto("/");
+    const url = new URL((await main).url());
+    expect((await page.request.get(url.href)).status()).toBe(200);
+    // A devtools source-map request (SGW-FRONTEND-B), an unknown file, an old version.
+    expect((await page.request.get(`${url.href}.map`)).status()).toBe(404);
+    expect((await page.request.get(url.href.replace(/[^/]+$/, "nope.mjs"))).status()).toBe(404);
+    expect((await page.request.get(url.href.replace(/\/maplibre\/[^/]+\//, "/maplibre/0.0.1/"))).status()).toBe(404);
+  });
+
   test("the list sheet stops below the search", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");

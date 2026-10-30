@@ -1,7 +1,7 @@
 /**
  * Browser error reporting (Sentry). The only module that loads the SDK (lib/sentry-sdk.ts) in the browser.
  *
- * - A complete no-op unless NEXT_PUBLIC_SENTRY_DSN is set, and when the browser sends Do Not Track
+ * - A complete no-op unless NEXT_PUBLIC_SENTRY_DSN is set, in an automated browser, and when the browser sends Do Not Track
  *   or Global Privacy Control (the same rule as analytics, lib/analytics.ts).
  * - The SDK is a separate chunk, imported once the page is idle (instrumentation-client.ts) or as
  *   soon as an error boundary reports something (lib/report-error.ts), so it never delays first paint.
@@ -24,8 +24,13 @@ let loading: Promise<SentryModule | null> | undefined;
 /** Whether reports may be sent from this browser at all. */
 export function sentryEnabled(): boolean {
   if (off || typeof window === "undefined") return false;
-  if (doNotTrack()) off = true;
+  if (doNotTrack() || automated()) off = true;
   return !off;
+}
+
+/** A script driving the browser (Vercel's deployment screenshot, crawlers): nobody to fix anything for (SGW-FRONTEND-D). */
+function automated(): boolean {
+  return navigator.webdriver === true || /HeadlessChrome/.test(navigator.userAgent);
 }
 
 /** Loads and starts the SDK once. Resolves to null when reporting is off or the chunk can't load. */

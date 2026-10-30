@@ -14,12 +14,17 @@ export const MAPLIBRE_FILES = ["maplibre-gl.mjs", "maplibre-gl-worker.mjs", "map
 
 const dist = () => join(process.cwd(), "node_modules", "maplibre-gl", "dist");
 
+/**
+ * Read at build time (next.config.ts `env`). Never from node_modules at request time: a path that wasn't
+ * prerendered (a devtools request for maplibre-gl.mjs.map, say) runs this on Vercel, where node_modules
+ * isn't in the function bundle (SGW-FRONTEND-B).
+ */
 export function maplibreVersion(): string {
-  return (JSON.parse(readFileSync(join(dist(), "..", "package.json"), "utf8")) as { version: string }).version;
+  return process.env.MAPLIBRE_VERSION!;
 }
 
 export function maplibreAsset(version: string, file: string): Response {
-  if (version !== maplibreVersion() || !(MAPLIBRE_FILES as readonly string[]).includes(file)) {
+  if (!(MAPLIBRE_FILES as readonly string[]).includes(file) || version !== maplibreVersion()) {
     return new Response("Not found", { status: 404 });
   }
   return new Response(readFileSync(join(dist(), file), "utf8"), {
